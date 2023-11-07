@@ -1,0 +1,224 @@
+\documentclass{article}
+
+% load different input and output encoding for different latex executables
+% src: https://tex.stackexchange.com/questions/44694/fontenc-vs-inputenc
+\usepackage{iftex}
+\ifPDFTeX
+   \usepackage[utf8]{inputenc}
+   \usepackage[T1]{fontenc}
+   \usepackage{lmodern}
+\else
+   \ifXeTeX
+     \usepackage{fontspec}
+   \else
+     \usepackage{luatextra}
+   \fi
+   \defaultfontfeatures{Ligatures=TeX}
+\fi
+\usepackage[a4paper, margin=0.5cm, landscape]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{color}
+\usepackage{booktabs}
+\usepackage{csquotes}
+\usepackage{biblatex}
+\addbibresource{bibliography.bib}
+\usepackage{longtable}
+
+\author{Daniel Schmitt}
+\title{}
+\date{}
+
+\begin{document}
+
+\textbf{Notation}: $ED$ is the edit distance for strings ($ED_S$), trees ($ED_T$), or graphs ($ED_G$). $n$ is the size of the set or string or the number of nodes in the tree or graph. $h$ is the height of the tree. $d_{max}$ is a known bound on the maximum distance of the two strings/trees for the bounded SED/TED problem.
+
+\section{SED}
+
+\begin{small}
+    \begin{longtable}[c]{p{0.085\linewidth}p{0.05\linewidth}p{0.035\linewidth}p{0.43\linewidth}p{0.05\linewidth}p{0.1\linewidth}p{0.15\linewidth}}
+        \toprule
+        Name    &   Assum.  & Red.  &   Description  &   T-Time   &   B-Time    &   Approximation   \tabularnewline
+        \midrule\endhead
+        SED &   ---     &   --- & --- &   ---  &   $O(n^2)$    &   1   \tabularnewline
+        bSED~\cite{DBLP:journals/siamcomp/LandauMS98} &   bound.  &   --- & Smart navigation through the DP matrix using an approach similar to Dijkstra. &   --- &   $O(n + d_{max}^2)$    &   1   \tabularnewline
+        bSED-Approx&
+        ---&
+        ---&
+        Use bSED~\cite{DBLP:journals/siamcomp/LandauMS98} with $d_{max}=n^\frac{1}{2}$, report $n$ if the real distance exceeds $d_{max}$.&
+        ---&
+        $O(n)$&
+        $ED_s\leq \widetilde{ED_s}\leq n^\frac{1}{2}ED_s$
+        \tabularnewline
+        \bottomrule
+    \end{longtable}
+\end{small}
+
+\section{TED}
+
+\begin{footnotesize}
+    \begin{longtable}[c]{p{0.085\linewidth}p{0.05\linewidth}p{0.035\linewidth}p{0.43\linewidth}p{0.05\linewidth}p{0.1\linewidth}p{0.15\linewidth}}
+        \toprule
+        Name    &   Assum.  & Red.  &   Description  &   T-Time   &   B-Time    &   Approximation   \tabularnewline
+        \midrule\endhead
+        TED &  --- &   ---  & --- &   ---  &   $O(n^3)$    &   1   \tabularnewline
+        Subcubic-uTED~\cite{DBLP:conf/focs/Mao21} &
+        unw.&
+        --- &
+        Uses fast max-plus matrix multiplication during the tree decomposition to achieve subcubic time. &
+        --- &
+        $O(n^{2.9546})$, $O(n^{2.9639})$    &
+        1
+        \tabularnewline
+        bTED~\cite{DBLP:conf/cpm/Touzet05}&
+        bound.&
+        ---&
+        Smart navigation through the DP matrix, based on the approach for SED~\cite{DBLP:journals/siamcomp/LandauMS98}.&
+        ---&
+        $O(nd_{max}^3)$&
+        1
+        \tabularnewline
+        bTed-Approx~\cite{DBLP:conf/stoc/BoroujeniGHS19}&
+        ---&
+        ---&
+        Use bTed~\cite{DBLP:conf/cpm/Touzet05} with $d_{max}=n^{\frac{1}{3}}$ for a runtime complexity of $O(n^2)$. The algorithm can report if the real distance is ${>}d_{max}=n^{\frac{1}{3}}$. If this is the case, report the trivial bound $n$.&
+        ---&
+        $O(n^2)$&
+        $ED_T \leq \widetilde{ED_T}\leq n^{\frac{2}{3}}ED_T$
+        \tabularnewline
+        bTed-Klein~\cite{DBLP:conf/icalp/AkmalJ21}&
+        bound.&
+        ---&
+        Uses the exact algorithm/recursion of Klein~\cite{DBLP:conf/esa/Klein98}, but only visits nodes in the \textit{transition graph} (similar to bTED~\cite{DBLP:conf/cpm/Touzet05}) that can be reached if the real distance of the trees is at most $d_{max}$.&
+        ---&
+        $O(nd_{max}^2\log n)$&
+        1
+        \tabularnewline
+        Traversal Strings~\cite{DBLP:conf/sigmod/GuhaJKSY02}&
+        ---&
+        SED&
+        Compute SED on pre-/postorder traversal strings.&
+        $O(n)$&
+        SED&
+        $\widetilde{ED_T}\leq ED_T$
+        \tabularnewline
+        cTED~\cite{DBLP:conf/sigmod/GuhaJKSY02,DBLP:conf/cpm/Zhang93}&
+        ---&
+        ---&
+        Also requires a TED mapping to preserve LCA order: If a node $a_3$ is in the subtree rooted in the LCA of nodes $a_1$ and $a_2$, then $b_3$ is also in the subtree rooted in the LCA of $b_1$ and $b_2$ (and vice versa).&
+        ---&
+        $O(n^2)$&
+        $ED_T\leq \widetilde{ED_T}$
+        \tabularnewline
+        Euler Strings~\cite{DBLP:journals/ipl/Akutsu06}&
+        ---&
+        SED&
+        Euler strings consist of the node labels as encountered in an Euler tour of the tree. An edge is replaced with a \enquote{downward} and an \enquote{upward} edge with labels $l$ and $\bar{l}$, respectively. This is similar to performing a preorder- and postorder-traversal at the same time and accumulating the labels into the same string (with $\bar{l}$ for the postorder).   &   
+        $O(n)$  &
+        SED &
+        \begin{gather*}\frac{1}{2} ED_S(\kappa(T_1), \kappa(T_2)) \\ \leq ED_T \leq \\ (2h+1) ED_S(\kappa(T_1), \kappa(T_2))\end{gather*}
+        \tabularnewline
+        Modified Euler Strings~\cite{DBLP:journals/algorithmica/AkutsuFT10}  &
+        --- &
+        SED &   
+        Similar to Euler strings, but \textit{special} edges have different labels. Nodes are called \textit{special} if they are \enquote{tipping points} of the subtree size: Special nodes have ${\leq} \sqrt{n}$ children while their parents have ${>}\sqrt{n}$ children. An edge $(u,v)$ with parent $u$ is special, if $v$ has a special child. A special edge gets a new label that is only equal to the label of a special edge of another tree such that: (1) the nodes have the same number of special children, (2) the nodes have the same label, and (3) the ordered special children are tree isomorphisms of each other. This transformation \textbf{cannot} be computed independently for each tree! You have to know the tree isomorphisms for each pair of trees. &
+        $O(n)$  &
+        SED &
+        \begin{gather*}
+            \frac{1}{6} ED_S(\kappa(T_1, T_2))\\
+            \leq ED_T \leq \\
+            O(n^{\frac{3}{4}}) ED_S(\kappa(T_1, T_2))
+        \end{gather*}
+        \tabularnewline
+        Histograms~\cite{DBLP:conf/edbt/KailingKSS04,DBLP:journals/sigmod/LiWLG13}&
+        better if unw.&
+        $L_1$ (V/S)&
+        Histograms count some properties in the tree. Properties of nodes include: (1) \textit{Leaf Distance} (LD) (a.k.a.\ height), (2) \textit{Degree} (D) (number of children), and (3) \textit{Label} (L).&
+        $O(n\log n)$&
+        $O(n)$ (or $O(h)$, $O(\Delta)$)&
+        $\widetilde{ED_T^{LD}}\leq ED_T$, $\widetilde{ED_T^{D}}\leq 3ED_T$, $\widetilde{ED_T^{L}}\leq 2ED_T$
+        \tabularnewline
+        Bin.\ Branch~\cite{DBLP:conf/sigmod/YangKT05}&
+        better if unw.&
+        $L_1$ (V/S)&
+        Trees are rewritten as LC-RS binary trees (left-child, right sibling) and $\epsilon$-symbols are inserted. a binary branch is a node with its two children. All binary branches of a tree form a vector or set. The $L_1$ distance on the vector or set is the binary branch distance. A $q$-level binary branch consists of perfect binary trees (all nodes except for leaves have two children, all leafs have the same depth) of height $q$. The $q$-level binary branches of a tree form a vector or set with corresponding distance. Binary branches can further be enhanced by positional information in the tree (w.r.t.\ pre-/postorder): Not all binary branches can match. If they are too far apart, they should not be in the \enquote{intersection}.&
+        $O(n\log n)$&
+        $O(n)$&
+        $\widetilde{ED_T}\leq (4(q-1) + 1)ED_T$
+        \tabularnewline
+        Subgraphs~\cite{DBLP:journals/pvldb/TangCM15}&
+        better if unw.?&
+        maybe sets&
+        This is an indexing technique and not an approximation. In a sense, this is a(n asymmetric) signature scheme for trees based on partitioning. For a given threshold $d$, the indexing trees are transformed into LC-RS trees and (approximately evenly) partitioned into $2d+1$ subgraphs by removing $2d$ edges. Those subgraphs are indexed (see later). We now have the property that any probing tree similar to an indexing tree has to have a subgraph (in its LC-RS representation) that is isomorphic to one of the indexing tree's partitions (subgraphs). In a sense, we enumerate all subgraphs and probe them against the index. To avoid actually doing this, the partitions are indexed using two methods: (1) If the match would be too far away in postorder, the match can safely be ignored. To this end, partitioned are put into buckets based on their postorder number. (2) For a given node in the query tree, it can only match a subgraph in the index if its label is equal to the label of the root in the index. Similarly, if the root in the index has a left (right) child, the query node also has to share the label of its left (right) child with the index's child. Subgraphs are indexed by their root and the root's two children (if they exist). Method (1) and (2) are used as a two-level index.
+
+        This method outperforms both binary branches and reference sets (with traversal strings) significantly. According to Thomas~\cite{DBLP:conf/icde/Hutter0LA19}, this is wrong.&
+        indexing: $O(n\log n)$ for a single tree&
+        sig. gen.: $O(n)$&
+        ---
+        \tabularnewline
+        Thomas~\cite{DBLP:conf/icde/Hutter0LA19}&
+        better if unw.?&
+        Sets&
+        This is an indexing technique and not an approximation. The whole paper consists of three ways of speeding up TED joins: (1) Indexing the globally least common labels of a tree, (2) efficiently and heuristically finding a \textit{good enough} TED mapping that allows for fast verification (inclusion into the result set), and (3) using the bounded TED algorithm of Touzet~\cite{DBLP:conf/cpm/Touzet05} to falsify candidates in \enquote{linear time} (in the tree size). Step (1) indexes the globally least common $d+1$ labels of each tree. Probing additionally keeps track of the intersection of labels that are not \enquote{too far away} to not be matchable.&
+        indexing: $O(n\log n)$ for a single tree&
+        sig. gen.: $O(d)$&
+        ---        
+        \tabularnewline
+        FEDDS+Spines~\cite{DBLP:conf/stoc/BoroujeniGHS19}&
+        ---&
+        ---&
+        Quite a bit involved. This does not reduce TED to other data types, but directly computes an approximation of TED. There are two main ideas: 
+        
+        (1) Compute FEDs on certain (pairwise) suffixes of forests while assuming an upper bound on the distance and store those distances in a LUT called FEDDS\textssc{k}. To perform a lookup, search for the next smaller suffix with known FED and assume worst case for the remaining nodes not in the suffix (delete existing and insert new nodes). This achieves an additive error. To remove the assumed bound on the FED, compute multiple LUTs for exponentially increasing distance bound. For right choices of parameters, this results in a $(1+\epsilon)$-approximation for FED and a datastructure called FEDDS.
+    
+        (2) FEDDS require knowing the pairwise TEDs of proper trees. We cannot use FEDDS recursively to compute the TEDs as this would increase the error in each stage of approximation. To solve this issue, the tree is decomposed into spines using heavy-light decomposition. Then, the edit distance between two spines is computed under the assumption that the TED between any two nodes such that at least one node is not part of a spine is already known, i.e., only the distance between pairs of spine nodes is missing. The maximum height of the \enquote{spine tree} is at most $\log n$.&
+        ---&
+        $\widetilde{O}(n^2)$, ($O(\frac{(1+\epsilon)^2}{\epsilon^2}n^2\log n)$?)&
+        $ED_T \leq \widetilde{ED_T}\leq (1+\epsilon)ED_T$
+        \tabularnewline
+        ???~\cite{DBLP:conf/stoc/BoroujeniGHS19}&
+        ---&
+        ---&
+        No explanation in paper (refers to unavailable full version)&
+        ---&
+        $\tilde{O}(n)$&
+        $ED_T \leq \widetilde{ED_T}\leq \sqrt{n}ED_T$
+        \tabularnewline
+        ???~\cite{DBLP:conf/stoc/BoroujeniGHS19}&
+        bound.&
+        ---&
+        No explanation in paper (refers to unavailable full version)&
+        ---&
+        $\tilde{O}(nd_{max})$&
+        $ED_T \leq \widetilde{ED_T}\leq (1+\epsilon)ED_T$
+        \tabularnewline
+        Windows~\cite{DBLP:conf/innovations/SeddighinS22}&
+        ---&
+        ---&
+        This uses a 3-step framework previously used for SED~\cite{DBLP:conf/focs/ChakrabortyDGKS18}.
+        
+        (1) Strings (or trees) are split into windows (non-overlapping substrings/subforests). SED (or TED) can be constrained to the windows such that characters (or nodes) can only be matched (relabeled) if they are in a window and those two windows of the two strings (trees) are themselves matched. The construction of the windows has the following property: If the SED (TED) of all pairs of windows between the two strings (trees) was known, a DP algorithm could compute a $(1+\epsilon)$ approximation of SED (TED) in $\tilde{O}(n + k^2)$ ($O(n + k^4)$) time. This decomposition into windows, however, does not immediately decrease the runtime complexity as computing all pairwise SEDs naively takes quadratic time. (2) A (bipartite) graph is constructed between the windows of one string (tree) and the other. A node is a window. There is an edge between two nodes if the SED (TED) of the windows is at most $\delta n$. Such a graph is built for $\delta n = (1+\epsilon)^i$ for $i=0, \mathellipsis, \log_(1+\epsilon) n$ and $(1+\epsilon)$ approximation for SED between pairs of windows. This still allows for a $(1+\epsilon)$ approximation of SED (TED).
+    
+        (2) To avoid computing all pairs of SEDs, the triangle inequality is used to approximate the distances of $2$-paths and $3$-paths, losing a factor of $3$ in the approximation but avoiding many pairs of SED computations.
+    
+        (3) Due to overestimation, we might lose edges in the graph in step (2). To repair the result, some (but not all) pairs of windows that were lost are re-added by computing their SED.
+    
+        The algorithm for trees has to adapt step (1) and (3). For step (1), trees are represented as opening and closing parenthesis (similar to Euler strings). Only using windows is not enough: The only meaningful window for a node is its whole subtree (\verb|(...)|), but that might be too large. Windows should have bounded size and count. To this end, \textit{super windows} are used to complement windows. A super window essentially consists of two windows -- a left part and a right part that corresponds to left parts of the tree and right parts, leaving out a part in the middle. The main part of the paper is about the error of computing the TED constrained to only matching between matched (super-)windows given a simple procedure to compute the windows without knowledge of the optimal edit mapping. Adaption of step (3) is not discussed.&
+        ---&
+        claimed $\tilde{O}(n^{1.99})$&
+        $ED_T \leq \widetilde{ED_T}\leq (3+\epsilon)ED_T$
+        \tabularnewline
+        \bottomrule
+    \end{longtable}
+\end{footnotesize}
+
+
+\clearpage
+\printbibliography
+
+\end{document}
