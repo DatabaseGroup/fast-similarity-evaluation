@@ -1,0 +1,116 @@
+#ifndef SRC_SIGNATURE_JOIN_HH
+#define SRC_SIGNATURE_JOIN_HH
+
+#include "../indexing/index.hh"
+#include "../similarity/signature.hh"
+
+namespace join {
+
+class SignatureJoin {
+public:
+  void prepare_dataset(types::Dataset& dataset) {}
+  void index_dataset(types::Dataset& dataset) {}
+
+  template <class Handler>
+  void join_dataset(types::Dataset& dataset, Handler handler) {}
+};
+
+class PrefixSignatureJoin {
+public:
+  using SetId = uint64_t;
+
+public:
+  explicit PrefixSignatureJoin(similarity::Similarity& similarity)
+      : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
+        prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
+
+  void prepare_dataset(types::Dataset& dataset) {
+    auto& sets = std::get<types::Sets>(dataset);
+
+    prefix_signature.prepare(sets);
+
+    int64_t universe_size = 0;
+    for (auto& set : sets) {
+      universe_size = std::max(universe_size, set.tokens.back());
+    }
+    ++universe_size;
+
+    indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> new_index{universe_size};
+
+    index = std::move(new_index);
+  }
+
+  void index_dataset(types::Dataset& dataset) {
+    auto& sets = std::get<types::Sets>(dataset);
+
+    SetId set_id = 0;
+    for (auto& set : sets) {
+      auto it = prefix_signature.begin_indexing_signatures(set);
+      auto it_end = prefix_signature.end_indexing_signatures(set);
+
+      auto set_size = set.tokens.size();
+
+      for (; it != it_end; ++it) {
+        auto signature = *it;
+
+        index.insert(set_id, signature, set_size);
+      }
+
+      ++set_id;
+    }
+  }
+
+  template <class Handler>
+  void join_dataset(types::Dataset& dataset, Handler handler) {
+    auto& sets = std::get<types::Sets>(dataset);
+
+    std::vector<bool> already_seen(sets.size());
+    std::vector<SetId> candidates;
+
+    SetId current_id = 0;
+    for (auto& set : sets) {
+      auto it = prefix_signature.begin_probing_signatures(set);
+      auto it_end = prefix_signature.end_probing_signatures(set);
+
+      auto set_size = static_cast<int64_t>(set.tokens.size());
+      auto minimum_candidate_size = similarity.minimum_length_bound(set_size);
+      auto maximum_candidate_size = similarity.maximum_length_bound(set_size);
+
+      for (; it != it_end; ++it) {
+        auto signature = *it;
+
+        index.query(
+          signature,
+          [&](SetId set_id) {
+            if (!already_seen[set_id]) {
+              already_seen[set_id] = true;
+              candidates.push_back(set_id);
+            }
+          },
+          indexing::StaticNextKeyRange{minimum_candidate_size, maximum_candidate_size});
+      }
+
+      for (auto candidate_id : candidates) {
+        auto& candidate_set = sets[candidate_id];
+
+        if (similarity.is_in_threshold(set, candidate_set)) {
+          handler(set, candidate_set);
+        }
+
+        already_seen[candidate_id] = false;
+      }
+      candidates.clear();
+
+      ++current_id;
+    }
+  }
+
+private:
+  similarity::SetSimilarity& similarity;
+  similarity::SetPrefixSignature prefix_signature;
+  indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> index{0};
+};
+
+}  // namespace join
+
+#endif  // SRC_SIGNATURE_JOIN_HH
