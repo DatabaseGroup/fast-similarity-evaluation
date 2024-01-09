@@ -9,10 +9,17 @@
 
 namespace similarity {
 
+enum SimilarityId {
+  JACCARD,
+  STRING_EDIT_DISTANCE,
+  QGRAM_COUNT
+};
+
 template <class T>
 class AbstractSimilarity {
 public:
   explicit AbstractSimilarity(double threshold) : threshold(threshold) {}
+  virtual ~AbstractSimilarity() = default;
 
   virtual double similarity(const T& o1, const T& o2) = 0;
   virtual bool is_in_threshold(const T& o1, const T& o2) = 0;

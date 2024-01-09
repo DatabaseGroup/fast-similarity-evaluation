@@ -1,6 +1,8 @@
 #include "../ontology/reduction.hh"
 #include "../join/signature_join.hh"
 #include "../indexing/index.hh"
+#include "../ontology/planner.hh"
+#include "../join/plan_execution.hh"
 
 #include <variant>
 
@@ -9,7 +11,9 @@ int main(int argc, char** argv) {
 
   auto& strings = std::get<types::Strings>(dataset);
   strings.emplace_back("This is a test string");
-  strings.emplace_back("This is annn test string");
+  strings.back().id = 0;
+  strings.emplace_back("This is ann test string");
+  strings.back().id = 1;
 
   similarity::Similarity string_sim;
   string_sim = std::make_unique<similarity::SEDSimilarity>(2);
@@ -27,13 +31,11 @@ int main(int argc, char** argv) {
 
   auto strings_are_similar = std::get<similarity::StringSimilarityPtr>(string_sim)->is_in_threshold(strings[0], strings[1]);
 
-  join::PrefixSignatureJoin prefix_join(set_sim);
+  ontology::StandardReductionGraph graph;
 
-  prefix_join.prepare_dataset(set_dataset);
-  prefix_join.index_dataset(set_dataset);
-  prefix_join.join_dataset(set_dataset, [](auto& s1, auto& s2) {
-    std::cout << "Found set pair" << std::endl;
-  });
+  auto plans = graph.enumerate_plans(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
+
+  join::execute_plan(dataset, string_sim, plans.front());
 
   return 0;
 }

@@ -9,6 +9,9 @@ namespace ontology {
 
 class Reduction {
 public:
+  virtual ~Reduction() = default;
+public:
+  // Assert: input data and output data have the same ids
   virtual types::Dataset reduce_data(types::Dataset& data) = 0;
   virtual similarity::Similarity reduce_similarity(similarity::Similarity& similarity) = 0;
 };
@@ -26,6 +29,7 @@ public:
 
     for (auto& string : strings) {
       auto& new_set = sets.emplace_back();
+      new_set.id = string.id;
       generate_qgrams(string, new_set);
     }
 

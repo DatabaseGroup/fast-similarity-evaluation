@@ -4,18 +4,21 @@
 #include "../indexing/index.hh"
 #include "../similarity/signature.hh"
 
+#include "join_algorithm.hh"
+
 namespace join {
 
-class SignatureJoin {
+template <class Handler>
+class SignatureJoin : public JoinAlgorithm<Handler> {
 public:
   void prepare_dataset(types::Dataset& dataset) {}
   void index_dataset(types::Dataset& dataset) {}
 
-  template <class Handler>
   void join_dataset(types::Dataset& dataset, Handler handler) {}
 };
 
-class PrefixSignatureJoin {
+template <class Handler>
+class PrefixSignatureJoin : public SignatureJoin<Handler> {
 public:
   using SetId = uint64_t;
 
@@ -60,7 +63,6 @@ public:
     }
   }
 
-  template <class Handler>
   void join_dataset(types::Dataset& dataset, Handler handler) {
     auto& sets = std::get<types::Sets>(dataset);
 
@@ -94,7 +96,7 @@ public:
         auto& candidate_set = sets[candidate_id];
 
         if (similarity.is_in_threshold(set, candidate_set)) {
-          handler(set, candidate_set);
+          handler(set.id, candidate_set.id);
         }
 
         already_seen[candidate_id] = false;

@@ -13,16 +13,24 @@ namespace types {
 template <class K, class V>
 using HashTable = absl::flat_hash_map<K, V>;
 
-enum DATATYPE_ID { SET, STRING, TREE };
+enum DatatypeId { SET, STRING, TREE };
 
-class Set {
+class Data {
+public:
+  using Id = size_t;
+  Id id;
+};
+
+using ResultPair = std::pair<Data::Id, Data::Id>;
+
+class Set : public Data {
 public:
   using Token = int64_t;
   std::vector<Token> tokens;
 };
 using Sets = std::vector<Set>;
 
-class String {
+class String : public Data{
 public:
   std::string str;
 
@@ -30,7 +38,7 @@ public:
 };
 using Strings = std::vector<String>;
 
-class Tree {};
+class Tree : public Data {};
 using Trees = std::vector<Tree>;
 
 using Dataset = std::variant<Sets, Strings, Trees>;
