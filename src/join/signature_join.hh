@@ -3,7 +3,6 @@
 
 #include "../indexing/index.hh"
 #include "../similarity/signature.hh"
-
 #include "join_algorithm.hh"
 
 namespace join {

@@ -9,11 +9,7 @@
 
 namespace similarity {
 
-enum SimilarityId {
-  JACCARD,
-  STRING_EDIT_DISTANCE,
-  QGRAM_COUNT
-};
+enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT };
 
 template <class T>
 class AbstractSimilarity {
@@ -59,18 +55,42 @@ protected:
     return ovlp;
   }
 
+  static bool overlap_at_least(const types::Set& r, const types::Set& s, int64_t required_ovlp) {
+    auto max_r = static_cast<int64_t>(r.tokens.size());
+    auto max_s = static_cast<int64_t>(s.tokens.size());
+
+    auto iter_r = r.tokens.begin();
+    auto iter_s = s.tokens.begin();
+    int64_t ovlp = 0;
+
+    while (max_r >= required_ovlp && max_s >= required_ovlp && ovlp < required_ovlp) {
+      if (*iter_r == *iter_s) {
+        ++iter_r;
+        ++iter_s;
+        ++ovlp;
+      } else if (*iter_r < *iter_s) {
+        ++iter_r;
+        --max_r;
+      } else {
+        ++iter_s;
+        --max_s;
+      }
+    }
+
+    return ovlp >= required_ovlp;
+  }
+
 public:
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
 
   bool is_in_threshold(const types::Set& s1, const types::Set& s2) override {
-    return overlap(s1, s2) >=
-           equivalent_overlap(static_cast<int64_t>(s1.tokens.size()), static_cast<int64_t>(s2.tokens.size()));
+    return overlap_at_least(
+      s1, s2, equivalent_overlap(static_cast<int64_t>(s1.tokens.size()), static_cast<int64_t>(s2.tokens.size())));
   }
 
   int64_t indexing_prefix_size(const types::Set& s1) {
     auto size = static_cast<int64_t>(s1.tokens.size());
-    return size -
-           equivalent_overlap(minimum_length_bound(size), static_cast<int64_t>(s1.tokens.size())) + 1;
+    return size - equivalent_overlap(minimum_length_bound(size), static_cast<int64_t>(s1.tokens.size())) + 1;
   }
 
   int64_t probing_prefix_size(const types::Set& s1) {
@@ -133,7 +153,9 @@ public:
     return column1.back();
   }
 
-  bool is_in_threshold(const types::String& s1, const types::String& s2) override { return similarity(s1, s2) <= threshold; }
+  bool is_in_threshold(const types::String& s1, const types::String& s2) override {
+    return similarity(s1, s2) <= threshold;
+  }
 };
 
 class QGramCountSimilarity : public SetSimilarity {
@@ -147,9 +169,7 @@ public:
 
   double similarity(const types::Set& s1, const types::Set& s2) override { return overlap(s1, s2); }
 
-  int64_t minimum_length_bound(int64_t size) override {
-    return size - integer_threshold;
-  }
+  int64_t minimum_length_bound(int64_t size) override { return size - integer_threshold; }
   int64_t maximum_length_bound(int64_t size) override { return size + integer_threshold; }
 
 private:

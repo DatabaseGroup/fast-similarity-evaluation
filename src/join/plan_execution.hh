@@ -6,6 +6,7 @@
 #include "../ontology/planner.hh"
 #include "../similarity/similarity.hh"
 #include "../types/types.hh"
+#include "signature_join.hh"
 
 namespace join {
 
@@ -15,8 +16,10 @@ std::unique_ptr<JoinAlgorithm<Handler>> resolve_algorithmid(AlgorithmId id, simi
   case PREFIX_SIGNATURE_JOIN:
     return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
   case FALLBACK:
+    // todo implement comparing all pairs as obvious fallback
     break;
   }
+  return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
 }
 
 class VerifyUntilFailureHandler {

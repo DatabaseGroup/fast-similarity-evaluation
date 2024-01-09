@@ -4,6 +4,7 @@
 #include "../join/join_algorithm.hh"
 #include "../similarity/similarity.hh"
 #include "../types/types.hh"
+#include "reduction.hh"
 
 namespace ontology {
 

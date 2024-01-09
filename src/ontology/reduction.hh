@@ -10,6 +10,7 @@ namespace ontology {
 class Reduction {
 public:
   virtual ~Reduction() = default;
+
 public:
   // Assert: input data and output data have the same ids
   virtual types::Dataset reduce_data(types::Dataset& data) = 0;
@@ -28,8 +29,7 @@ public:
     auto sets = std::get<types::Sets>(qgrams);
 
     for (auto& string : strings) {
-      auto& new_set = sets.emplace_back();
-      new_set.id = string.id;
+      auto& new_set = sets.emplace_back(string.id);
       generate_qgrams(string, new_set);
     }
 

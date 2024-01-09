@@ -19,6 +19,8 @@ class Data {
 public:
   using Id = size_t;
   Id id;
+
+  explicit Data(Id id) : id(id) {}
 };
 
 using ResultPair = std::pair<Data::Id, Data::Id>;
@@ -27,6 +29,7 @@ class Set : public Data {
 public:
   using Token = int64_t;
   std::vector<Token> tokens;
+  explicit Set(Id id) : Data(id) {}
 };
 using Sets = std::vector<Set>;
 
@@ -34,7 +37,9 @@ class String : public Data{
 public:
   std::string str;
 
-  explicit String(std::string str) : str(std::move(str)) {}
+  // todo remove
+  String(Id id, std::string str) : Data(id), str(std::move(str)) {}
+  String(Id id, const char* s, const std::streamsize n) : Data(id), str(s, n) {}
 };
 using Strings = std::vector<String>;
 
