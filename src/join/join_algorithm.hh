@@ -12,10 +12,11 @@ class JoinAlgorithm {
 public:
   virtual ~JoinAlgorithm() = default;
 
-  virtual void prepare_dataset(types::Dataset& dataset) = 0;
-  virtual void index_dataset(types::Dataset& dataset) = 0;
+  virtual void prepare_indexing_batch(types::Batch& batch) = 0;
+  virtual void prepare_probing_batch(types::Batch& batch) = 0;
+  virtual void index_batch(types::Batch& batch) = 0;
 
-  virtual void join_dataset(types::Dataset& dataset, Handler handler) = 0;
+  virtual void join_batch(types::Batch& batch, Handler handler) = 0;
 };
 
 }  // namespace join

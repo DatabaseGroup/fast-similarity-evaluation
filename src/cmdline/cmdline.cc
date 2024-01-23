@@ -3,9 +3,6 @@
 #include "../data/parser.hh"
 #include "../indexing/index.hh"
 #include "../join/plan_execution.hh"
-#include "../join/signature_join.hh"
-#include "../ontology/planner.hh"
-#include "../ontology/reduction.hh"
 
 int main(int argc, char** argv) {
   data::StringParser string_parser;
@@ -16,9 +13,10 @@ int main(int argc, char** argv) {
 
   ontology::StandardReductionGraph graph;
 
-  auto plans = graph.enumerate_plans(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
+  auto plan_result = graph.enumerate_plans(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
+  auto& plans = plan_result.first;
 
-  join::execute_plan(dataset.data, string_sim, plans.front());
+  join::interleave_plans(dataset, string_sim, plans);
 
   return 0;
 }

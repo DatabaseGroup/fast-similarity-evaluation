@@ -17,7 +17,7 @@ public:
   explicit SetPrefixSignature(similarity::SetSimilarity& similarity) : similarity(similarity) {}
 
 public:
-  void prepare(types::Sets& sets) {
+  void prepare_index(types::SetBatch& sets) {
     for (auto& set : sets) {
       for (auto token : set.tokens) {
         ++token_map[token].count;
@@ -42,6 +42,10 @@ public:
       ++current_token;
     }
 
+    prepare_probe(sets);
+  }
+
+  void prepare_probe(types::SetBatch& sets) {
     for (auto& set : sets) {
       // take reference on token to modify it directly
       for (auto& token : set.tokens) {

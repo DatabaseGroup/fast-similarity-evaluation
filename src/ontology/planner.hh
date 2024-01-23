@@ -2,6 +2,7 @@
 #define SRC_PLANNER_HH
 
 #include "../join/join_algorithm.hh"
+#include "../join/result_handler.hh"
 #include "../similarity/similarity.hh"
 #include "../types/types.hh"
 #include "reduction.hh"
@@ -50,27 +51,41 @@ public:
   std::vector<ReductionEdge> edges;
 };
 
+class StepState {
+public:
+  int64_t prepared_index_batch{-1};
+  types::Dataset intermediate_data;
+  similarity::Similarity intermediate_similarity;
+};
+
+class QueryState {
+public:
+  int64_t algorithm_prepared{-1};
+};
+
 class QueryPlan {
 public:
-  std::vector<std::reference_wrapper<Reduction>> reduction_steps;
+  std::vector<std::pair<std::reference_wrapper<Reduction>, std::reference_wrapper<StepState>>> steps;
   join::AlgorithmId algorithm_id{join::AlgorithmId::FALLBACK};
+  QueryState query_state;
 };
 
 class ReductionGraph {
 public:
   virtual ~ReductionGraph() = default;
 
-  std::vector<QueryPlan> enumerate_plans(types::DatatypeId type, similarity::SimilarityId similarity) {
+  std::pair<std::vector<QueryPlan>, std::vector<StepState>> enumerate_plans(types::DatatypeId type, similarity::SimilarityId similarity) {
     NodeKey node_key{type, similarity};
+    std::vector<StepState> query_states;
 
     // assume it exists
     auto& node = nodes.find(node_key)->second;
     std::vector<QueryPlan> plans;
     QueryPlan empty_plan;
 
-    enumerate_plans_recursive(node, empty_plan, plans);
+    enumerate_plans_recursive(node, empty_plan, plans, query_states);
 
-    return plans;
+    return {std::move(plans), std::move(query_states)};
   }
 
 private:
@@ -80,7 +95,8 @@ private:
   // if this ever becomes an issues, this can easily be rewritten to use iteration (e.g., BFS-like stack management)
   void enumerate_plans_recursive(Node& node,  // NOLINT(*-no-recursion)
                                  QueryPlan& current_plan,
-                                 std::vector<QueryPlan>& plans) {
+                                 std::vector<QueryPlan>& plans,
+                                 std::vector<StepState>& query_states) {
     // base case
     for (auto& algorithm : node.algorithms) {
       current_plan.algorithm_id = algorithm.id;
@@ -94,13 +110,13 @@ private:
 
     // recursive case
     for (auto& edge : node.edges) {
-      current_plan.reduction_steps.emplace_back(edge.reduction);
+      current_plan.steps.emplace_back(edge.reduction, query_states.emplace_back());
 
       Node& next_node = edge.to_node;
-      enumerate_plans_recursive(next_node, current_plan, plans);
+      enumerate_plans_recursive(next_node, current_plan, plans, query_states);
 
       // remove last reduction step to prepare for next iteration
-      current_plan.reduction_steps.pop_back();
+      current_plan.steps.pop_back();
     }
   }
 

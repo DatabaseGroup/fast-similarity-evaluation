@@ -10,10 +10,11 @@ namespace join {
 template <class Handler>
 class SignatureJoin : public JoinAlgorithm<Handler> {
 public:
-  void prepare_dataset(types::Dataset& dataset) {}
-  void index_dataset(types::Dataset& dataset) {}
+  void prepare_indexing_batch(types::Batch& batch) = 0;
+  void prepare_probing_batch(types::Batch& batch) = 0;
+  void index_batch(types::Batch& batch) = 0;
 
-  void join_dataset(types::Dataset& dataset, Handler handler) {}
+  void join_batch(types::Batch& batch, Handler handler) = 0;
 };
 
 template <class Handler>
@@ -26,10 +27,10 @@ public:
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
-  void prepare_dataset(types::Dataset& dataset) {
-    auto& sets = std::get<types::Sets>(dataset);
+  void prepare_indexing_batch(types::Batch& batch) override {
+    auto& sets = std::get<types::SetBatch>(batch);
 
-    prefix_signature.prepare(sets);
+    prefix_signature.prepare_index(sets);
 
     int64_t universe_size = 0;
     for (auto& set : sets) {
@@ -42,8 +43,14 @@ public:
     index = std::move(new_index);
   }
 
-  void index_dataset(types::Dataset& dataset) {
-    auto& sets = std::get<types::Sets>(dataset);
+  void prepare_probing_batch(types::Batch& batch) override {
+    auto& sets = std::get<types::SetBatch>(batch);
+
+    prefix_signature.prepare_probe(sets);
+  }
+
+  void index_batch(types::Batch& batch) override {
+    auto& sets = std::get<types::SetBatch>(batch);
 
     SetId set_id = 0;
     for (auto& set : sets) {
@@ -62,8 +69,8 @@ public:
     }
   }
 
-  void join_dataset(types::Dataset& dataset, Handler handler) {
-    auto& sets = std::get<types::Sets>(dataset);
+  void join_batch(types::Batch& batch, Handler handler) override {
+    auto& sets = std::get<types::SetBatch>(batch);
 
     std::vector<bool> already_seen(sets.size());
     std::vector<SetId> candidates;
