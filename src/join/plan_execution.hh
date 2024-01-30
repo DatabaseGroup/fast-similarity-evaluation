@@ -9,6 +9,8 @@
 #include "../util/visit_overload.hh"
 #include "result_handler.hh"
 #include "signature_join.hh"
+#include "../ontology/bandit.hh"
+#include "../timing/cycles.hh"
 
 namespace join {
 
@@ -118,8 +120,8 @@ void interleave_plans(data::Dataset& dataset,
   if (dataset.statistics->count % BATCH_SIZE != 0) {
     ++batch_count;
   }
-
-  std::vector<types::Batch> batches;
+  int64_t all_batch_pairs = (batch_count * (batch_count - 1)) / 2;
+  ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
   for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
     auto index_batch = types::get_batch(dataset.data, index_batch_idx, BATCH_SIZE);
@@ -131,7 +133,9 @@ void interleave_plans(data::Dataset& dataset,
       auto probe_offset = get_offset_into_batch(probe_batch_idx, BATCH_SIZE);
 
       // todo select plan using bandit
-      int64_t plan_id = 0;
+      int64_t plan_id = bandit.select_arm();
+      timing::ticks start_ticks = timing::cpu_cycles_start();
+
       auto& plan = plans[plan_id];
 
       // perform reduction of index data + indexing
@@ -191,6 +195,10 @@ void interleave_plans(data::Dataset& dataset,
       }
       verify_with_similarity(dataset.data, similarity, result_pairs);
 
+
+      timing::ticks end_ticks = timing::cpu_cycles_start();
+      auto loss = static_cast<double>(end_ticks - start_ticks);
+      bandit.update_weights(plan_id, loss);
       absl::PrintF("Found %u results\n", result_pairs.size());
     }
   }
