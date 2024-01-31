@@ -162,6 +162,8 @@ void interleave_plans(data::Dataset& dataset,
 
         algorithm->prepare_indexing_batch(last_index_batch);
         algorithm->index_batch(last_index_batch);
+
+        plan.query_state.algorithm_prepared = index_batch_idx;
       }
 
       // perform reduction of probing data + probing + verification

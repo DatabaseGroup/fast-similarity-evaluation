@@ -49,7 +49,13 @@ public:
     for (auto& set : sets) {
       // take reference on token to modify it directly
       for (auto& token : set.tokens) {
-        token = token_map[token].token;
+        auto it = token_map.find(token);
+
+        if (it != token_map.end()) {
+          token = it->second.token;
+        } else {
+          token = std::numeric_limits<types::Set::Token>::max();
+        }
       }
       std::sort(set.tokens.begin(), set.tokens.end());
     }
@@ -73,13 +79,13 @@ public:
   boost::span<Signature>::const_iterator end_indexing_signatures(const types::Set& set) {
     auto prefix_size = similarity.indexing_prefix_size(set);
 
-    return begin_indexing_signatures(set) + prefix_size;
+    return begin_indexing_signatures(set) + std::min(prefix_size, static_cast<int64_t>(set.tokens.size()));
   }
 
   boost::span<Signature>::const_iterator end_probing_signatures(const types::Set& set) {
     auto prefix_size = similarity.indexing_prefix_size(set);
 
-    return begin_probing_signatures(set) + prefix_size;
+    return begin_probing_signatures(set) + std::min(prefix_size, static_cast<int64_t>(set.tokens.size()));
   }
 
 private:

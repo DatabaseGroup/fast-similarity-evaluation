@@ -115,6 +115,7 @@ public:
 
         if constexpr (is_self_join) {
           if (set.id >= candidate_set.id) {
+            already_seen[candidate_id] = false;
             continue;
           }
         }
