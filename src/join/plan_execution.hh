@@ -11,6 +11,7 @@
 #include "signature_join.hh"
 #include "../ontology/bandit.hh"
 #include "../timing/cycles.hh"
+#include "../statistics/join_statistics.hh"
 
 namespace join {
 
@@ -109,28 +110,28 @@ void offset_verify_with_similarity(types::Dataset& left_dataset,
   std::visit(util::overloaded{set_verify, string_verify, tree_verify}, left_dataset);
 }
 
-static const int64_t BATCH_SIZE = 10000;
-
 int64_t get_offset_into_batch(int64_t batch_idx, int64_t batch_size) { return batch_idx * batch_size; }
 
 void interleave_plans(data::Dataset& dataset,
                       similarity::Similarity& similarity,
-                      std::vector<ontology::QueryPlan>& plans) {
-  int64_t batch_count = static_cast<int64_t>(dataset.statistics->count) / BATCH_SIZE;
-  if (dataset.statistics->count % BATCH_SIZE != 0) {
+                      std::vector<ontology::QueryPlan>& plans,
+                      int64_t block_size,
+                      statistics::JoinStatistics& statistics) {
+  int64_t batch_count = static_cast<int64_t>(dataset.statistics->count) / block_size;
+  if (dataset.statistics->count % block_size != 0) {
     ++batch_count;
   }
   int64_t all_batch_pairs = (batch_count * (batch_count - 1)) / 2;
   ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
   for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
-    auto index_batch = types::get_batch(dataset.data, index_batch_idx, BATCH_SIZE);
-    auto index_offset = get_offset_into_batch(index_batch_idx, BATCH_SIZE);
+    auto index_batch = types::get_batch(dataset.data, index_batch_idx, block_size);
+    auto index_offset = get_offset_into_batch(index_batch_idx, block_size);
     std::vector<std::unique_ptr<join::JoinAlgorithm<MaterializeHandler>>> algorithms(plans.size());
 
     for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
-      auto probe_batch = types::get_batch(dataset.data, probe_batch_idx, BATCH_SIZE);
-      auto probe_offset = get_offset_into_batch(probe_batch_idx, BATCH_SIZE);
+      auto probe_batch = types::get_batch(dataset.data, probe_batch_idx, block_size);
+      auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
 
       // todo select plan using bandit
       int64_t plan_id = bandit.select_arm();
@@ -177,7 +178,12 @@ void interleave_plans(data::Dataset& dataset,
       algorithm->prepare_probing_batch(last_probe_batch);
       std::vector<types::ResultPair> result_pairs;
       MaterializeHandler handler(result_pairs);
-      algorithm->join_batch(last_probe_batch, handler);
+
+      if (index_batch_idx == probe_batch_idx) {
+        algorithm->selfjoin_batch(last_probe_batch, handler, statistics);
+      } else {
+        algorithm->join_batch(last_probe_batch, handler, statistics);
+      }
 
       // verification is done from lowest to highest reduction level
       // the lowest level at size() - 1 is part of the algorithm step as the algorithm might
@@ -190,63 +196,21 @@ void interleave_plans(data::Dataset& dataset,
         auto& current_similarity = current_state.intermediate_similarity;
         auto& current_probing_dataset = intermediate_probe_data[i];
 
+        statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
         offset_verify_with_similarity(current_index_dataset, index_offset, current_probing_dataset, probe_offset, current_similarity, result_pairs);
         --i;
       }
+      statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
       verify_with_similarity(dataset.data, similarity, result_pairs);
 
 
       timing::ticks end_ticks = timing::cpu_cycles_start();
       auto loss = static_cast<double>(end_ticks - start_ticks);
       bandit.update_weights(plan_id, loss);
-      absl::PrintF("Found %u results\n", result_pairs.size());
+      statistics.result_size.add(result_pairs.size());
     }
   }
 }
-
-/*void execute_plan(types::Dataset& dataset, similarity::Similarity& similarity, ontology::QueryPlan& plan) {
-  std::vector<types::Dataset> intermediate_datasets;
-  std::vector<similarity::Similarity> intermediate_similarities;
-
-  for (size_t i = 0; i < plan.reduction_steps.size(); ++i) {
-    auto& reduction = plan.reduction_steps[i].get();
-    if (i == 0) {
-      intermediate_datasets.emplace_back(std::move(reduction.reduce_data(dataset)));
-      intermediate_similarities.emplace_back(std::move(reduction.reduce_similarity(similarity)));
-    } else {
-      intermediate_datasets.emplace_back(std::move(reduction.reduce_data(intermediate_datasets.back())));
-      intermediate_similarities.emplace_back(std::move(reduction.reduce_similarity(intermediate_similarities.back())));
-    }
-  }
-
-  auto& last_dataset = intermediate_datasets.back();
-  auto& last_similarity = intermediate_similarities.back();
-  auto algorithm = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, last_similarity);
-
-  auto last_batch = types::dataset_to_batch(last_dataset);
-  algorithm->prepare_indexing_batch(last_batch);
-  algorithm->index_batch(last_batch);
-
-  std::vector<types::ResultPair> result_pairs;
-  MaterializeHandler handler(result_pairs);
-  algorithm->join_batch(last_batch, handler);
-
-  // verification is done from lowest to highest reduction level
-  // the lowest level at size() - 1 is part of the algorithm step as the algorithm might
-  // be able to optimize verification depending on its specifics
-  // hence, we can skip verification for size() - 1 and start at size() - 2
-  auto i = static_cast<int64_t>(plan.reduction_steps.size()) - 2;
-  while (0 <= i) {
-    auto& current_dataset = intermediate_datasets[i];
-    auto& current_similarity = intermediate_similarities[i];
-
-    verify_with_similarity(current_dataset, current_similarity, result_pairs);
-    --i;
-  }
-  verify_with_similarity(dataset, similarity, result_pairs);
-
-  absl::PrintF("Found %u results\n", result_pairs.size());
-}*/
 
 }  // namespace join
 

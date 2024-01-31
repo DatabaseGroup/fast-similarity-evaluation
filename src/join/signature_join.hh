@@ -14,7 +14,8 @@ public:
   void prepare_probing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;
 
-  void join_batch(types::Batch& batch, Handler handler) = 0;
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
 };
 
 template <class Handler>
@@ -69,7 +70,16 @@ public:
     }
   }
 
-  void join_batch(types::Batch& batch, Handler handler) override {
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    return _join_batch<false>(batch, handler, statistics);
+  }
+
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    return _join_batch<true>(batch, handler, statistics);
+  }
+
+  template<bool is_self_join>
+  void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto& sets = std::get<types::SetBatch>(batch);
 
     std::vector<bool> already_seen(sets.size());
@@ -98,8 +108,16 @@ public:
           indexing::StaticNextKeyRange{minimum_candidate_size, maximum_candidate_size});
       }
 
+      // candidate_id != candidate_set.id
+      // set_id and candidate_id are internal to the join implementation only
       for (auto candidate_id : candidates) {
         auto& candidate_set = sets[candidate_id];
+
+        if constexpr (is_self_join) {
+          if (set.id >= candidate_set.id) {
+            continue;
+          }
+        }
 
         if (similarity.is_in_threshold(set, candidate_set)) {
           handler(set.id, candidate_set.id);
@@ -107,6 +125,7 @@ public:
 
         already_seen[candidate_id] = false;
       }
+      statistics.join_verifications.add(static_cast<int64_t>(candidates.size()));
       candidates.clear();
 
       ++current_id;
