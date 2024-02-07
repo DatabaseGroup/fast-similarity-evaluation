@@ -54,7 +54,8 @@ public:
         if (it != token_map.end()) {
           token = it->second.token;
         } else {
-          token = std::numeric_limits<types::Set::Token>::max();
+          // token 0 symbolizes non-existence (minimum "real" token value is 1)
+          token = 0;
         }
       }
       std::sort(set.tokens.begin(), set.tokens.end());

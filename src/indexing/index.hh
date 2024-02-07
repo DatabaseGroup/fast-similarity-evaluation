@@ -122,9 +122,11 @@ public:
 public:
   template <class CallbackFun>
   void query(KeyType key, CallbackFun callback) {
-    auto& vec = map[key];
-    for (auto entry : vec) {
-      callback(entry);
+    if (key < map.size() && 0 <= key) {
+      auto& vec = map[key];
+      for (auto entry : vec) {
+        callback(entry);
+      }
     }
   }
 
@@ -142,11 +144,13 @@ public:
 public:
   template <class CallbackFun, class KeyFun, class... KeyFunTail>
   void query(KeyType key, CallbackFun callback, KeyFun next_key_fun, KeyFunTail... key_funs) {
-    auto& inner_index = map[key];
+    if (key < map.size() && 0 <= key) {
+      auto& inner_index = map[key];
 
-    auto next_key = next_key_fun(key);
+      auto next_key = next_key_fun(key);
 
-    inner_index.query(next_key, callback, key_funs...);
+      inner_index.query(next_key, callback, key_funs...);
+    }
   }
 
   template <class... Keys>

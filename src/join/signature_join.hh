@@ -21,7 +21,7 @@ public:
 template <class Handler>
 class PrefixSignatureJoin : public SignatureJoin<Handler> {
 public:
-  using SetId = uint64_t;
+  using SetId = int64_t;
 
 public:
   explicit PrefixSignatureJoin(similarity::Similarity& similarity)
@@ -52,6 +52,7 @@ public:
 
   void index_batch(types::Batch& batch) override {
     auto& sets = std::get<types::SetBatch>(batch);
+    indexed_sets = sets;
 
     SetId set_id = 0;
     for (auto& set : sets) {
@@ -82,10 +83,9 @@ public:
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto& sets = std::get<types::SetBatch>(batch);
 
-    std::vector<bool> already_seen(sets.size());
+    std::vector<bool> already_seen(indexed_sets.size());
     std::vector<SetId> candidates;
 
-    SetId current_id = 0;
     for (auto& set : sets) {
       auto it = prefix_signature.begin_probing_signatures(set);
       auto it_end = prefix_signature.end_probing_signatures(set);
@@ -111,25 +111,24 @@ public:
       // candidate_id != candidate_set.id
       // set_id and candidate_id are internal to the join implementation only
       for (auto candidate_id : candidates) {
-        auto& candidate_set = sets[candidate_id];
+        // set from indexed data (indexed_sets set in index_batch)
+        auto& candidate_set = indexed_sets[candidate_id];
 
         if constexpr (is_self_join) {
-          if (set.id >= candidate_set.id) {
+          if (set.id <= candidate_set.id) {
             already_seen[candidate_id] = false;
             continue;
           }
         }
 
-        if (similarity.is_in_threshold(set, candidate_set)) {
-          handler(set.id, candidate_set.id);
+        if (similarity.is_in_threshold(candidate_set, set)) {
+          handler(candidate_set.id, set.id);
         }
 
         already_seen[candidate_id] = false;
       }
       statistics.join_verifications.add(static_cast<int64_t>(candidates.size()));
       candidates.clear();
-
-      ++current_id;
     }
   }
 
@@ -137,6 +136,7 @@ private:
   similarity::SetSimilarity& similarity;
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> index{0};
+  types::SetBatch indexed_sets;
 };
 
 }  // namespace join

@@ -129,7 +129,7 @@ public:
 
 class SEDSimilarity : public StringSimilarity {
 public:
-  explicit SEDSimilarity(double threshold) : StringSimilarity(threshold) {}
+  explicit SEDSimilarity(double threshold) : StringSimilarity(threshold), _thresh(static_cast<int32_t>(threshold)) {}
 
   double similarity(const types::String& s1, const types::String& s2) override {
     auto& str1 = s1.str.size() <= s2.str.size() ? s1.str : s2.str;
@@ -144,7 +144,7 @@ public:
 
       for (size_t i = 1; i <= str1.size(); ++i) {
         auto c1 = str1[i - 1];
-        column2[i] = std::min(column1[i - 1] + 1, std::min(column1[i] + 1, column1[i - 1] + (c1 != c2)));
+        column2[i] = std::min(column2[i - 1] + 1, std::min(column1[i] + 1, column1[i - 1] + (c1 != c2)));
       }
 
       std::swap(column1, column2);
@@ -154,8 +154,43 @@ public:
   }
 
   bool is_in_threshold(const types::String& s1, const types::String& s2) override {
-    return similarity(s1, s2) <= threshold;
+    // this assumes that ||s1| - |s2|| <= threshold
+    assert(std::abs(static_cast<int32_t>(s1.str.size()) - static_cast<int32_t>(s2.str.size())) <= _thresh);
+    auto& b = s1.str.size() <= s2.str.size() ? s1.str : s2.str;
+    auto& a = s1.str.size() <= s2.str.size() ? s2.str : s1.str;
+    auto n = static_cast<int32_t>(b.size());
+    auto m = static_cast<int32_t>(a.size());
+
+    int32_t p = std::floor((_thresh - (std::abs(m - n))) / 2.0);
+    int kp, k;
+    kp = k = n >= m ? -p : -p + n - m;
+
+    // r_-1 == r[0]
+    // r_0 == r[1] etc.
+    // r_|n-m| + 2p + 1 == r[|n-m|+2p + 2]
+    // --> |n-m|+2p + 3 entries, initially "infinity"
+    std::vector<int32_t> r(std::abs(m - n) + 2 * p + 3, std::numeric_limits<int32_t>::max() / 2);
+
+    for (int32_t i = 0; i <= m; ++i) {
+      for (int32_t j = 0; j <= std::abs(m - n) + 2*p; ++j) {
+        if (i == 0 && i == j + k) {
+          r[j + 1] = 0;
+        } else if (i == 0) {
+          r[j + 1] = r[j] + 1;
+        } else {
+          auto ca = a.at(i - 1);
+          auto cb = 0 <= j + k - 1 && j + k - 1 < n ? b.at(j + k - 1) : '\0';
+          r[j + 1] = std::min(r[j + 1] + (ca != cb), std::min(r[j + 2] + 1, r[j] + 1));
+        }
+      }
+      ++k;
+    }
+
+    return r[std::abs(m - n) + 2*p + kp + 1] <= _thresh;
   }
+
+private:
+  const int32_t _thresh;
 };
 
 class QGramCountSimilarity : public SetSimilarity {
