@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.27)
 project(src)
 
 include(cmake/find_os_cpp.cmake)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+file(COPY cmdline/wrapper DESTINATION bin)
 
 # used to find git hashes to include in source code
 include(cmake/GetGitRevisionDescription.cmake)
