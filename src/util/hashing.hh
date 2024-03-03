@@ -42,6 +42,14 @@ public:
     return window;
   }
 
+  void reset() {
+    state = 0ul;
+  }
+
+  [[nodiscard]] uint64_t get_state() const {
+    return state;
+  }
+
 private:
   int32_t window;
   uint64_t state{0};

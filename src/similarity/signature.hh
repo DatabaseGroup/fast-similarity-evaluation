@@ -98,6 +98,91 @@ private:
   similarity::SetSimilarity& similarity;
 };
 
+class PassJoinSignature {
+public:
+  struct Signature {
+    Signature(size_t partition, size_t hash) : partition(partition), hash(hash) {}
+    size_t partition;
+    size_t hash;
+  };
+
+public:
+  explicit PassJoinSignature(SEDSimilarity& similarity) : similarity(similarity) {
+    threshold = static_cast<int32_t>(similarity.threshold);
+  }
+
+public:
+  std::vector<Signature> indexing_signatures(std::string& string) {
+    std::vector<Signature> signatures;
+    int32_t offset = 0;
+
+    for (int32_t partition = 0; partition < partition_count(); ++partition) {
+      int32_t part_size = partition_size(string.size(), partition);
+      util::RabinFingerprint fp(part_size);
+
+      for (size_t i = offset; i < offset + part_size; ++i) {
+        fp.roll(string[i]);
+      }
+
+      signatures.emplace_back(partition, fp.get_state());
+      offset += part_size;
+    }
+
+    return signatures;
+  }
+
+  std::vector<Signature> probing_signatures(std::string& string) {
+    std::vector<Signature> signatures;
+    int32_t offset = 0;
+    auto string_size = static_cast<int32_t>(string.size());
+
+    for (int32_t partition = 0; partition < partition_count(); ++partition) {
+      int32_t part_size = partition_size(string.size(), partition);
+      util::RabinFingerprint fp(part_size);
+
+      int32_t start_pos = probe_start_pos(partition, offset, part_size, string_size);
+      int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);
+
+      for (int32_t i = start_pos; i < start_pos + part_size; ++i) {
+        fp.roll(string[i]);
+      }
+      signatures.emplace_back(partition, fp.get_state());
+
+      for (int32_t i = 0; i < (end_pos - start_pos); ++i) {
+        fp.remove(string[start_pos + i]);
+        auto hash = fp.roll(string[start_pos + part_size + i]);
+        signatures.emplace_back(partition, hash);
+      }
+
+      offset += part_size;
+    }
+
+    return signatures;
+  }
+
+  [[nodiscard]] int32_t partition_count() const {
+    return threshold + 1;
+  }
+
+private:
+  // idx is 0 indexed
+  int32_t partition_size(size_t s, int32_t idx) {
+    return static_cast<int32_t>(s) / partition_count() + ((static_cast<int32_t>(s) % partition_count()) >= (partition_count() - idx));
+  }
+
+  int32_t probe_start_pos(int32_t partition_idx, int32_t partition_start, [[maybe_unused]] int32_t partition_length, [[maybe_unused]] int32_t string_length) {
+    return std::max(0, partition_start - partition_idx);
+  }
+
+  int32_t probe_end_pos(int32_t partition_idx, int32_t partition_start, int32_t partition_length, int32_t string_length) {
+    return std::min(string_length - partition_length, partition_start + partition_idx);
+  }
+
+private:
+  similarity::SEDSimilarity& similarity;
+  int32_t threshold;
+};
+
 }  // namespace similarity
 
 #endif  // SRC_SIGNATURE_HH

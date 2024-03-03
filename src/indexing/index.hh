@@ -13,50 +13,51 @@ enum IndexType {
 
 using KeyType = int64_t;
 
-/*template <enum IndexType, class ValueType>
-class Index {};
+// todo make this a concept?
+/*class KeyFunction {
+  class KeyFunctionIterator {
 
-template <class ValueType>
-class Index<HASH, ValueType> {
-public:
-  ValueType& operator[](KeyType key) {
-    return map[key];
+  };
+
+  // only single key added to hierarchy
+  KeyFunctionIterator begin() {
+
   }
 
-private:
-  absl::flat_hash_map<KeyType, ValueType> map;
-};
+  KeyFunctionIterator end() {
 
-template <class ValueType>
-class Index<DISCRETE, ValueType> {
-
-};
-
-template <class ValueType>
-class Index<ORDERED, ValueType> {};
-*/
+  }
+};*/
 
 class StaticNextKeyFunction {
 public:
-  explicit StaticNextKeyFunction(KeyType key) : key(key) {}
+  explicit StaticNextKeyFunction(KeyType key) : stored_key({key}) {}
 
 public:
-  uint64_t operator()([[maybe_unused]] const KeyType previous_key) const { return key; }
+  [[nodiscard]] std::array<KeyType, 1>::const_iterator begin([[maybe_unused]] const KeyType previous_key) const {
+    return stored_key.begin();
+  }
+
+  [[nodiscard]] std::array<KeyType, 1>::const_iterator end() const { return stored_key.end(); }
 
 private:
-  uint64_t key;
+  std::array<KeyType, 1> stored_key;
 };
 
 using KeyRange = std::pair<KeyType, KeyType>;
 class StaticNextKeyRange {
 public:
-  explicit StaticNextKeyRange(KeyType lower, KeyType upper) : key_range(lower, upper) {}
+  explicit StaticNextKeyRange(KeyType lower, KeyType upper) : stored_key_range({std::make_pair(lower, upper)}) {}
 
 public:
-  const KeyRange& operator()([[maybe_unused]] const KeyType previous_key) const { return key_range; }
+  [[nodiscard]] std::array<KeyRange, 1>::const_iterator begin([[maybe_unused]] const KeyType previous_key) const {
+    return stored_key_range.begin();
+  }
+
+  [[nodiscard]] std::array<KeyRange, 1>::const_iterator end() const { return stored_key_range.end(); }
 
 private:
-  KeyRange key_range;
+  std::array<KeyRange, 1> stored_key_range;
 };
 
 // curried functions are possible by letting them have shared state (the first function sets the first parameter and
@@ -100,8 +101,11 @@ public:
 
     if (it != map.end()) {
       auto& inner_index = it->second;
-      auto next_key = next_key_fun(key);
-      inner_index.query(next_key, callback, key_funs...);
+
+      for (auto next_key_iter = next_key_fun.begin(key); next_key_iter != next_key_fun.end(); ++next_key_iter) {
+        auto next_key = *next_key_iter;
+        inner_index.query(next_key, callback, key_funs...);
+      }
     }
   }
 
@@ -114,10 +118,13 @@ private:
   types::HashTable<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
 };
 
+int32_t log2(uint32_t x) { return (31 - __builtin_clz(x)); }
+
 template <class ValueType>
 class ComplexIndex<ValueType, DISCRETE> {
 public:
   explicit ComplexIndex(size_t max_key) : map(max_key + 1) {}
+  ComplexIndex() = default;
 
 public:
   template <class CallbackFun>
@@ -130,7 +137,14 @@ public:
     }
   }
 
-  void insert(ValueType value, KeyType key) { map[key].emplace_back(value); }
+  void insert(ValueType value, KeyType key) {
+    // todo make this toggleable
+    if (map.size() <= key) {
+      auto new_size = 1ul << (log2(key + 1) + 1);
+      map.resize(new_size);
+    }
+    map[key].emplace_back(value);
+  }
 
 private:
   std::vector<std::vector<ValueType>> map;
@@ -140,6 +154,7 @@ template <class ValueType, IndexType... TailIndexes>
 class ComplexIndex<ValueType, DISCRETE, TailIndexes...> {
 public:
   explicit ComplexIndex(int64_t max_key) : map(max_key + 1) {}
+  ComplexIndex() = default;
 
 public:
   template <class CallbackFun, class KeyFun, class... KeyFunTail>
@@ -147,14 +162,21 @@ public:
     if (key < map.size() && 0 <= key) {
       auto& inner_index = map[key];
 
-      auto next_key = next_key_fun(key);
-
-      inner_index.query(next_key, callback, key_funs...);
+      for (auto next_key_iter = next_key_fun.begin(key); next_key_iter != next_key_fun.end(); ++next_key_iter) {
+        auto next_key = *next_key_iter;
+        inner_index.query(next_key, callback, key_funs...);
+      }
     }
   }
 
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
+    // todo make this toggleable
+    // in any case faster than hashing
+    if (map.size() <= key) {
+      auto new_size = 1ul << (log2(key + 1) + 1);
+      map.resize(new_size);
+    }
     map[key].insert(value, keys...);
   }
 
@@ -209,8 +231,11 @@ public:
       if (iter->first > key_end) {
         break;
       } else {
-        auto next_key = next_key_fun(iter->first);
-        iter->second.query(next_key, callback, key_funs...);
+        for (auto next_key_iter = next_key_fun.begin(iter->first); next_key_iter != next_key_fun.end();
+             ++next_key_iter) {
+          auto next_key = *next_key_iter;
+          iter->second.query(next_key, callback, key_funs...);
+        }
       }
     }
   }
@@ -218,9 +243,10 @@ public:
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
     // assume insertions are in order
-    assert(map.back().first <= key);
-    if (map.back().first != value) {
+    assert(map.empty() || map.back().first <= key);
+    if (map.empty() || map.back().first != key) {
       map.emplace_back();
+      map.back().first = key;
     }
     map.back().second.insert(value, keys...);
   }

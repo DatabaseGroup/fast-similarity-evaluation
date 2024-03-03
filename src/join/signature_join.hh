@@ -139,6 +139,71 @@ private:
   types::SetBatch indexed_sets;
 };
 
+
+template <class Handler>
+class PassJoin : public SignatureJoin<Handler> {
+private:
+  using StringId = int64_t;
+  using RefString = std::reference_wrapper<types::String>;
+public:
+  // assume PassJoin gets a SEDSimilarity (nothing else works anyway)
+  explicit PassJoin(similarity::Similarity& similarity) : similarity(dynamic_cast<similarity::SEDSimilarity&>(*std::get<similarity::StringSimilarityPtr>(similarity))), signature(this->similarity){}
+
+public:
+  void prepare_indexing_batch(types::Batch& batch) override {
+    auto& strings = std::get<types::StringBatch>(batch);
+
+    indexed_strings.clear();
+    indexed_strings.reserve(strings.size());
+    std::for_each(strings.begin(), strings.end(), [&](auto& s) {indexed_strings.emplace_back(s);});
+
+    std::sort(indexed_strings.begin(), indexed_strings.end(), [](RefString& s1, RefString& s2){
+      auto& str1 = s1.get().str;
+      auto& str2 = s2.get().str;
+      if (str1.size() != str2.size()) {
+        return str1.size() < str2.size();
+      } else {
+        return std::lexicographical_compare(str1.begin(), str1.end(), str2.begin(), str2.end());
+      }
+    });
+  }
+
+  void index_batch(types::Batch& batch) override {
+    // strings (or their references) already in indexed_strings
+    // assert indexed_strings == batch (up to the order)
+
+    // this is a wrapped reference == pointer, do not take reference
+
+    int64_t id = 0;
+    for (auto string_ref : indexed_strings) {
+      auto& string = string_ref.get().str;
+      auto signatures = signature.indexing_signatures(string);
+
+      for (auto& sig : signatures) {
+        index.insert(id, static_cast<int64_t>(string.size()), sig.partition, sig.hash);
+      }
+
+      ++id;
+    }
+  }
+
+  void prepare_probing_batch(types::Batch& batch) override {
+    // todo
+  }
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    // todo
+  }
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    // todo
+  }
+
+private:
+  similarity::SEDSimilarity& similarity;
+  similarity::PassJoinSignature signature;
+  indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::DISCRETE, indexing::IndexType::HASH> index;
+  std::vector<RefString> indexed_strings;
+};
+
 }  // namespace join
 
 #endif  // SRC_SIGNATURE_JOIN_HH
