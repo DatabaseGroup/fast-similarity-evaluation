@@ -1,6 +1,8 @@
 #ifndef SRC_SIGNATURE_JOIN_HH
 #define SRC_SIGNATURE_JOIN_HH
 
+#include <boost/range/irange.hpp>
+
 #include "../indexing/index.hh"
 #include "../similarity/signature.hh"
 #include "join_algorithm.hh"
@@ -97,6 +99,7 @@ public:
       for (; it != it_end; ++it) {
         auto signature = *it;
 
+        indexing::StaticRangeIterator length_iter{std::make_pair(minimum_candidate_size, maximum_candidate_size)};
         index.query(
           signature,
           [&](SetId set_id) {
@@ -104,8 +107,8 @@ public:
               already_seen[set_id] = true;
               candidates.push_back(set_id);
             }
-          },
-          indexing::StaticNextKeyRange{minimum_candidate_size, maximum_candidate_size});
+          },length_iter
+          );
       }
 
       // candidate_id != candidate_set.id
@@ -145,6 +148,81 @@ class PassJoin : public SignatureJoin<Handler> {
 private:
   using StringId = int64_t;
   using RefString = std::reference_wrapper<types::String>;
+
+  class KeyIterator {
+    template<int32_t LEVEL>
+    struct IteratorHolder {};
+    template<>
+    struct IteratorHolder<0>{
+      using iter = boost::integer_range<int64_t>::const_iterator;
+    };
+    template<>
+    struct IteratorHolder<1>{
+      using iter = similarity::PassJoinSignature::ProbingSignatures::value_type::const_iterator;
+    };
+
+  public:
+    explicit KeyIterator(std::string& string, similarity::PassJoinSignature& signature) : string(string), signature(signature), partition_range(0, signature.partition_count()) {}
+
+  public:
+    template<int32_t LEVEL>
+    void set_level_key([[maybe_unused]] indexing::KeyType key) {
+      throw std::invalid_argument("KeyIterator does not implement this level");
+    }
+
+    template<int32_t LEVEL>
+    IteratorHolder<LEVEL>::iter get_level_iterator() {
+      throw std::invalid_argument("KeyIterator does not implement this level");
+    }
+
+    template<int32_t LEVEL>
+    IteratorHolder<LEVEL>::iter get_level_end() {
+      throw std::invalid_argument("KeyIterator does not implement this level");
+    }
+
+    // LEVEL 0 (partition number)
+    // gets length of index string
+    template<>
+    void set_level_key<0>(indexing::KeyType key) {
+      index_string_size = key;
+      current_signatures = signature.probing_signatures(string, index_string_size);
+    }
+
+    template<>
+    IteratorHolder<0>::iter get_level_iterator<0>() {
+      return partition_range.begin();
+    }
+
+    template<>
+    IteratorHolder<0>::iter get_level_end<0>() {
+      return partition_range.end();
+    }
+
+    // LEVEL 1 (hash)
+    // gets partition_number
+    template<>
+    void set_level_key<1>(indexing::KeyType key) {
+      current_partition_number = key;
+    }
+
+    template<>
+    IteratorHolder<1>::iter get_level_iterator<1>() {
+      return current_signatures[current_partition_number].begin();
+    }
+
+    template<>
+    IteratorHolder<1>::iter get_level_end<1>() {
+      return current_signatures[current_partition_number].end();
+    }
+
+  private:
+    int64_t index_string_size{0};
+    int64_t current_partition_number{0};
+    similarity::PassJoinSignature::ProbingSignatures current_signatures;
+    std::string& string;
+    similarity::PassJoinSignature& signature;
+    boost::integer_range<int64_t> partition_range;
+  };
 public:
   // assume PassJoin gets a SEDSimilarity (nothing else works anyway)
   explicit PassJoin(similarity::Similarity& similarity) : similarity(dynamic_cast<similarity::SEDSimilarity&>(*std::get<similarity::StringSimilarityPtr>(similarity))), signature(this->similarity){}
@@ -168,7 +246,7 @@ public:
     });
   }
 
-  void index_batch(types::Batch& batch) override {
+  void index_batch([[maybe_unused]] types::Batch& batch) override {
     // strings (or their references) already in indexed_strings
     // assert indexed_strings == batch (up to the order)
 
@@ -179,19 +257,59 @@ public:
       auto& string = string_ref.get().str;
       auto signatures = signature.indexing_signatures(string);
 
-      for (auto& sig : signatures) {
-        index.insert(id, static_cast<int64_t>(string.size()), sig.partition, sig.hash);
+      int64_t partition = 0;
+      for (auto sig : signatures) {
+        index.insert(id, static_cast<int64_t>(string.size()), partition, sig);
+        ++partition;
       }
 
       ++id;
     }
   }
 
-  void prepare_probing_batch(types::Batch& batch) override {
-    // todo
+  void prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
+    // nothing to be done?
   }
   void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
-    // todo
+    auto strings = std::get<types::StringBatch>(batch);
+
+    std::vector<bool> already_seen(indexed_strings.size());
+    std::vector<StringId> candidates;
+
+    for (auto& string : strings) {
+      KeyIterator key_iterator(string.str, signature);
+
+      int64_t length_lower_bound = similarity.length_lower_bound(string.str.size());
+      int64_t length_upper_bound = similarity.length_upper_bound(string.str.size());
+
+      index.query(indexing::KeyRange(length_lower_bound, length_upper_bound), [&](StringId set_id) {
+        if (!already_seen[set_id]) {
+          already_seen[set_id] = true;
+          candidates.push_back(set_id);
+        }
+      },key_iterator);
+
+      // candidate_id != candidate_set.id
+      // set_id and candidate_id are internal to the join implementation only
+      for (auto candidate_id : candidates) {
+        // set from indexed data (indexed_sets set in index_batch)
+        auto candidate_string = indexed_strings[candidate_id];
+
+        // todo
+        /*if constexpr (is_self_join) {
+          if (set.id <= candidate_set.id) {
+            already_seen[candidate_id] = false;
+            continue;
+          }
+        }*/
+
+        if (similarity.is_in_threshold(candidate_string, string)) {
+          handler(candidate_string.get().id, string.id);
+        }
+
+        already_seen[candidate_id] = false;
+      }
+    }
   }
   void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
     // todo

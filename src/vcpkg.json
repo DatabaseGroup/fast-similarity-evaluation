@@ -12,10 +12,16 @@
     "name" : "vcpkg-cmake",
     "version>=" : "2023-05-04"
   }, {
-    "name" : "boost",
-    "version>=" : "1.83.0#1"
-  }, {
     "name" : "nlohmann-json",
     "version>=" : "3.11.3"
+  }, {
+    "name" : "boost-program-options",
+    "version>=" : "1.84.0"
+  }, {
+    "name" : "boost-multiprecision",
+    "version>=" : "1.84.0"
+  }, {
+    "name" : "boost-range",
+    "version>=" : "1.84.0"
   } ]
 }

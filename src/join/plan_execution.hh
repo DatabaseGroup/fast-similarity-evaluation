@@ -147,8 +147,8 @@ void interleave_plans(data::Dataset& dataset,
         auto& state = step.second.get();
 
         if (state.prepared_index_batch != index_batch_idx) {
-          state.intermediate_data = std::move(reduction.reduce_data(last_index_batch));
-          state.intermediate_similarity = std::move(reduction.reduce_similarity(last_similarity));
+          state.intermediate_data = reduction.reduce_data(last_index_batch);
+          state.intermediate_similarity = reduction.reduce_similarity(last_similarity);
 
           state.prepared_index_batch = index_batch_idx;
         }
@@ -172,7 +172,7 @@ void interleave_plans(data::Dataset& dataset,
       for (auto& step : plan.steps) {
         auto& reduction = step.first.get();
 
-        intermediate_probe_data.emplace_back(std::move(reduction.reduce_data(last_probe_batch)));
+        intermediate_probe_data.emplace_back(reduction.reduce_data(last_probe_batch));
         last_probe_batch = types::dataset_to_batch(intermediate_probe_data.back());
       }
 
