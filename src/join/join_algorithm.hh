@@ -1,12 +1,35 @@
 #ifndef SRC_JOIN_ALGORITHM_HH
 #define SRC_JOIN_ALGORITHM_HH
 
-#include "../types/types.hh"
 #include "../statistics/join_statistics.hh"
+#include "../types/types.hh"
 
 namespace join {
 
-enum AlgorithmId { FALLBACK, PREFIX_SIGNATURE_JOIN };
+enum AlgorithmId { FALLBACK, PREFIX_SIGNATURE_JOIN, PASS_JOIN };
+
+// there are better ways to do this, but they aren't worth it here
+std::string algorithm_to_string(AlgorithmId id) {
+  switch (id) {
+  case FALLBACK:
+    return "fallback";
+  case PREFIX_SIGNATURE_JOIN:
+    return "prefix-signature";
+  case PASS_JOIN:
+    return "pass-join";
+  }
+}
+
+AlgorithmId string_to_algorithm(std::string algorithm) {
+  static const std::unordered_map<std::string, AlgorithmId> map{
+    {"prefix-signature", AlgorithmId::PREFIX_SIGNATURE_JOIN}, {"pass-join", AlgorithmId::PASS_JOIN}};
+  auto it = map.find(algorithm);
+
+  if (it != map.end()) {
+    return it->second;
+  }
+  return AlgorithmId::FALLBACK;
+}
 
 template <class Handler>
 class JoinAlgorithm {

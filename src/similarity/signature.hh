@@ -100,11 +100,9 @@ private:
 
 class PassJoinSignature {
 public:
-  struct Signature {
-    Signature(size_t partition, size_t hash) : partition(partition), hash(hash) {}
-    size_t partition;
-    size_t hash;
-  };
+  using Signature = uint64_t;
+  using IndexingSignatures = std::vector<Signature>;
+  using ProbingSignatures = std::vector<std::vector<Signature>>;
 
 public:
   explicit PassJoinSignature(SEDSimilarity& similarity) : similarity(similarity) {
@@ -112,7 +110,8 @@ public:
   }
 
 public:
-  std::vector<Signature> indexing_signatures(std::string& string) {
+  // hash of partition i at [i]
+  IndexingSignatures indexing_signatures(std::string& string) {
     std::vector<Signature> signatures;
     int32_t offset = 0;
 
@@ -120,38 +119,41 @@ public:
       int32_t part_size = partition_size(string.size(), partition);
       util::RabinFingerprint fp(part_size);
 
-      for (size_t i = offset; i < offset + part_size; ++i) {
+      for (int32_t i = offset; i < offset + part_size; ++i) {
         fp.roll(string[i]);
       }
 
-      signatures.emplace_back(partition, fp.get_state());
+      signatures.emplace_back(fp.get_state());
       offset += part_size;
     }
 
     return signatures;
   }
 
-  std::vector<Signature> probing_signatures(std::string& string) {
-    std::vector<Signature> signatures;
+  // multiple hashes of partition i at [i]
+  ProbingSignatures probing_signatures(std::string& string, int64_t index_string_size) {
+    std::vector<std::vector<Signature>> signatures;
     int32_t offset = 0;
     auto string_size = static_cast<int32_t>(string.size());
 
     for (int32_t partition = 0; partition < partition_count(); ++partition) {
-      int32_t part_size = partition_size(string.size(), partition);
+      int32_t part_size = partition_size(index_string_size, partition);
       util::RabinFingerprint fp(part_size);
 
-      int32_t start_pos = probe_start_pos(partition, offset, part_size, string_size);
+      int32_t start_pos = probe_start_pos(partition, offset);
       int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);
+      auto& part_hashes = signatures.emplace_back();
+      part_hashes.reserve(end_pos - start_pos);
 
       for (int32_t i = start_pos; i < start_pos + part_size; ++i) {
         fp.roll(string[i]);
       }
-      signatures.emplace_back(partition, fp.get_state());
+      part_hashes.emplace_back(fp.get_state());
 
       for (int32_t i = 0; i < (end_pos - start_pos); ++i) {
         fp.remove(string[start_pos + i]);
         auto hash = fp.roll(string[start_pos + part_size + i]);
-        signatures.emplace_back(partition, hash);
+        part_hashes.emplace_back(hash);
       }
 
       offset += part_size;
@@ -166,15 +168,15 @@ public:
 
 private:
   // idx is 0 indexed
-  int32_t partition_size(size_t s, int32_t idx) {
+  [[nodiscard]] int32_t partition_size(size_t s, int32_t idx) const {
     return static_cast<int32_t>(s) / partition_count() + ((static_cast<int32_t>(s) % partition_count()) >= (partition_count() - idx));
   }
 
-  int32_t probe_start_pos(int32_t partition_idx, int32_t partition_start, [[maybe_unused]] int32_t partition_length, [[maybe_unused]] int32_t string_length) {
+  static int32_t probe_start_pos(int32_t partition_idx, int32_t partition_start) {
     return std::max(0, partition_start - partition_idx);
   }
 
-  int32_t probe_end_pos(int32_t partition_idx, int32_t partition_start, int32_t partition_length, int32_t string_length) {
+  static int32_t probe_end_pos(int32_t partition_idx, int32_t partition_start, int32_t partition_length, int32_t string_length) {
     return std::min(string_length - partition_length, partition_start + partition_idx);
   }
 

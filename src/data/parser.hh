@@ -16,7 +16,6 @@ public:
     auto& strings = std::get<types::Strings>(dataset.data);
 
     std::ifstream file(filename);
-    std::array<char, BUF_SIZE> buffer{};
 
     types::Data::Id data_id = 0;
     for (std::string line; std::getline(file, line);) {

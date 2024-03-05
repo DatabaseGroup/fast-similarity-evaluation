@@ -10,6 +10,8 @@ struct JoinStatistics {
   CountItem<> filter_verifications;
   CountItem<> join_verifications;
 
+  virtual ~JoinStatistics() = default;
+
   [[nodiscard]] virtual nlohmann::json to_json() const {
     nlohmann::json json;
 
@@ -18,6 +20,49 @@ struct JoinStatistics {
     join_verifications.add_to_json("join_verifications", json);
 
     return json;
+  }
+
+  JoinStatistics& operator+=(const JoinStatistics& rhs) {
+    result_size.value += rhs.result_size.value;
+    filter_verifications.value += rhs.filter_verifications.value;
+    join_verifications.value += rhs.join_verifications.value;
+
+    return *this;
+  }
+
+  // lhs should be copied
+  friend JoinStatistics operator+(const JoinStatistics& lhs, const JoinStatistics& rhs) {
+    JoinStatistics res;
+    res += lhs;
+    res += rhs;
+    return res;
+  }
+};
+
+struct LocalJoinStatistics : public JoinStatistics {
+  double bandit_weight;
+  CountItem<> selection_count;
+  nlohmann::json description;
+
+  explicit LocalJoinStatistics(const nlohmann::json& description) : description(description) {}
+
+  nlohmann::json to_json() const override {
+    auto json = JoinStatistics::to_json();
+    json["bandit_weight"] = bandit_weight;
+    selection_count.add_to_json("selection_count", json);
+    json["description"] = description;
+    return json;
+  }
+  LocalJoinStatistics& operator+=(const LocalJoinStatistics& rhs) {
+    JoinStatistics::operator+=(rhs);
+    bandit_weight += rhs.bandit_weight;
+    selection_count.value += rhs.selection_count.value;
+    return *this;
+  }
+  // lhs should be copied
+  friend LocalJoinStatistics operator+(LocalJoinStatistics lhs, const LocalJoinStatistics& rhs) {
+    lhs += rhs;
+    return lhs;
   }
 };
 

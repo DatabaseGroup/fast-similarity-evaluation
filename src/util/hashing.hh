@@ -5,7 +5,7 @@
 
 namespace util {
 
-uint64_t random_prime_in_range(uint64_t lower, uint64_t upper) {
+/*uint64_t random_prime_in_range(uint64_t lower, uint64_t upper) {
   std::mt19937_64 random{std::random_device()()};
 
   uint64_t n;
@@ -15,7 +15,7 @@ uint64_t random_prime_in_range(uint64_t lower, uint64_t upper) {
   } while (boost::multiprecision::miller_rabin_test(n, 10));  // perform 10 tests of primality (not too important)
 
   return n;
-}
+}*/
 
 class RabinFingerprint {
 public:

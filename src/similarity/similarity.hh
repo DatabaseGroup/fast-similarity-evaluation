@@ -189,6 +189,14 @@ public:
     return r[std::abs(m - n) + 2*p + kp + 1] <= _thresh;
   }
 
+  [[nodiscard]] int64_t length_lower_bound(size_t string_size) const {
+    return std::max(0l, static_cast<int64_t>(string_size) - _thresh);
+  }
+
+  [[nodiscard]] int64_t length_upper_bound(size_t string_size) const {
+    return static_cast<int64_t>(string_size) + _thresh;
+  }
+
 private:
   const int32_t _thresh;
 };

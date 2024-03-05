@@ -15,17 +15,6 @@ public:
 protected:
   template <class InDataset, class OutDatasetType>
   static types::Dataset forward_as_batch(InDataset& dataset, Reduction& reduction) {
-    /*auto set_reduce = [&](types::Sets& sets) {
-      return types::Dataset(_reduce_like_batch<types::Sets, OutDatasetType>(sets, reduction));
-    };
-    auto string_reduce = [&](types::Strings& strings) {
-      return types::Dataset(_reduce_like_batch<types::Strings, OutDatasetType>(strings, reduction));
-    };
-    auto tree_reduce = [&](types::Trees& trees) {
-      return types::Dataset(_reduce_like_batch<types::Trees, OutDatasetType>(trees, reduction));
-    };
-    return std::visit(util::overloaded{set_reduce, string_reduce, tree_reduce}, dataset);*/
-
     return std::visit([&](auto&& data){
       using DatasetType = std::decay_t<decltype(data)>;
       return types::Dataset(_reduce_like_batch<DatasetType, OutDatasetType>(data, reduction));
@@ -55,6 +44,7 @@ public:
   virtual types::Dataset reduce_data(types::Batch& input_batch) = 0;
   virtual void reduce_data(types::Batch& input_batch, types::Batch& output_batch) = 0;
   virtual similarity::Similarity reduce_similarity(similarity::Similarity& similarity) = 0;
+  virtual std::string get_label() = 0;
 };
 
 class QGramReduction : public Reduction {
@@ -94,22 +84,6 @@ public:
     return Reduction::forward_as_batch<types::Batch, types::Sets>(input_batch, *this);
   }
 
-  /*types::Dataset reduce_data(types::Dataset& data) override {
-    assert(std::holds_alternative<types::Strings>(data));
-
-    auto& strings = std::get<types::Strings>(data);
-
-    types::Dataset qgrams{types::Sets()};
-    auto sets = std::get<types::Sets>(qgrams);
-
-    for (auto& string : strings) {
-      auto& new_set = sets.emplace_back(string.id);
-      generate_qgrams(string, new_set);
-    }
-
-    return sets;
-  }*/
-
   similarity::Similarity reduce_similarity(similarity::Similarity& similarity) override {
     assert(std::holds_alternative<similarity::StringSimilarityPtr>(similarity));
 
@@ -119,6 +93,10 @@ public:
 
     similarity::Similarity qgc_sim(std::make_unique<similarity::QGramCountSimilarity>(sed.threshold, this->q));
     return qgc_sim;
+  }
+
+  std::string get_label() override {
+    return "qgram";
   }
 
 private:

@@ -134,6 +134,18 @@ struct AvgFloatItem {
     this->max = std::numeric_limits<double>::min();
   }
   AvgFloatItem() : sum(0), count(0), min(std::numeric_limits<double>::max()), max(std::numeric_limits<double>::min()) {}
+
+  AvgFloatItem& operator+=(const AvgFloatItem& rhs) {
+    sum += rhs.sum;
+    count += rhs.count;
+    min = std::min(min, rhs.min);
+    max = std::max(max, rhs.max);
+
+    return *this;
+  }
+  friend AvgFloatItem operator+(AvgFloatItem lhs, const AvgFloatItem& rhs) {
+    return lhs += rhs;
+  }
 };
 
 template <class F, class Increaser = RealIncreaser>

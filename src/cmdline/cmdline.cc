@@ -15,6 +15,7 @@ struct Config {
   double threshold{};
   int64_t block_size{};
   std::string label;
+  std::vector<std::string> excluded_algorithms;
 };
 
 bool process_program_options(int argc, char** argv, Config& config) {
@@ -26,7 +27,7 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
     "block-size,b", po::value(&config.block_size)->default_value(10000), "Block size")(
-    "label,l", po::value(&config.label), "label for the run (printed in json)");
+    "label,l", po::value(&config.label), "label for the run (printed in json)")("exclude,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms");
 
   const std::string exec_name(argv[0]);
 
@@ -114,6 +115,48 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
   return {data_id, std::move(dataset)};
 }
 
+nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
+  nlohmann::json plan_json;
+
+  plan_json["algorithm"] = join::algorithm_to_string(plan.algorithm_id);
+
+  std::vector<nlohmann::json> reduction_steps;
+  std::for_each(plan.steps.begin(), plan.steps.end(), [&](std::pair<std::reference_wrapper<ontology::Reduction>, std::reference_wrapper<ontology::StepState>>& step) {
+    nlohmann::json step_json;
+    step_json["reduction"] = step.first.get().get_label();
+
+    reduction_steps.emplace_back(step_json);
+  });
+
+  plan_json["reduction"] = reduction_steps;
+
+  return plan_json;
+}
+
+std::vector<statistics::LocalJoinStatistics> setup_statistics(std::vector<ontology::QueryPlan>& plans) {
+  std::vector<statistics::LocalJoinStatistics> statistics;
+  for (auto& plan : plans) {
+    statistics.emplace_back(plan_to_json(plan));
+  }
+
+  return statistics;
+}
+
+statistics::JoinStatistics sum_statistics(std::vector<statistics::LocalJoinStatistics>& statistics) {
+  nlohmann::json description;
+  description["algorithm"] = "bandit";
+
+  return std::reduce(statistics.begin(), statistics.end(), statistics::JoinStatistics());
+}
+
+std::vector<join::AlgorithmId> find_excluded_algorithms(std::vector<std::string>& alg_list) {
+  std::vector<join::AlgorithmId> res;
+  std::for_each(alg_list.begin(), alg_list.end(), [&](auto& str) {
+    res.push_back(join::string_to_algorithm(str));
+  });
+  return res;
+}
+
 int main(int argc, char** argv) {
   Config config;
 
@@ -125,10 +168,12 @@ int main(int argc, char** argv) {
   auto [data_id, dataset] = resolve_data(config.datatype, config.input_file);
 
   ontology::StandardReductionGraph graph;
-  auto plan_result = graph.enumerate_plans(data_id, similarity_id);
+  ontology::PlannerConfiguration plan_config;
+  plan_config.excluded_algorithms = find_excluded_algorithms(config.excluded_algorithms);
+  auto plan_result = graph.enumerate_plans(data_id, similarity_id, plan_config);
   auto& plans = plan_result.first;
 
-  statistics::JoinStatistics statistics;
+  std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   timing::JoinTiming timing;
   timing.join_time.start();
   join::interleave_plans(dataset, similarity, plans, config.block_size, statistics);
@@ -136,7 +181,15 @@ int main(int argc, char** argv) {
 
   nlohmann::json result;
   result["meta"] = get_metadata(config);
-  result["statistics"] = statistics.to_json();
+
+  std::vector<nlohmann::json> local_statistics;
+  std::for_each(statistics.begin(), statistics.end(), [&](auto& statistic) {
+    local_statistics.emplace_back(statistic.to_json());
+  });
+  statistics::JoinStatistics global_statistics = sum_statistics(statistics);
+
+  result["local_statistics"] = local_statistics;
+  result["global_statistics"] = global_statistics.to_json();
   result["timing"] = timing.to_json();
 
   std::cout << result.dump(4) << std::endl;

@@ -23,6 +23,9 @@ std::unique_ptr<JoinAlgorithm<Handler>> resolve_algorithmid(AlgorithmId id, simi
   case FALLBACK:
     // todo implement comparing all pairs as obvious fallback
     break;
+  case PASS_JOIN:
+    return std::make_unique<PassJoin<Handler>>(similarity);
+    break;
   }
   return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
 }
@@ -116,7 +119,7 @@ void interleave_plans(data::Dataset& dataset,
                       similarity::Similarity& similarity,
                       std::vector<ontology::QueryPlan>& plans,
                       int64_t block_size,
-                      statistics::JoinStatistics& statistics) {
+                      std::vector<statistics::LocalJoinStatistics>& all_statistics) {
   int64_t batch_count = static_cast<int64_t>(dataset.statistics->count) / block_size;
   if (dataset.statistics->count % block_size != 0) {
     ++batch_count;
@@ -133,11 +136,12 @@ void interleave_plans(data::Dataset& dataset,
       auto probe_batch = types::get_batch(dataset.data, probe_batch_idx, block_size);
       auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
 
-      // todo select plan using bandit
       int64_t plan_id = bandit.select_arm();
       timing::ticks start_ticks = timing::cpu_cycles_start();
 
       auto& plan = plans[plan_id];
+      auto& plan_statistics = all_statistics[plan_id];
+      plan_statistics.selection_count.inc();
 
       // perform reduction of index data + indexing
       auto last_index_batch = index_batch;
@@ -182,9 +186,9 @@ void interleave_plans(data::Dataset& dataset,
       MaterializeHandler handler(result_pairs);
 
       if (index_batch_idx == probe_batch_idx) {
-        algorithm->selfjoin_batch(last_probe_batch, handler, statistics);
+        algorithm->selfjoin_batch(last_probe_batch, handler, plan_statistics);
       } else {
-        algorithm->join_batch(last_probe_batch, handler, statistics);
+        algorithm->join_batch(last_probe_batch, handler, plan_statistics);
       }
 
       // verification is done from lowest to highest reduction level
@@ -198,19 +202,28 @@ void interleave_plans(data::Dataset& dataset,
         auto& current_similarity = current_state.intermediate_similarity;
         auto& current_probing_dataset = intermediate_probe_data[i];
 
-        statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+        plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
         offset_verify_with_similarity(current_index_dataset, index_offset, current_probing_dataset, probe_offset, current_similarity, result_pairs);
         --i;
       }
-      statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
-      verify_with_similarity(dataset.data, similarity, result_pairs);
 
+      // if data was actually reduced, we still have to verify with the "outermost" similarity
+      if (!plan.steps.empty()) {
+        plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+        verify_with_similarity(dataset.data, similarity, result_pairs);
+      }
 
       timing::ticks end_ticks = timing::cpu_cycles_start();
       auto loss = static_cast<double>(end_ticks - start_ticks);
       bandit.update_weights(plan_id, loss);
-      statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
+      plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
+
+      // types::print_result_pairs(std::cout, result_pairs, dataset.data);
     }
+  }
+
+  for (int32_t i = 0; i < static_cast<int32_t>(plans.size()); ++i) {
+    all_statistics[i].bandit_weight = bandit.get_normalized_weight(i);
   }
 }
 

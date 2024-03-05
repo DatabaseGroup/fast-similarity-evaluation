@@ -81,7 +81,7 @@ public:
     return _join_batch<true>(batch, handler, statistics);
   }
 
-  template<bool is_self_join>
+  template<bool IS_SELF_JOIN>
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto& sets = std::get<types::SetBatch>(batch);
 
@@ -117,7 +117,7 @@ public:
         // set from indexed data (indexed_sets set in index_batch)
         auto& candidate_set = indexed_sets[candidate_id];
 
-        if constexpr (is_self_join) {
+        if constexpr (IS_SELF_JOIN) {
           if (set.id <= candidate_set.id) {
             already_seen[candidate_id] = false;
             continue;
@@ -270,7 +270,17 @@ public:
   void prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
     // nothing to be done?
   }
+
   void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    _join_batch<false>(batch, handler, statistics);
+  }
+
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+    _join_batch<true>(batch, handler, statistics);
+  }
+
+  template<bool IS_SELF_JOIN>
+  void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto strings = std::get<types::StringBatch>(batch);
 
     std::vector<bool> already_seen(indexed_strings.size());
@@ -295,13 +305,12 @@ public:
         // set from indexed data (indexed_sets set in index_batch)
         auto candidate_string = indexed_strings[candidate_id];
 
-        // todo
-        /*if constexpr (is_self_join) {
-          if (set.id <= candidate_set.id) {
+        if constexpr (IS_SELF_JOIN) {
+          if (string.id <= candidate_string.get().id) {
             already_seen[candidate_id] = false;
             continue;
           }
-        }*/
+        }
 
         if (similarity.is_in_threshold(candidate_string, string)) {
           handler(candidate_string.get().id, string.id);
@@ -309,10 +318,10 @@ public:
 
         already_seen[candidate_id] = false;
       }
+
+      statistics.join_verifications.add(static_cast<int64_t>(candidates.size()));
+      candidates.clear();
     }
-  }
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
-    // todo
   }
 
 private:

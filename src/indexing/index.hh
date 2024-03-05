@@ -95,8 +95,6 @@ using StaticRangeIterator = StaticKeyIterator<KeyRange>;
 // curried functions are possible by letting them have shared state (the first function sets the first parameter and
 // returns the loosest bound etc.)
 
-// Current limitations:
-// - If DISCRETE is used, it has to be the outermost index (might be fixed with passing around constructor arguments)
 template <class ValueType, IndexType... IndexTypes>
 class ComplexIndex {
   // typical use:
@@ -118,7 +116,9 @@ public:
     }
   }
 
-  void insert(KeyType key, ValueType value) { map[key].emplace_back(value); }
+  void insert(ValueType value, KeyType key) {
+    map[key].emplace_back(value);
+  }
 
   static constexpr int32_t LEVEL() {
     return 0;

@@ -72,6 +72,10 @@ public:
     update_eta();
   }
 
+  double get_normalized_weight(int64_t arm) {
+    return weight[arm] / weight_sum;
+  }
+
 private:
   void update_eta() {
     eta = std::sqrt((2 * (std::log(arms) + static_cast<double>(arms) * std::log(trials))) /
@@ -94,7 +98,7 @@ private:
 
 class Exp3LightA {
 public:
-  Exp3LightA(int64_t arms, int64_t trials) : arms(arms), trials(trials), epoch(0), loss_bound(1), bandit_solver(arms, trials, loss_bound), current_trial(1)  {
+  Exp3LightA(int64_t arms, int64_t trials) : arms(arms), trials(trials), current_trial(1), epoch(0), loss_bound(1), bandit_solver(arms, trials, loss_bound)  {
 
   }
 
@@ -110,6 +114,9 @@ public:
     } else {
       bandit_solver.update_weights(selected_arm, loss);
     }
+  }
+
+  double get_normalized_weight(int64_t arm) { return bandit_solver.get_normalized_weight(arm);
   }
 
 private:

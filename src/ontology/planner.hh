@@ -7,6 +7,8 @@
 #include "../types/types.hh"
 #include "reduction.hh"
 
+#include <boost/functional/hash.hpp>
+
 namespace ontology {
 
 class AlgorithmTerminal {
@@ -69,12 +71,33 @@ public:
   join::AlgorithmId algorithm_id{join::AlgorithmId::FALLBACK};
   QueryState query_state;
 };
+}  // namespace ontology
+
+// make NodeKey also hashable with std::unordered_map (used for debugging, because absl::flat_hash_map is ugly)
+template <>
+struct std::hash<ontology::NodeKey> {
+  std::size_t operator()(ontology::NodeKey const& n) const noexcept {
+    size_t hash = 0;
+    boost::hash_combine(hash, n.type);
+    boost::hash_combine(hash, n.similarity);
+    return hash;
+  }
+};
+
+namespace ontology {
+
+struct PlannerConfiguration {
+  std::vector<join::AlgorithmId> excluded_algorithms;
+};
 
 class ReductionGraph {
 public:
   virtual ~ReductionGraph() = default;
 
-  std::pair<std::vector<QueryPlan>, std::vector<StepState>> enumerate_plans(types::DatatypeId type, similarity::SimilarityId similarity) {
+  std::pair<std::vector<QueryPlan>, std::vector<StepState>> enumerate_plans(
+    types::DatatypeId type,
+    similarity::SimilarityId similarity,
+    const PlannerConfiguration& configuration = PlannerConfiguration()) {
     NodeKey node_key{type, similarity};
     std::vector<StepState> query_states;
 
@@ -83,7 +106,7 @@ public:
     std::vector<QueryPlan> plans;
     QueryPlan empty_plan;
 
-    enumerate_plans_recursive(node, empty_plan, plans, query_states);
+    enumerate_plans_recursive(node, empty_plan, plans, query_states, configuration);
 
     return {std::move(plans), std::move(query_states)};
   }
@@ -96,13 +119,17 @@ private:
   void enumerate_plans_recursive(Node& node,  // NOLINT(*-no-recursion)
                                  QueryPlan& current_plan,
                                  std::vector<QueryPlan>& plans,
-                                 std::vector<StepState>& query_states) {
+                                 std::vector<StepState>& query_states,
+                                 const PlannerConfiguration& configuration) {
     // base case
     for (auto& algorithm : node.algorithms) {
-      current_plan.algorithm_id = algorithm.id;
+      auto& excl_algs = configuration.excluded_algorithms;
+      if (std::find(excl_algs.begin(), excl_algs.end(), algorithm.id) == excl_algs.end()) {
+        current_plan.algorithm_id = algorithm.id;
 
-      // explicitly make a copy of the plan
-      plans.push_back(current_plan);
+        // explicitly make a copy of the plan
+        plans.push_back(current_plan);
+      }
     }
 
     // reset current plan
@@ -113,7 +140,7 @@ private:
       current_plan.steps.emplace_back(edge.reduction, query_states.emplace_back());
 
       Node& next_node = edge.to_node;
-      enumerate_plans_recursive(next_node, current_plan, plans, query_states);
+      enumerate_plans_recursive(next_node, current_plan, plans, query_states, configuration);
 
       // remove last reduction step to prepare for next iteration
       current_plan.steps.pop_back();
@@ -149,6 +176,7 @@ public:
     auto& qgram = get_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
 
     sed.edges.emplace_back(qgram_reduction, qgram);
+    sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     qgram.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
   }
 };
