@@ -12,6 +12,7 @@
 #include "../ontology/bandit.hh"
 #include "../timing/cycles.hh"
 #include "../statistics/join_statistics.hh"
+#include "../util/lru_cache.hh"
 
 namespace join {
 
@@ -79,32 +80,32 @@ void verify_with_similarity(types::Dataset& dataset,
   std::visit(util::overloaded{set_verify, string_verify, tree_verify}, dataset);
 }
 
-void offset_verify_with_similarity(types::Dataset& left_dataset,
+void offset_verify_with_similarity(types::Batch& left_dataset,
                                    int64_t left_offset,
-                                   types::Dataset& right_dataset,
+                                   types::Batch& right_dataset,
                                    int64_t right_offset,
                                    similarity::Similarity& similarity,
                                    std::vector<types::ResultPair>& pairs) {
-  auto set_verify = [&](types::Sets& left_sets) {
+  auto set_verify = [&](types::SetBatch& left_sets) {
     _offset_verify(left_sets,
                    left_offset,
-                   std::get<types::Sets>(right_dataset),
+                   std::get<types::SetBatch>(right_dataset),
                    right_offset,
                    std::get<similarity::SetSimilarityPtr>(similarity),
                    pairs);
   };
-  auto string_verify = [&](types::Strings& left_strings) {
+  auto string_verify = [&](types::StringBatch& left_strings) {
     _offset_verify(left_strings,
                    left_offset,
-                   std::get<types::Strings>(right_dataset),
+                   std::get<types::StringBatch>(right_dataset),
                    right_offset,
                    std::get<similarity::StringSimilarityPtr>(similarity),
                    pairs);
   };
-  auto tree_verify = [&](types::Trees& left_trees) {
+  auto tree_verify = [&](types::TreeBatch& left_trees) {
     _offset_verify(left_trees,
                    left_offset,
-                   std::get<types::Trees>(right_dataset),
+                   std::get<types::TreeBatch>(right_dataset),
                    right_offset,
                    std::get<similarity::TreeSimilarityPtr>(similarity),
                    pairs);
@@ -115,117 +116,230 @@ void offset_verify_with_similarity(types::Dataset& left_dataset,
 
 int64_t get_offset_into_batch(int64_t batch_idx, int64_t batch_size) { return batch_idx * batch_size; }
 
-void interleave_plans(data::Dataset& dataset,
-                      similarity::Similarity& similarity,
-                      std::vector<ontology::QueryPlan>& plans,
-                      int64_t block_size,
-                      std::vector<statistics::LocalJoinStatistics>& all_statistics) {
-  int64_t batch_count = static_cast<int64_t>(dataset.statistics->count) / block_size;
-  if (dataset.statistics->count % block_size != 0) {
-    ++batch_count;
+struct IndexedBatch {
+  const size_t id;
+  types::Batch batch;
+
+  IndexedBatch(size_t id, types::Batch batch) : id(id), batch(batch) {}
+};
+
+struct CacheHashKey {
+  size_t batch_id;
+  size_t reduction_id;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CacheHashKey& k) {
+    return H::combine(std::move(h), k.batch_id, k.reduction_id);
   }
-  int64_t all_batch_pairs = (batch_count * (batch_count - 1)) / 2;
-  ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
-  for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
-    auto index_batch = types::get_batch(dataset.data, index_batch_idx, block_size);
-    auto index_offset = get_offset_into_batch(index_batch_idx, block_size);
-    std::vector<std::unique_ptr<join::JoinAlgorithm<MaterializeHandler>>> algorithms(plans.size());
+  bool operator==(const CacheHashKey& rhs) const {
+    return batch_id == rhs.batch_id && reduction_id == rhs.reduction_id;
+  }
 
-    for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
-      auto probe_batch = types::get_batch(dataset.data, probe_batch_idx, block_size);
-      auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
+  CacheHashKey(size_t batchId, size_t reductionId) : batch_id(batchId), reduction_id(reductionId) {}
+};
 
-      int64_t plan_id = bandit.select_arm();
-      timing::ticks start_ticks = timing::cpu_cycles_start();
+}
 
-      auto& plan = plans[plan_id];
-      auto& plan_statistics = all_statistics[plan_id];
-      plan_statistics.selection_count.inc();
+// make CacheHashKey also hashable with std::unordered_map (used for debugging, because absl::flat_hash_map is ugly)
+template <>
+struct std::hash<join::CacheHashKey> {
+  std::size_t operator()(join::CacheHashKey const& n) const noexcept {
+    size_t hash = 0;
+    boost::hash_combine(hash, n.batch_id);
+    boost::hash_combine(hash, n.reduction_id);
+    return hash;
+  }
+};
 
-      // perform reduction of index data + indexing
-      auto last_index_batch = index_batch;
-      std::reference_wrapper<similarity::Similarity> last_similarity = similarity;
-      for (auto& step : plan.steps) {
-        auto& reduction = step.first.get();
-        auto& state = step.second.get();
+namespace join {
 
-        if (state.prepared_index_batch != index_batch_idx) {
-          state.intermediate_data = reduction.reduce_data(last_index_batch);
-          state.intermediate_similarity = reduction.reduce_similarity(last_similarity);
+class ReductionCache {
+public:
+  explicit ReductionCache(size_t cache_size) : cache(cache_size) {}
 
-          state.prepared_index_batch = index_batch_idx;
-        }
-        last_index_batch = types::dataset_to_batch(state.intermediate_data);
-        last_similarity = state.intermediate_similarity;
+public:
+  std::pair<types::Batch, similarity::Similarity> reduce_to_level(IndexedBatch& batch,
+                                                                  similarity::Similarity& similarity,
+                                                                  ontology::QueryPlan& plan,
+                                                                  int32_t level) {
+    // find lowest, processed step
+    auto batch_id = batch.id;
+    auto rit = plan.steps.rbegin() + level;
+
+    typename decltype(cache)::query_t cache_result;
+    for (; rit != plan.steps.rend(); ++rit) {
+      auto step_id = rit->id;
+      cache_result = cache.get({batch_id, step_id});
+
+      if (cache_result.has_value()) {
+        break;
       }
+    }
 
-      if (plan.query_state.algorithm_prepared != index_batch_idx) {
-        algorithms[plan_id] = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, last_similarity);
-        auto& algorithm = algorithms[plan_id];
+    types::Batch current_batch;
+    similarity::Similarity current_similarity = similarity;
+    if (cache_result.has_value()) {
+      current_batch = types::dataset_to_batch(cache_result->get()->first);
+      current_similarity = cache_result->get()->second;
+    } else {
+      current_batch = batch.batch;
+      // current_similarity already set above
+      rit = plan.steps.rend();
+    }
 
-        algorithm->prepare_indexing_batch(last_index_batch);
-        algorithm->index_batch(last_index_batch);
+    // go a step back to highest, unprocessed node
+    --rit;
 
-        plan.query_state.algorithm_prepared = index_batch_idx;
-      }
+    // we also have to access the first reduction at position 0; hence plan.steps.rbegin() - 1 is the first position to stop
+    for (; rit != plan.steps.rbegin() - 1 + level; --rit) {
+      auto& reduction_step = *rit;
+      auto& reduction = reduction_step.reduction.get();
+      auto step_id = reduction_step.id;
 
-      // perform reduction of probing data + probing + verification
-      auto last_probe_batch = probe_batch;
-      std::vector<types::Dataset> intermediate_probe_data;
-      for (auto& step : plan.steps) {
-        auto& reduction = step.first.get();
+      auto intermediate =
+        std::make_pair(reduction.reduce_data(current_batch), reduction.reduce_similarity(current_similarity));
 
-        intermediate_probe_data.emplace_back(reduction.reduce_data(last_probe_batch));
-        last_probe_batch = types::dataset_to_batch(intermediate_probe_data.back());
-      }
+      auto reduced_items = cache.emplace({batch_id, step_id}, std::make_shared<std::pair<types::Dataset, similarity::Similarity>>(intermediate));
+      current_batch = types::dataset_to_batch(reduced_items->first);
+      current_similarity = reduced_items->second;
+    }
 
-      auto& algorithm = algorithms[plan_id];
-      algorithm->prepare_probing_batch(last_probe_batch);
-      std::vector<types::ResultPair> result_pairs;
-      MaterializeHandler handler(result_pairs);
+    return std::make_pair(current_batch, current_similarity);
+  }
 
-      if (index_batch_idx == probe_batch_idx) {
-        algorithm->selfjoin_batch(last_probe_batch, handler, plan_statistics);
-      } else {
-        algorithm->join_batch(last_probe_batch, handler, plan_statistics);
-      }
+  std::pair<types::Batch, similarity::Similarity> reduce_to_end(IndexedBatch& batch,
+                                                                similarity::Similarity& similarity,
+                                                                ontology::QueryPlan& plan) {
+    return reduce_to_level(batch, similarity, plan, 0);
+  }
 
-      // verification is done from lowest to highest reduction level
-      // the lowest level at size() - 1 is part of the algorithm step as the algorithm might
-      // be able to optimize verification depending on its specifics
-      // hence, we can skip verification for size() - 1 and start at size() - 2
-      auto i = static_cast<int64_t>(plan.steps.size()) - 2;
-      while (0 <= i) {
-        auto& current_state = plan.steps[i].second.get();
-        auto& current_index_dataset = current_state.intermediate_data;
-        auto& current_similarity = current_state.intermediate_similarity;
-        auto& current_probing_dataset = intermediate_probe_data[i];
+private:
+  // use unique_ptr for pointer stability
+  util::LRUCache<CacheHashKey, std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache;
+};
 
-        plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
-        offset_verify_with_similarity(current_index_dataset, index_offset, current_probing_dataset, probe_offset, current_similarity, result_pairs);
-        --i;
-      }
+class AlgorithmCache {
+public:
+  AlgorithmCache(IndexedBatch& index_batch, ReductionCache& reductionCache, size_t algorithm_count)
+      : index_batch(index_batch), reduction_cache(reductionCache), algorithms(algorithm_count) {}
 
-      // if data was actually reduced, we still have to verify with the "outermost" similarity
-      if (!plan.steps.empty()) {
-        plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
-        verify_with_similarity(dataset.data, similarity, result_pairs);
-      }
+public:
+  void probe_using_plan(IndexedBatch& probe_batch,
+                        similarity::Similarity& similarity,
+                        int64_t plan_idx,
+                        std::vector<ontology::QueryPlan>& plans,
+                        MaterializeHandler& handler,
+                        statistics::LocalJoinStatistics& statistics) {
+    auto& plan = plans[plan_idx];
 
-      timing::ticks end_ticks = timing::cpu_cycles_start();
-      auto loss = static_cast<long double>(end_ticks - start_ticks);
-      bandit.update_weights(plan_id, loss);
-      plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
+    if (!algorithms[plan_idx]) {
+      auto [reduced_batch, reduced_similarity] = reduction_cache.reduce_to_end(index_batch, similarity, plan);
+      algorithms[plan_idx] = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, reduced_similarity);
 
-      // types::print_result_pairs(std::cout, result_pairs, dataset.data);
+      auto& algorithm = algorithms[plan_idx];
+
+      algorithm->prepare_indexing_batch(reduced_batch);
+      algorithm->index_batch(reduced_batch);
+    }
+
+    auto& algorithm = algorithms[plan_idx];
+    auto [reduced_batch, reduced_similarity] = reduction_cache.reduce_to_end(probe_batch, similarity, plan);
+
+    algorithm->prepare_probing_batch(reduced_batch);
+    if (index_batch.id == probe_batch.id) {
+      algorithm->selfjoin_batch(reduced_batch, handler, statistics);
+    } else {
+      algorithm->join_batch(reduced_batch, handler, statistics);
     }
   }
 
-  for (int32_t i = 0; i < static_cast<int32_t>(plans.size()); ++i) {
-    all_statistics[i].bandit_weight = bandit.get_normalized_weight(i);
+private:
+  IndexedBatch& index_batch;
+  ReductionCache& reduction_cache;
+  std::vector<std::unique_ptr<join::JoinAlgorithm<MaterializeHandler>>> algorithms;
+};
+
+class PlanExecutor {
+public:
+  explicit PlanExecutor(int64_t blockSize, size_t cache_size) : block_size(blockSize), reduction_cache(cache_size) {}
+
+public:
+  void execute_plans(data::Dataset& dataset,
+                    similarity::Similarity& similarity,
+                    std::vector<ontology::QueryPlan>& plans,
+                    std::vector<statistics::LocalJoinStatistics>& all_statistics) {
+    int64_t batch_count = get_batch_count(dataset.statistics->count);
+    int64_t all_batch_pairs = get_allpairs_batches(batch_count);
+
+    ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
+
+    for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
+      auto index_batch = IndexedBatch(index_batch_idx, types::get_batch(dataset.data, index_batch_idx, block_size));
+      auto index_offset = get_offset_into_batch(index_batch_idx, block_size);
+
+      AlgorithmCache algorithm_cache(index_batch, reduction_cache, plans.size());
+
+      for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
+        auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch(dataset.data, probe_batch_idx, block_size));
+        auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
+
+        int64_t plan_id = bandit.select_arm();
+        timing::ticks start_ticks = timing::cpu_cycles_start();
+
+        auto& plan = plans[plan_id];
+        auto& plan_statistics = all_statistics[plan_id];
+        plan_statistics.selection_count.inc();
+
+        types::ResultPairs result_pairs;
+        MaterializeHandler handler(result_pairs);
+
+        algorithm_cache.probe_using_plan(probe_batch, similarity, plan_id, plans, handler, plan_statistics);
+
+        for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
+          auto [red_index_data, red_ind_sim] = reduction_cache.reduce_to_level(index_batch, similarity, plan, level);
+          auto [red_probe_data, red_probe_sim] = reduction_cache.reduce_to_level(probe_batch, similarity, plan, level);
+
+          plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+          offset_verify_with_similarity(red_index_data, index_offset, red_probe_data, probe_offset, red_ind_sim, result_pairs);
+        }
+
+        // if data was actually reduced, we still have to verify with the "outermost" similarity
+        if (!plan.steps.empty()) {
+          plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+          verify_with_similarity(dataset.data, similarity, result_pairs);
+        }
+
+        timing::ticks end_ticks = timing::cpu_cycles_start();
+        auto loss = static_cast<long double>(end_ticks - start_ticks);
+        bandit.update_weights(plan_id, loss);
+        plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
+
+        // types::print_result_pairs(std::cout, result_pairs, dataset.data);
+      }
+    }
+
+    for (int32_t i = 0; i < static_cast<int32_t>(plans.size()); ++i) {
+      all_statistics[i].bandit_weight = bandit.get_normalized_weight(i);
+    }
   }
-}
+private:
+  int64_t get_batch_count(size_t input_size) {
+    auto res = static_cast<int64_t>(input_size) / block_size;
+    if (static_cast<int64_t>(input_size) % block_size != 0) {
+      ++res;
+    }
+    return res;
+  }
+
+  int64_t get_allpairs_batches(int64_t batch_count) {
+    return (batch_count * (batch_count - 1)) / 2;
+  }
+
+private:
+  int64_t block_size;
+  ReductionCache reduction_cache;
+};
 
 }  // namespace join
 

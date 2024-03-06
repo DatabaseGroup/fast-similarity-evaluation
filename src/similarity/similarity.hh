@@ -90,7 +90,7 @@ public:
 
   int64_t indexing_prefix_size(const types::Set& s1) {
     auto size = static_cast<int64_t>(s1.tokens.size());
-    return size - equivalent_overlap(minimum_length_bound(size), static_cast<int64_t>(s1.tokens.size())) + 1;
+    return size - equivalent_overlap(minimum_length_bound(size), size) + 1;
   }
 
   int64_t probing_prefix_size(const types::Set& s1) {
@@ -102,16 +102,16 @@ public:
 
   virtual int64_t maximum_length_bound(int64_t size) = 0;
 };
-using SetSimilarityPtr = std::unique_ptr<SetSimilarity>;
+using SetSimilarityPtr = std::shared_ptr<SetSimilarity>;
 
 class StringSimilarity : public AbstractSimilarity<types::String> {
 public:
   explicit StringSimilarity(double threshold) : AbstractSimilarity<types::String>(threshold) {}
 };
-using StringSimilarityPtr = std::unique_ptr<StringSimilarity>;
+using StringSimilarityPtr = std::shared_ptr<StringSimilarity>;
 
 class TreeSimilarity : public AbstractSimilarity<types::Tree> {};
-using TreeSimilarityPtr = std::unique_ptr<TreeSimilarity>;
+using TreeSimilarityPtr = std::shared_ptr<TreeSimilarity>;
 
 class JaccardSimilarity : public SetSimilarity {
 public:

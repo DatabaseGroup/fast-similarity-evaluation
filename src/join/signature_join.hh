@@ -31,12 +31,15 @@ public:
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
   void prepare_indexing_batch(types::Batch& batch) override {
+    // this "consumes" the data, take copy
     auto& sets = std::get<types::SetBatch>(batch);
+    indexed_sets.reserve(sets.size());
+    indexed_sets.insert(indexed_sets.begin(), sets.begin(), sets.end());
 
-    prefix_signature.prepare_index(sets);
+    prefix_signature.prepare_index(indexed_sets);
 
     int64_t universe_size = 0;
-    for (auto& set : sets) {
+    for (auto& set : indexed_sets) {
       universe_size = std::max(universe_size, set.tokens.back());
     }
     ++universe_size;
@@ -47,17 +50,14 @@ public:
   }
 
   void prepare_probing_batch(types::Batch& batch) override {
-    auto& sets = std::get<types::SetBatch>(batch);
-
-    prefix_signature.prepare_probe(sets);
+    // todo nothing? Maybe remove
   }
 
   void index_batch(types::Batch& batch) override {
-    auto& sets = std::get<types::SetBatch>(batch);
-    indexed_sets = sets;
+    // assert batch == indexed_Sets
 
     SetId set_id = 0;
-    for (auto& set : sets) {
+    for (auto& set : indexed_sets) {
       auto it = prefix_signature.begin_indexing_signatures(set);
       auto it_end = prefix_signature.end_indexing_signatures(set);
 
@@ -83,12 +83,17 @@ public:
 
   template<bool IS_SELF_JOIN>
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
-    auto& sets = std::get<types::SetBatch>(batch);
+    auto& set_batch = std::get<types::SetBatch>(batch);
+
+    types::Sets probing_sets;
+    probing_sets.reserve(set_batch.size());
+    probing_sets.insert(probing_sets.begin(), set_batch.begin(), set_batch.end());
+    prefix_signature.prepare_probe(probing_sets);
 
     std::vector<bool> already_seen(indexed_sets.size());
     std::vector<SetId> candidates;
 
-    for (auto& set : sets) {
+    for (auto& set : probing_sets) {
       auto it = prefix_signature.begin_probing_signatures(set);
       auto it_end = prefix_signature.end_probing_signatures(set);
 
@@ -139,7 +144,7 @@ private:
   similarity::SetSimilarity& similarity;
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> index{0};
-  types::SetBatch indexed_sets;
+  types::Sets indexed_sets;
 };
 
 

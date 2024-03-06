@@ -121,9 +121,9 @@ nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
   plan_json["algorithm"] = join::algorithm_to_string(plan.algorithm_id);
 
   std::vector<nlohmann::json> reduction_steps;
-  std::for_each(plan.steps.begin(), plan.steps.end(), [&](std::pair<std::reference_wrapper<ontology::Reduction>, std::reference_wrapper<ontology::StepState>>& step) {
+  std::for_each(plan.steps.begin(), plan.steps.end(), [&](ontology::ReductionStep& step) {
     nlohmann::json step_json;
-    step_json["reduction"] = step.first.get().get_label();
+    step_json["reduction"] = step.reduction.get().get_label();
 
     reduction_steps.emplace_back(step_json);
   });
@@ -170,13 +170,14 @@ int main(int argc, char** argv) {
   ontology::StandardReductionGraph graph;
   ontology::PlannerConfiguration plan_config;
   plan_config.excluded_algorithms = find_excluded_algorithms(config.excluded_algorithms);
-  auto plan_result = graph.enumerate_plans(data_id, similarity_id, plan_config);
-  auto& plans = plan_result.first;
+  auto plans = graph.enumerate_plans(data_id, similarity_id, plan_config);
 
   std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   timing::JoinTiming timing;
+
+  join::PlanExecutor executor(config.block_size, 5);
   timing.join_time.start();
-  join::interleave_plans(dataset, similarity, plans, config.block_size, statistics);
+  executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();
 
   nlohmann::json result;

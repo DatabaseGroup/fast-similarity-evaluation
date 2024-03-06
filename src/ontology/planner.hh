@@ -53,23 +53,16 @@ public:
   std::vector<ReductionEdge> edges;
 };
 
-class StepState {
-public:
-  int64_t prepared_index_batch{-1};
-  types::Dataset intermediate_data;
-  similarity::Similarity intermediate_similarity;
-};
-
-class QueryState {
-public:
-  int64_t algorithm_prepared{-1};
+struct ReductionStep {
+  size_t id;
+  std::reference_wrapper<Reduction> reduction;
+  ReductionStep(size_t id, Reduction& reduction) : id(id), reduction(reduction) {}
 };
 
 class QueryPlan {
 public:
-  std::vector<std::pair<std::reference_wrapper<Reduction>, std::reference_wrapper<StepState>>> steps;
+  std::vector<ReductionStep> steps;
   join::AlgorithmId algorithm_id{join::AlgorithmId::FALLBACK};
-  QueryState query_state;
 };
 }  // namespace ontology
 
@@ -94,21 +87,20 @@ class ReductionGraph {
 public:
   virtual ~ReductionGraph() = default;
 
-  std::pair<std::vector<QueryPlan>, std::vector<StepState>> enumerate_plans(
+  std::vector<QueryPlan> enumerate_plans(
     types::DatatypeId type,
     similarity::SimilarityId similarity,
     const PlannerConfiguration& configuration = PlannerConfiguration()) {
     NodeKey node_key{type, similarity};
-    std::vector<StepState> query_states;
 
     // assume it exists
     auto& node = nodes.find(node_key)->second;
     std::vector<QueryPlan> plans;
     QueryPlan empty_plan;
 
-    enumerate_plans_recursive(node, empty_plan, plans, query_states, configuration);
+    enumerate_plans_recursive(node, empty_plan, plans, configuration);
 
-    return {std::move(plans), std::move(query_states)};
+    return plans;
   }
 
 private:
@@ -119,7 +111,6 @@ private:
   void enumerate_plans_recursive(Node& node,  // NOLINT(*-no-recursion)
                                  QueryPlan& current_plan,
                                  std::vector<QueryPlan>& plans,
-                                 std::vector<StepState>& query_states,
                                  const PlannerConfiguration& configuration) {
     // base case
     for (auto& algorithm : node.algorithms) {
@@ -137,10 +128,10 @@ private:
 
     // recursive case
     for (auto& edge : node.edges) {
-      current_plan.steps.emplace_back(edge.reduction, query_states.emplace_back());
+      current_plan.steps.emplace_back(running_reduction_id++, edge.reduction);
 
       Node& next_node = edge.to_node;
-      enumerate_plans_recursive(next_node, current_plan, plans, query_states, configuration);
+      enumerate_plans_recursive(next_node, current_plan, plans, configuration);
 
       // remove last reduction step to prepare for next iteration
       current_plan.steps.pop_back();
@@ -158,8 +149,12 @@ protected:
     return nodes.find(key)->second;
   }
 
+protected:
   types::HashTable<NodeKey, Node> nodes;
   std::vector<std::unique_ptr<Reduction>> reductions;
+
+private:
+  size_t running_reduction_id{};
 };
 
 class StandardReductionGraph : public ReductionGraph {

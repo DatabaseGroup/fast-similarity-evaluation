@@ -17,7 +17,7 @@ public:
   explicit SetPrefixSignature(similarity::SetSimilarity& similarity) : similarity(similarity) {}
 
 public:
-  void prepare_index(types::SetBatch& sets) {
+  void prepare_index(types::Sets& sets) {
     for (auto& set : sets) {
       for (auto token : set.tokens) {
         ++token_map[token].count;
@@ -45,7 +45,7 @@ public:
     prepare_probe(sets);
   }
 
-  void prepare_probe(types::SetBatch& sets) {
+  void prepare_probe(types::Sets& sets) {
     for (auto& set : sets) {
       // take reference on token to modify it directly
       for (auto& token : set.tokens) {
@@ -84,7 +84,7 @@ public:
   }
 
   boost::span<Signature>::const_iterator end_probing_signatures(const types::Set& set) {
-    auto prefix_size = similarity.indexing_prefix_size(set);
+    auto prefix_size = similarity.probing_prefix_size(set);
 
     return begin_probing_signatures(set) + std::min(prefix_size, static_cast<int64_t>(set.tokens.size()));
   }

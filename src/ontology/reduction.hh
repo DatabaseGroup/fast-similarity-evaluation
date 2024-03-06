@@ -96,7 +96,7 @@ public:
   }
 
   std::string get_label() override {
-    return "qgram";
+    return std::to_string(q) + "gram";
   }
 
 private:
