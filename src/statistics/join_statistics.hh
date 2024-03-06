@@ -40,7 +40,7 @@ struct JoinStatistics {
 };
 
 struct LocalJoinStatistics : public JoinStatistics {
-  double bandit_weight;
+  long double bandit_weight;
   CountItem<> selection_count;
   nlohmann::json description;
 

@@ -27,9 +27,6 @@ public:
     dataset.statistics = std::move(statistics);
     return dataset;
   }
-
-private:
-  static constexpr std::streamsize BUF_SIZE = 4096;
 };
 
 }  // namespace data

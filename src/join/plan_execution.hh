@@ -214,7 +214,7 @@ void interleave_plans(data::Dataset& dataset,
       }
 
       timing::ticks end_ticks = timing::cpu_cycles_start();
-      auto loss = static_cast<double>(end_ticks - start_ticks);
+      auto loss = static_cast<long double>(end_ticks - start_ticks);
       bandit.update_weights(plan_id, loss);
       plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
 
