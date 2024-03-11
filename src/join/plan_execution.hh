@@ -160,7 +160,7 @@ public:
 
 public:
   std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>
-  reduce_to_level(IndexedBatch& batch, similarity::Similarity& similarity, ontology::QueryPlan& plan, int32_t level) {
+  reduce_to_level(IndexedBatch& batch, similarity::Similarity& similarity, ontology::QueryPlan& plan, int32_t level, statistics::LocalJoinStatistics& statistics) {
     assert(!plan.steps.empty());
     // find lowest, processed step
     auto batch_id = batch.id;
@@ -178,8 +178,10 @@ public:
 
     std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> result_pair;
     if (cache_result.has_value()) {
+      statistics.reduction_cache_hits.inc();
       result_pair = *cache_result;
     } else {
+      statistics.reduction_cache_misses.inc();
       // we have to start at the top at batch, do the first step manually (due to annoying problems with dataset vs
       // batch) this is why we assume !plan.steps.empty()
       rit = plan.steps.rend();
@@ -214,8 +216,9 @@ public:
 
   std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_end(IndexedBatch& batch,
                                                                                    similarity::Similarity& similarity,
-                                                                                   ontology::QueryPlan& plan) {
-    return reduce_to_level(batch, similarity, plan, 0);
+                                                                                   ontology::QueryPlan& plan,
+                                                                                   statistics::LocalJoinStatistics& statistics) {
+    return reduce_to_level(batch, similarity, plan, 0, statistics);
   }
 
 private:
@@ -253,7 +256,7 @@ public:
         alg_instance.algorithm->index_batch(index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
-        auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan);
+        auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics);
         alg_instance.owned_data = reduced;
         alg_instance.algorithm = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, alg_instance.owned_data->second);
 
@@ -274,7 +277,7 @@ public:
       }
     } else {
       // reduce first, this function is temporary owner of the data
-      auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan);
+      auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics);
       auto batch = types::dataset_to_batch(reduced_probe->first);
       if (index_batch.id == probe_batch.id) {
         alg_instance.algorithm->selfjoin_batch(batch, handler, statistics);
@@ -328,10 +331,10 @@ public:
 
         for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
           auto reduced_index =
-            reduction_cache.reduce_to_level(index_batch, similarity, plan, level);
+            reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
           auto reduced_index_batch = types::dataset_to_batch(reduced_index->first);
           auto reduced_probe =
-            reduction_cache.reduce_to_level(probe_batch, similarity, plan, level);
+            reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics);
           auto reduced_probe_batch = types::dataset_to_batch(reduced_probe->first);
 
           plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
@@ -360,7 +363,7 @@ public:
   }
 
 private:
-  int64_t get_batch_count(size_t input_size) {
+  [[nodiscard]] int64_t get_batch_count(size_t input_size) const {
     auto res = static_cast<int64_t>(input_size) / block_size;
     if (static_cast<int64_t>(input_size) % block_size != 0) {
       ++res;
@@ -368,7 +371,8 @@ private:
     return res;
   }
 
-  int64_t get_allpairs_batches(int64_t batch_count) { return (batch_count * (batch_count - 1)) / 2; }
+public:
+  static int64_t get_allpairs_batches(int64_t batch_count) { return (batch_count * (batch_count - 1)) / 2; }
 
 private:
   int64_t block_size;

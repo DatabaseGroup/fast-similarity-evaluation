@@ -17,8 +17,8 @@
 namespace types {
 
 template <class K, class V>
-// using HashTable = absl::flat_hash_map<K, V>;
-using HashTable = std::unordered_map<K,V>;
+using HashTable = absl::flat_hash_map<K, V>;
+// using HashTable = std::unordered_map<K,V>;
 
 #if __cplusplus > 201703L
 template<class K>

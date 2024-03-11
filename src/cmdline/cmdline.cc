@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
   std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   timing::JoinTiming timing;
 
-  join::PlanExecutor executor(config.block_size, 5);
+  join::PlanExecutor executor(config.block_size, join::PlanExecutor::get_allpairs_batches(dataset.statistics->count));
   timing.join_time.start();
   executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();

@@ -1,6 +1,8 @@
 #ifndef SRC_JOIN_STATISTICS_HH
 #define SRC_JOIN_STATISTICS_HH
 
+#include <utility>
+
 #include "statistics.hh"
 
 namespace statistics {
@@ -40,16 +42,23 @@ struct JoinStatistics {
 };
 
 struct LocalJoinStatistics : public JoinStatistics {
-  long double bandit_weight;
+  long double bandit_weight{};
   CountItem<> selection_count;
+  CountItem<> reduction_cache_hits;
+  CountItem<> reduction_cache_misses;
+
   nlohmann::json description;
 
-  explicit LocalJoinStatistics(const nlohmann::json& description) : description(description) {}
+  explicit LocalJoinStatistics(nlohmann::json description) : description(std::move(description)) {}
 
-  nlohmann::json to_json() const override {
+  [[nodiscard]] nlohmann::json to_json() const override {
     auto json = JoinStatistics::to_json();
     json["bandit_weight"] = bandit_weight;
     selection_count.add_to_json("selection_count", json);
+    reduction_cache_hits.add_to_json("reduction_cache_hits", json);
+    reduction_cache_misses.add_to_json("reduction_cache_misses", json);
+    json["reduction_cache_hitrate"] = static_cast<double>(reduction_cache_hits.value) /
+                                      static_cast<double>(reduction_cache_hits.value + reduction_cache_misses.value);
     json["description"] = description;
     return json;
   }
@@ -66,6 +75,6 @@ struct LocalJoinStatistics : public JoinStatistics {
   }
 };
 
-}
+}  // namespace statistics
 
 #endif  // SRC_JOIN_STATISTICS_HH
