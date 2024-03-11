@@ -16,37 +16,65 @@ using KeyRange = std::pair<KeyType, KeyType>;
 
 // "Interface" of index iterator
 class KeyIterator {
-  template<int32_t LEVEL>
+  template<int32_t LEVEL, class DUMMY = void>
   class IteratorHolder {
+    // using iter = ...
 
+    static void set_level_key([[maybe_unused]] KeyIterator& iterator, [[maybe_unused]] KeyType key) {
+      // ...
+    }
+    /*
+    static iter get_level_iterator(KeyIterator& iterator) {
+      // ...
+    }
+
+    static iter get_level_end(KeyIterator& iterator) {
+      // ...
+    }
+     */
   };
 
 public:
   template<int32_t LEVEL>
-  void set_level_key([[maybe_unused]]KeyType key) {
-    throw std::invalid_argument("KeyIterator does not implement this level");
+  void set_level_key(KeyType key) {
+    IteratorHolder<LEVEL>::set_level_key(*this, key);
   }
 
   template<int32_t LEVEL>
   IteratorHolder<LEVEL>::iter get_level_iterator() {
-    throw std::invalid_argument("KeyIterator does not implement this level");
+    IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
   template<int32_t LEVEL>
   IteratorHolder<LEVEL>::iter get_level_end() {
-    throw std::invalid_argument("KeyIterator does not implement this level");
+    IteratorHolder<LEVEL>::get_level_end(*this);
   }
 };
 
 // arguably somewhat terrible code, but highly customizable due to the templates
+// specializing a templated method of a templated class is terrible (and only works
+// for partial specialization for some arcane reason)
 template<class KeyClass>
 class StaticKeyIterator {
-  template<int32_t LEVEL>
-  class IteratorHolder {};
-  template<>
-  class IteratorHolder<0> {
-  public:
+  // the dummy only exists to make specializations partial instead of explicit (i.e., full)
+  template<int32_t LEVEL, class DUMMY = void>
+  struct IteratorHolder {};
+
+  template<class DUMMY>
+  struct IteratorHolder<0, DUMMY> {
     using iter = std::array<KeyClass, 1>::const_iterator;
+
+    static void set_level_key([[maybe_unused]] StaticKeyIterator& iterator, [[maybe_unused]] KeyType key) {
+      // nop
+    }
+
+    static iter get_level_iterator(StaticKeyIterator& iterator) {
+      return iterator.stored_key.begin();
+    }
+
+    static iter get_level_end(StaticKeyIterator& iterator) {
+      return iterator.stored_key.end();
+    }
   };
 
 public:
@@ -55,34 +83,17 @@ public:
 public:
   template<int32_t LEVEL>
   void set_level_key([[maybe_unused]]KeyType key) {
-    throw std::invalid_argument("KeyIterator does not implement this level");
+    return IteratorHolder<LEVEL>::set_level_key(*this, key);
   }
 
   template<int32_t LEVEL>
   IteratorHolder<LEVEL>::iter get_level_iterator() {
-    throw std::invalid_argument("KeyIterator does not implement this level");
+    return IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
   template<int32_t LEVEL>
   IteratorHolder<LEVEL>::iter get_level_end() {
-    throw std::invalid_argument("KeyIterator does not implement this level");
-  }
-
-  // LEVEL 0
-
-  template <>
-  void set_level_key<0>([[maybe_unused]]KeyType key) {
-    // nop
-  }
-
-  template <>
-  [[nodiscard]] IteratorHolder<0>::iter get_level_iterator<0>() {
-    return stored_key.begin();
-  }
-
-  template <>
-  [[nodiscard]] IteratorHolder<0>::iter get_level_end<0>() {
-    return stored_key.end();
+    return IteratorHolder<LEVEL>::get_level_end(*this);
   }
 
 private:

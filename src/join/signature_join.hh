@@ -155,15 +155,42 @@ private:
   using RefString = std::reference_wrapper<types::String>;
 
   class KeyIterator {
-    template<int32_t LEVEL>
+    template<int32_t LEVEL, class DUMMY = void>
     struct IteratorHolder {};
-    template<>
-    struct IteratorHolder<0>{
+
+    template<class DUMMY>
+    struct IteratorHolder<0, DUMMY> {
       using iter = boost::integer_range<int64_t>::const_iterator;
+
+      static void set_level_key(KeyIterator& iterator, indexing::KeyType key) {
+        iterator.index_string_size = key;
+        iterator.current_signatures = iterator.signature.probing_signatures(iterator.string, iterator.index_string_size);
+      }
+
+      static iter get_level_iterator(KeyIterator& iterator) {
+        return iterator.partition_range.begin();
+      }
+
+      static iter get_level_end(KeyIterator& iterator) {
+        return iterator.partition_range.end();
+      }
     };
-    template<>
-    struct IteratorHolder<1>{
+
+    template<class DUMMY>
+    struct IteratorHolder<1, DUMMY> {
       using iter = similarity::PassJoinSignature::ProbingSignatures::value_type::const_iterator;
+
+      static void set_level_key(KeyIterator& iterator, indexing::KeyType key) {
+        iterator.current_partition_number = key;
+      }
+
+      static iter get_level_iterator(KeyIterator& iterator) {
+        return iterator.current_signatures[iterator.current_partition_number].begin();
+      }
+
+      static iter get_level_end(KeyIterator& iterator) {
+        return iterator.current_signatures[iterator.current_partition_number].end();
+      }
     };
 
   public:
@@ -172,52 +199,17 @@ private:
   public:
     template<int32_t LEVEL>
     void set_level_key([[maybe_unused]] indexing::KeyType key) {
-      throw std::invalid_argument("KeyIterator does not implement this level");
+      IteratorHolder<LEVEL>::set_level_key(*this, key);
     }
 
     template<int32_t LEVEL>
     IteratorHolder<LEVEL>::iter get_level_iterator() {
-      throw std::invalid_argument("KeyIterator does not implement this level");
+      return IteratorHolder<LEVEL>::get_level_iterator(*this);
     }
 
     template<int32_t LEVEL>
     IteratorHolder<LEVEL>::iter get_level_end() {
-      throw std::invalid_argument("KeyIterator does not implement this level");
-    }
-
-    // LEVEL 0 (partition number)
-    // gets length of index string
-    template<>
-    void set_level_key<0>(indexing::KeyType key) {
-      index_string_size = key;
-      current_signatures = signature.probing_signatures(string, index_string_size);
-    }
-
-    template<>
-    IteratorHolder<0>::iter get_level_iterator<0>() {
-      return partition_range.begin();
-    }
-
-    template<>
-    IteratorHolder<0>::iter get_level_end<0>() {
-      return partition_range.end();
-    }
-
-    // LEVEL 1 (hash)
-    // gets partition_number
-    template<>
-    void set_level_key<1>(indexing::KeyType key) {
-      current_partition_number = key;
-    }
-
-    template<>
-    IteratorHolder<1>::iter get_level_iterator<1>() {
-      return current_signatures[current_partition_number].begin();
-    }
-
-    template<>
-    IteratorHolder<1>::iter get_level_end<1>() {
-      return current_signatures[current_partition_number].end();
+      return IteratorHolder<LEVEL>::get_level_end(*this);
     }
 
   private:

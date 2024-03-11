@@ -16,12 +16,9 @@ public:
 
 public:
   void reserve(size_t n) {
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "LoopDoesntUseConditionVariableInspection"
     while (capacity() <= n + size()) {
       evict();
     }
-#pragma clang diagnostic pop
   }
 
   [[nodiscard]] size_t size() const {
