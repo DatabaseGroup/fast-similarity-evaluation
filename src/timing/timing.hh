@@ -14,7 +14,7 @@ struct DummyTimer {
   void start() {}
   void stop() {}
   void clear() {}
-  void add_to_json(const std::string& name, nlohmann::json& json) const {}
+  void add_to_json([[maybe_unused]] const std::string& name, [[maybe_unused]] nlohmann::json& json) const {}
 
   [[nodiscard]] double get() const { return time_duration::zero().count(); }
 };

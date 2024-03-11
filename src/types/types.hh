@@ -90,7 +90,7 @@ public:
 using Trees = std::vector<Tree>;
 using TreeBatch = span<Tree>;
 
-std::ostream& operator<<(std::ostream& os, const Tree& obj)
+std::ostream& operator<<([[maybe_unused]]std::ostream& os, [[maybe_unused]] const Tree& obj)
 {
   throw std::invalid_argument("Printing trees is not implemented yet. Maybe do bracket notation? See tree-edit library");
 }

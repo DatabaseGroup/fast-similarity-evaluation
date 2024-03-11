@@ -10,8 +10,6 @@ namespace util {
 template<class Key, class Value>
 class LRUCache {
 public:
-  using query_t = std::optional<Value>;
-public:
   explicit LRUCache(size_t capacity) : cache_capacity(capacity) {}
 
 public:
@@ -61,7 +59,7 @@ public:
     }
   }
 
-  query_t get(const Key& key) {
+  std::optional<Value> get(const Key& key) {
     auto it = values.find(key);
 
     // if not found, return none
@@ -79,7 +77,7 @@ public:
       access_list.push_front(key);
       it->second.second = access_list.begin();
     }
-    return std::make_optional<Value>(std::ref(it->second.first));
+    return std::make_optional<Value>(it->second.first);
   }
 
 private:

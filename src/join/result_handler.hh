@@ -6,6 +6,7 @@
 
 namespace join {
 
+/*
 class VerifyUntilFailureHandler {
 public:
   VerifyUntilFailureHandler(types::Dataset& top_dataset,
@@ -25,6 +26,8 @@ private:
   std::vector<similarity::Similarity>& similarities;  // in reverse order
   std::vector<types::ResultPair>& results;
 };
+
+*/
 
 class MaterializeHandler {
 public:

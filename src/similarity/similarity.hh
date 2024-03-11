@@ -102,16 +102,16 @@ public:
 
   virtual int64_t maximum_length_bound(int64_t size) = 0;
 };
-using SetSimilarityPtr = std::shared_ptr<SetSimilarity>;
+using SetSimilarityPtr = std::unique_ptr<SetSimilarity>;
 
 class StringSimilarity : public AbstractSimilarity<types::String> {
 public:
   explicit StringSimilarity(double threshold) : AbstractSimilarity<types::String>(threshold) {}
 };
-using StringSimilarityPtr = std::shared_ptr<StringSimilarity>;
+using StringSimilarityPtr = std::unique_ptr<StringSimilarity>;
 
 class TreeSimilarity : public AbstractSimilarity<types::Tree> {};
-using TreeSimilarityPtr = std::shared_ptr<TreeSimilarity>;
+using TreeSimilarityPtr = std::unique_ptr<TreeSimilarity>;
 
 class JaccardSimilarity : public SetSimilarity {
 public:
@@ -178,8 +178,8 @@ public:
         } else if (i == 0) {
           r[j + 1] = r[j] + 1;
         } else {
-          auto ca = a.at(i - 1);
-          auto cb = 0 <= j + k - 1 && j + k - 1 < n ? b.at(j + k - 1) : '\0';
+          auto ca = a[i - 1];
+          auto cb = 0 <= j + k - 1 && j + k - 1 < n ? b[j + k - 1] : '\0';
           r[j + 1] = std::min(r[j + 1] + (ca != cb), std::min(r[j + 2] + 1, r[j] + 1));
         }
       }

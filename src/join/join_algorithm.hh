@@ -18,9 +18,10 @@ std::string algorithm_to_string(AlgorithmId id) {
   case PASS_JOIN:
     return "pass-join";
   }
+  return "fallback";
 }
 
-AlgorithmId string_to_algorithm(std::string algorithm) {
+AlgorithmId string_to_algorithm(const std::string& algorithm) {
   static const std::unordered_map<std::string, AlgorithmId> map{
     {"prefix-signature", AlgorithmId::PREFIX_SIGNATURE_JOIN}, {"pass-join", AlgorithmId::PASS_JOIN}};
   auto it = map.find(algorithm);
