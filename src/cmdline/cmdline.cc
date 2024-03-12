@@ -13,7 +13,7 @@ struct Config {
   std::string datatype;
   std::string similarity;
   double threshold{};
-  int64_t block_size{};
+  int64_t batch_count{};
   std::string label;
   std::vector<std::string> excluded_algorithms;
 };
@@ -26,7 +26,7 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
-    "block-size,b", po::value(&config.block_size)->default_value(10000), "Block size")(
+    "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into")(
     "label,l", po::value(&config.label), "label for the run (printed in json)")("exclude,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms");
 
   const std::string exec_name(argv[0]);
@@ -74,7 +74,7 @@ nlohmann::json get_metadata(Config& config) {
   json["dataset"] = std::filesystem::path(config.input_file).filename();
   json["similarity"] = config.similarity;
   json["threshold"] = config.threshold;
-  json["blocksize"] = config.block_size;
+  json["blocksize"] = config.batch_count;
   json["datatype"] = config.datatype;
   json["label"] = config.label;
 
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
   std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   timing::JoinTiming timing;
 
-  join::PlanExecutor executor(config.block_size, join::PlanExecutor::get_allpairs_batches(dataset.statistics->count));
+  join::PlanExecutor executor(config.batch_count, join::PlanExecutor::get_allpairs_batches(dataset.statistics->count));
   timing.join_time.start();
   executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();

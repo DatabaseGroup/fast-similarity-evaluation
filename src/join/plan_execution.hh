@@ -295,27 +295,27 @@ private:
 
 class PlanExecutor {
 public:
-  explicit PlanExecutor(int64_t blockSize, size_t cache_size) : block_size(blockSize), reduction_cache(cache_size) {}
+  explicit PlanExecutor(int64_t blockSize, size_t cache_size) : batch_count(blockSize), reduction_cache(cache_size) {}
 
 public:
   void execute_plans(data::Dataset& dataset,
                      similarity::Similarity& similarity,
                      std::vector<ontology::QueryPlan>& plans,
                      std::vector<statistics::LocalJoinStatistics>& all_statistics) {
-    int64_t batch_count = get_batch_count(dataset.statistics->count);
     int64_t all_batch_pairs = get_allpairs_batches(batch_count);
+    int64_t batch_size = get_batch_size(batch_count, dataset.statistics->count);
 
     ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
     for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
-      auto index_batch = IndexedBatch(index_batch_idx, types::get_batch(dataset.data, index_batch_idx, block_size));
-      auto index_offset = get_offset_into_batch(index_batch_idx, block_size);
+      auto index_batch = IndexedBatch(index_batch_idx, types::get_batch(dataset.data, index_batch_idx, batch_size));
+      auto index_offset = get_offset_into_batch(index_batch_idx, batch_size);
 
       AlgorithmCache algorithm_cache(index_batch, reduction_cache, plans.size());
 
       for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
-        auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch(dataset.data, probe_batch_idx, block_size));
-        auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
+        auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch(dataset.data, probe_batch_idx, batch_size));
+        auto probe_offset = get_offset_into_batch(probe_batch_idx, batch_size);
 
         int64_t plan_id = bandit.select_arm();
         timing::ExecutionCost start_cost = timing::start_cost_measurement();
@@ -362,20 +362,14 @@ public:
     }
   }
 
-private:
-  [[nodiscard]] int64_t get_batch_count(size_t input_size) const {
-    auto res = static_cast<int64_t>(input_size) / block_size;
-    if (static_cast<int64_t>(input_size) % block_size != 0) {
-      ++res;
-    }
-    return res;
+  static int64_t get_batch_size(int64_t batch_count, int64_t input_size) {
+    int64_t size = input_size / batch_count + ((input_size % batch_count) != 0);
+    return size;
   }
-
-public:
   static int64_t get_allpairs_batches(int64_t batch_count) { return (batch_count * (batch_count - 1)) / 2; }
 
 private:
-  int64_t block_size;
+  int64_t batch_count;
   ReductionCache reduction_cache;
 };
 

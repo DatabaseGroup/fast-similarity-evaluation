@@ -39,7 +39,7 @@ __inline__ ExecutionCost start_cost_measurement() {
                "mov %%edx, %0\n\t"
                "mov %%eax, %1\n\t": "=r" (cycles_high), "=r" (cycles_low)::
                                                           "%rax", "%rbx", "%rcx", "%rdx");
-  uint64_t ticks = ((ticks)cycles_high << 32) | cycles_low;
+  uint64_t ticks = ((uint64_t)cycles_high << 32) | cycles_low;
   return ExecutionCost(ticks);
 #endif
 }
@@ -55,7 +55,7 @@ __inline__ ExecutionCost end_cost_measurement() {
                "mov %%eax, %1\n\t"
                "CPUID\n\t": "=r" (cycles_high), "=r" (cycles_low):: "%rax",
                              "%rbx", "%rcx", "%rdx");
-  uint64_t ticks = ((ticks)cycles_high << 32) | cycles_low;
+  uint64_t ticks = ((uint64_t)cycles_high << 32) | cycles_low;
   return ExecutionCost(ticks);
 #endif
 }
