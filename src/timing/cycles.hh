@@ -25,7 +25,7 @@ static __inline__ ticks cpu_cycles_start () {
 static __inline__ ticks cpu_cycles_stop () {
 #if defined(__aarch64__) || defined(_M_ARM64)
   uint64_t value;
-  asm("mrs %0, PMCCNTR_EL0" : "=r"(value); isb);
+  asm("isb; mrs %0, PMCCNTR_EL0" : "=r"(value));
   return value;
 #else
   unsigned cycles_low, cycles_high;
