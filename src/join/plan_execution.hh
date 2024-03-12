@@ -295,7 +295,7 @@ private:
 
 class PlanExecutor {
 public:
-  explicit PlanExecutor(int64_t blockSize, size_t cache_size) : batch_count(blockSize), reduction_cache(cache_size) {}
+  explicit PlanExecutor(int64_t batch_count, size_t cache_size) : batch_count(batch_count), reduction_cache(cache_size) {}
 
 public:
   void execute_plans(data::Dataset& dataset,

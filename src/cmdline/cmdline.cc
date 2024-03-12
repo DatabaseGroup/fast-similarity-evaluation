@@ -74,7 +74,7 @@ nlohmann::json get_metadata(Config& config) {
   json["dataset"] = std::filesystem::path(config.input_file).filename();
   json["similarity"] = config.similarity;
   json["threshold"] = config.threshold;
-  json["blocksize"] = config.batch_count;
+  json["batch_count"] = config.batch_count;
   json["datatype"] = config.datatype;
   json["label"] = config.label;
 
