@@ -190,7 +190,7 @@ public:
   }
 
   [[nodiscard]] int64_t length_lower_bound(size_t string_size) const {
-    return std::max(0l, static_cast<int64_t>(string_size) - _thresh);
+    return std::max(INT64_C(0), static_cast<int64_t>(string_size) - _thresh);
   }
 
   [[nodiscard]] int64_t length_upper_bound(size_t string_size) const {
