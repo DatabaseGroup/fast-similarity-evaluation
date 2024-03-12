@@ -7,7 +7,7 @@
 #include "../ontology/planner.hh"
 #include "../similarity/similarity.hh"
 #include "../statistics/join_statistics.hh"
-#include "../timing/cycles.hh"
+#include "../timing/cost_measurement.hh"
 #include "../types/types.hh"
 #include "../util/lru_cache.hh"
 #include "../util/visit_overload.hh"
@@ -318,7 +318,7 @@ public:
         auto probe_offset = get_offset_into_batch(probe_batch_idx, block_size);
 
         int64_t plan_id = bandit.select_arm();
-        timing::ticks start_ticks = timing::cpu_cycles_start();
+        timing::ExecutionCost start_cost = timing::start_cost_measurement();
 
         auto& plan = plans[plan_id];
         auto& plan_statistics = all_statistics[plan_id];
@@ -348,8 +348,8 @@ public:
           verify_with_similarity(dataset.data, similarity, result_pairs);
         }
 
-        timing::ticks end_ticks = timing::cpu_cycles_start();
-        auto loss = static_cast<long double>(end_ticks - start_ticks);
+        timing::ExecutionCost end_cost = timing::start_cost_measurement();
+        auto loss = static_cast<long double>(timing::get_cost(start_cost, end_cost));
         bandit.update_weights(plan_id, loss);
         plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
 
