@@ -120,12 +120,9 @@ nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
 
   plan_json["algorithm"] = join::algorithm_to_string(plan.algorithm_id);
 
-  std::vector<nlohmann::json> reduction_steps;
+  std::vector<std::string> reduction_steps;
   std::for_each(plan.steps.begin(), plan.steps.end(), [&](ontology::ReductionStep& step) {
-    nlohmann::json step_json;
-    step_json["reduction"] = step.reduction.get().get_label();
-
-    reduction_steps.emplace_back(step_json);
+    reduction_steps.emplace_back(step.reduction.get().get_label());
   });
 
   plan_json["reduction"] = reduction_steps;
