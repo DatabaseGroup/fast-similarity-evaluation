@@ -143,9 +143,6 @@ std::vector<statistics::LocalJoinStatistics> setup_statistics(std::vector<ontolo
 }
 
 statistics::JoinStatistics sum_statistics(std::vector<statistics::LocalJoinStatistics>& statistics) {
-  nlohmann::json description;
-  description["algorithm"] = "bandit";
-
   return std::reduce(statistics.begin(), statistics.end(), statistics::JoinStatistics());
 }
 
@@ -183,10 +180,10 @@ int main(int argc, char** argv) {
   nlohmann::json result;
   result["meta"] = get_metadata(config);
 
-  std::vector<nlohmann::json> local_statistics;
-  std::for_each(statistics.begin(), statistics.end(), [&](auto& statistic) {
-    local_statistics.emplace_back(statistic.to_json());
-  });
+  nlohmann::json local_statistics;
+  for (size_t i = 0; i < plans.size(); ++i) {
+    local_statistics[plans[i].to_string()] = statistics[i].to_json();
+  }
   statistics::JoinStatistics global_statistics = sum_statistics(statistics);
 
   result["local_statistics"] = local_statistics;

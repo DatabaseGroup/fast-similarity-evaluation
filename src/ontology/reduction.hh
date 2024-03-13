@@ -44,7 +44,7 @@ public:
   virtual types::Dataset reduce_data(types::Batch& input_batch) = 0;
   virtual void reduce_data(types::Batch& input_batch, types::Batch& output_batch) = 0;
   virtual similarity::Similarity reduce_similarity(similarity::Similarity& similarity) = 0;
-  virtual std::string get_label() = 0;
+  virtual const std::string get_label() = 0;
 };
 
 class QGramReduction : public Reduction {
@@ -95,7 +95,7 @@ public:
     return qgc_sim;
   }
 
-  std::string get_label() override {
+  std::string const get_label() override {
     return std::to_string(q) + "gram";
   }
 

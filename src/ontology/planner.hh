@@ -63,6 +63,17 @@ class QueryPlan {
 public:
   std::vector<ReductionStep> steps;
   join::AlgorithmId algorithm_id{join::AlgorithmId::FALLBACK};
+
+  [[nodiscard]] std::string to_string() const {
+    std::string res;
+
+    for (auto& step : steps) {
+      res += step.reduction.get().get_label() + "->";
+    }
+    res += join::algorithm_to_string(algorithm_id);
+
+    return res;
+  }
 };
 }  // namespace ontology
 
