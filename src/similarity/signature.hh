@@ -5,7 +5,6 @@
 #include <boost/core/span.hpp>
 
 #include "../types/types.hh"
-#include "../indexing/index.hh"
 
 namespace similarity {
 
@@ -17,7 +16,7 @@ public:
   explicit SetPrefixSignature(similarity::SetSimilarity& similarity) : similarity(similarity) {}
 
 public:
-  void prepare_index(types::Sets& sets) {
+  void prepare_index(std::vector<types::Set>& sets) {
     for (auto& set : sets) {
       for (auto token : set.tokens) {
         ++token_map[token].count;
@@ -32,40 +31,38 @@ public:
       entries.emplace_back(entry.first, entry.second.count);
     }
 
-    std::sort(entries.begin(), entries.end(), [](const TokenCountPair& o1, const TokenCountPair& o2){
+    std::ranges::sort(entries, [](const TokenCountPair& o1, const TokenCountPair& o2){
       return o1.second < o2.second;
     });
 
     int64_t current_token = 1;
-    for (auto& entry : entries) {
-      token_map[entry.first].token = current_token;
+    for (auto&key : entries | std::views::keys) {
+      token_map[key].token = current_token;
       ++current_token;
     }
 
     prepare_probe(sets);
   }
 
-  void prepare_probe(types::Sets& sets) {
+  void prepare_probe(std::vector<types::Set>& sets) {
     for (auto& set : sets) {
       // take reference on token to modify it directly
       for (auto& token : set.tokens) {
-        auto it = token_map.find(token);
-
-        if (it != token_map.end()) {
+        if (auto it = token_map.find(token); it != token_map.end()) {
           token = it->second.token;
         } else {
           // token 0 symbolizes non-existence (minimum "real" token value is 1)
           token = 0;
         }
       }
-      std::sort(set.tokens.begin(), set.tokens.end());
+      std::ranges::sort(set.tokens);
     }
 
     std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2){
       if (s1.tokens.size() != s2.tokens.size()) {
         return s1.tokens.size() < s2.tokens.size();
       }
-      return std::lexicographical_compare(s1.tokens.begin(), s1.tokens.end(), s2.tokens.begin(), s2.tokens.end());
+      return std::ranges::lexicographical_compare(s1.tokens, s2.tokens);
     });
   }
 
@@ -111,7 +108,7 @@ public:
 
 public:
   // hash of partition i at [i]
-  IndexingSignatures indexing_signatures(std::u32string& string) {
+  IndexingSignatures indexing_signatures(const std::u32string& string) {
     std::vector<Signature> signatures;
     int32_t offset = 0;
 
@@ -131,7 +128,7 @@ public:
   }
 
   // multiple hashes of partition i at [i]
-  ProbingSignatures probing_signatures(std::u32string& string, int64_t index_string_size) {
+  ProbingSignatures probing_signatures(const std::u32string& string, int64_t index_string_size) {
     std::vector<std::vector<Signature>> signatures;
     int32_t offset = 0;
     auto string_size = static_cast<int32_t>(string.size());

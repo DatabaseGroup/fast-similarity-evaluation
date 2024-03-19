@@ -33,8 +33,8 @@ public:
   void prepare_indexing_batch(types::Batch& batch) override {
     // this "consumes" the data, take copy
     auto& sets = std::get<types::SetBatch>(batch);
-    indexed_sets.reserve(sets.size());
-    indexed_sets.insert(indexed_sets.begin(), sets.begin(), sets.end());
+    indexed_sets.reserve(sets.data.size());
+    indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
 
     prefix_signature.prepare_index(indexed_sets);
 
@@ -85,9 +85,9 @@ public:
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto& set_batch = std::get<types::SetBatch>(batch);
 
-    types::Sets probing_sets;
-    probing_sets.reserve(set_batch.size());
-    probing_sets.insert(probing_sets.begin(), set_batch.begin(), set_batch.end());
+    std::vector<types::Set> probing_sets;
+    probing_sets.reserve(set_batch.data.size());
+    probing_sets.insert(probing_sets.begin(), set_batch.data.begin(), set_batch.data.end());
     prefix_signature.prepare_probe(probing_sets);
 
     std::vector<bool> already_seen(indexed_sets.size());
@@ -144,7 +144,7 @@ private:
   similarity::SetSimilarity& similarity;
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> index{0};
-  types::Sets indexed_sets;
+  std::vector<types::Set> indexed_sets;
 };
 
 
@@ -229,8 +229,8 @@ public:
     auto& strings = std::get<types::StringBatch>(batch);
 
     indexed_strings.clear();
-    indexed_strings.reserve(strings.size());
-    std::for_each(strings.begin(), strings.end(), [&](auto& s) {indexed_strings.emplace_back(s);});
+    indexed_strings.reserve(strings.data.size());
+    indexed_strings.insert(indexed_strings.begin(), strings.data.begin(), strings.data.end());
 
     std::sort(indexed_strings.begin(), indexed_strings.end(), [](RefString& s1, RefString& s2){
       auto& str1 = s1.get().str;
@@ -283,7 +283,7 @@ public:
     std::vector<bool> already_seen(indexed_strings.size());
     std::vector<StringId> candidates;
 
-    for (auto& string : strings) {
+    for (auto& string : strings.data) {
       KeyIterator key_iterator(string.str, signature);
 
       int64_t length_lower_bound = similarity.length_lower_bound(string.str.size());

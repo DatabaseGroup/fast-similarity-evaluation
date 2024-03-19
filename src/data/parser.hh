@@ -20,7 +20,7 @@ public:
 
     types::Data::Id data_id = 0;
     for (std::string line; std::getline(file, line);) {
-      strings.emplace_back(data_id, std::u32string(line.begin(), line.end()));
+      strings.data.emplace_back(data_id, std::u32string(line.begin(), line.end()));
       ++data_id;
     }
     statistics->count = static_cast<int64_t>(data_id);
@@ -45,7 +45,7 @@ public:
       if (!parser.validate_input(line)) {
         continue;
       }
-      trees.emplace_back(++data_id, parser.parse_single(line));
+      trees.data.emplace_back(++data_id, parser.parse_single(line));
     }
   }
 };

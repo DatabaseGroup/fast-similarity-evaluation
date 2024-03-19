@@ -22,17 +22,21 @@ protected:
   }
 
 private:
+  // InDatasetType = types::DataMeta<types::Set>, types::DataMeta<types::String>, or types::DataMeta<types::Tree>
+  // OutDatasetType = types::DataMeta<types::Set>, types::DataMeta<types::String>, or types::DataMeta<types::Tree>
   template <class InDatasetType, class OutDatasetType>
-  static OutDatasetType _reduce_like_batch(InDatasetType& data, Reduction& reduction) {
+  static OutDatasetType _reduce_like_batch(InDatasetType& dataset, Reduction& reduction) {
     // Datatype should be types::Set/String/Tree
     using InDatatype = typename InDatasetType::value_type;
     using OutDatatype = typename OutDatasetType::value_type;
-    OutDatasetType reduced_data(data.size());
 
-    types::span<InDatatype> data_span{data};
-    types::Batch data_batch(data_span);
-    types::span<OutDatatype> reduced_span{reduced_data};
-    types::Batch reduced_batch(reduced_span);
+    OutDatasetType reduced_data;
+    reduced_data.data.resize(dataset.data.size());
+
+    types::span<InDatatype> data_span{dataset.data};
+    types::Batch data_batch(types::DataBatch<InDatatype>(data_span, dataset.meta));
+    types::span<OutDatatype> reduced_span{reduced_data.data};
+    types::Batch reduced_batch{types::DataBatch<OutDatatype>(reduced_data)};
     reduction.reduce_data(data_batch, reduced_batch);
 
     return reduced_data;
@@ -57,9 +61,9 @@ public:
     auto& out_strings = std::get<types::SetBatch>(output_batch);
     assert(in_strings.size() == out_strings.size());
 
-    auto in_iter = in_strings.begin();
-    auto in_iter_end = in_strings.end();
-    auto out_iter = out_strings.begin();
+    auto in_iter = in_strings.data.begin();
+    auto in_iter_end = in_strings.data.end();
+    auto out_iter = out_strings.data.begin();
     // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
 
     while (in_iter != in_iter_end) {

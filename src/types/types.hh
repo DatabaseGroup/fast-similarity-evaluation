@@ -2,9 +2,9 @@
 #define SRC_TYPES_HH
 
 #include <absl/container/flat_hash_map.h>
-
-#include <tsim/node/node.h>
+#include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
+#include <tsim/node/node.h>
 
 #if __cplusplus > 201703L
 #include <span>
@@ -24,10 +24,10 @@ using HashTable = absl::flat_hash_map<K, V>;
 // using HashTable = std::unordered_map<K,V>;
 
 #if __cplusplus > 201703L
-template<class K>
+template <class K>
 using span = std::span<K>;
 #else
-template<class K>
+template <class K>
 using span = boost::span<K>;
 #endif
 
@@ -45,6 +45,29 @@ public:
 using ResultPair = std::pair<Data::Id, Data::Id>;
 using ResultPairs = std::vector<ResultPair>;
 
+template <class T>
+class Meta {};
+
+template <class T>
+class DataMeta {
+public:
+  using value_type = T;
+  std::vector<value_type> data;
+  Meta<T> meta;
+};
+
+template <class T>
+class DataBatch {
+public:
+  using value_type = T;
+  span<value_type> data;
+  Meta<T>& meta;
+
+public:
+  explicit DataBatch(DataMeta<T>& data) : data(data.data), meta(data.meta) {}
+  DataBatch(span<value_type> s, Meta<T>& meta) : data(s), meta(meta) {}
+};
+
 class Set : public Data {
 public:
   using Token = int64_t;
@@ -52,11 +75,14 @@ public:
   explicit Set(Id id) : Data(id) {}
   Set() : Data(INVALID) {}
 };
-using Sets = std::vector<Set>;
-using SetBatch = span<Set>;
 
-std::ostream& operator<<(std::ostream& os, const Set& obj)
-{
+template <>
+class Meta<Set> {};
+
+using Sets = DataMeta<Set>;
+using SetBatch = DataBatch<Set>;
+
+std::ostream& operator<<(std::ostream& os, const Set& obj) {
   os << "(" << obj.id << ", [";
   for (auto token : obj.tokens) {
     os << token << ", ";
@@ -67,7 +93,8 @@ std::ostream& operator<<(std::ostream& os, const Set& obj)
 
 class String : public Data {
 public:
-  // we have to use "longer" strings here as a reduction to strings might result in requiring more than 8 bits for each character
+  // we have to use "longer" strings here as a reduction to strings might result in requiring more than 8 bits for each
+  // character
   using str_t = std::u32string;
   str_t str;
 
@@ -76,11 +103,12 @@ public:
   String(Id id, str_t str) : Data(id), str(std::move(str)) {}
   String(Id id, const std::string& str) : Data(id), str(str.begin(), str.end()) {}
 };
-using Strings = std::vector<String>;
-using StringBatch = span<String>;
+template <>
+class Meta<String> {};
+using Strings = DataMeta<String>;
+using StringBatch = DataBatch<String>;
 
-std::ostream& operator<<(std::ostream& os, const String& obj)
-{
+std::ostream& operator<<(std::ostream& os, const String& obj) {
   os << "(" << obj.id << ", [";
   for (auto c : obj.str) {
     if (c > std::numeric_limits<char>::max()) {
@@ -105,41 +133,55 @@ public:
 public:
   Node root;
 };
-using Trees = std::vector<Tree>;
-using TreeBatch = span<Tree>;
+template <>
+class Meta<Tree> {
+  tsim::label::LabelDictionary<Tree::Label> label_dict;
+};
+using Trees = DataMeta<Tree>;
+using TreeBatch = DataBatch<Tree>;
 
-std::ostream& operator<<([[maybe_unused]]std::ostream& os, [[maybe_unused]] const Tree& obj)
-{
-  throw std::invalid_argument("Printing trees is not implemented yet. Maybe do bracket notation? See tree-edit library");
+std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unused]] const Tree& obj) {
+  throw std::invalid_argument(
+    "Printing trees is not implemented yet. Maybe do bracket notation? See tree-edit library");
 }
 
 using Dataset = std::variant<Sets, Strings, Trees>;
 using Batch = std::variant<SetBatch, StringBatch, TreeBatch>;
 
 Batch dataset_to_batch(Dataset& dataset) {
-  return std::visit([](auto&& data){
-    using DatasetType = std::decay_t<decltype(data)>;
-    return Batch(span<typename DatasetType::value_type>(data));
-  }, dataset);
+  return std::visit(
+    [](auto&& data) {
+      using DatasetType = std::decay_t<decltype(data)>;
+      return Batch(DataBatch<typename DatasetType::value_type>(data));
+    },
+    dataset);
 }
 
 Batch get_batch(Dataset& dataset, const int64_t batch_idx, const int64_t batch_size) {
   int64_t offset = batch_idx * batch_size;
-  return std::visit([&](auto&& data){
-    using DatasetType = std::decay_t<decltype(data)>;
-    return Batch(span<typename DatasetType::value_type>(data.begin() + offset, std::min(data.begin() + offset + batch_size, data.end())));
-  }, dataset);
+  return std::visit(
+    [&](auto&& actual_dataset) {
+      using DatasetType = std::decay_t<decltype(actual_dataset)>;
+      return Batch(DataBatch<typename DatasetType::value_type>(
+        span<typename DatasetType::value_type>(
+          actual_dataset.data.begin() + offset,
+          std::min(actual_dataset.data.begin() + offset + batch_size, actual_dataset.data.end())),
+        actual_dataset.meta));
+    },
+    dataset);
 }
 
 void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {
-  std::visit([&](auto& data) {
-    for (auto [id1, id2] : pairs) {
-      auto& o1 = data[id1];
-      auto& o2 = data[id2];
+  std::visit(
+    [&](auto& actual_dataset) {
+      for (auto [id1, id2] : pairs) {
+        auto& o1 = actual_dataset.data[id1];
+        auto& o2 = actual_dataset.data[id2];
 
-      ostream << "(" << o1 << " : " << o2 << ")" << std::endl;
-    }
-  }, data);
+        ostream << "(" << o1 << " : " << o2 << ")" << std::endl;
+      }
+    },
+    data);
 }
 
 }  // namespace types

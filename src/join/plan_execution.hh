@@ -38,8 +38,8 @@ void _verify(DataType& dataset, SimilarityPtr& similarity, std::vector<types::Re
                              [&](auto& pair) {
                                auto l_id = pair.first;
                                auto r_id = pair.second;
-                               auto& l = dataset[l_id];
-                               auto& r = dataset[r_id];
+                               auto& l = dataset.data[l_id];
+                               auto& r = dataset.data[r_id];
                                return !similarity->is_in_threshold(l, r);
                              }),
               pairs.end());
@@ -57,8 +57,8 @@ void _offset_verify(DataType& left_dataset,
                              [&](auto& pair) {
                                auto l_id = pair.first;
                                auto r_id = pair.second;
-                               auto& l = left_dataset[l_id - left_offset];
-                               auto& r = right_dataset[r_id - right_offset];
+                               auto& l = left_dataset.data[l_id - left_offset];
+                               auto& r = right_dataset.data[r_id - right_offset];
                                return !similarity->is_in_threshold(l, r);
                              }),
               pairs.end());
