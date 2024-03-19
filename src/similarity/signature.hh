@@ -111,13 +111,13 @@ public:
 
 public:
   // hash of partition i at [i]
-  IndexingSignatures indexing_signatures(std::string& string) {
+  IndexingSignatures indexing_signatures(std::u32string& string) {
     std::vector<Signature> signatures;
     int32_t offset = 0;
 
     for (int32_t partition = 0; partition < partition_count(); ++partition) {
       int32_t part_size = partition_size(string.size(), partition);
-      util::RabinFingerprint fp(part_size);
+      util::RabinFingerprint<std::u32string::value_type> fp(part_size);
 
       for (int32_t i = offset; i < offset + part_size; ++i) {
         fp.roll(string[i]);
@@ -131,14 +131,14 @@ public:
   }
 
   // multiple hashes of partition i at [i]
-  ProbingSignatures probing_signatures(std::string& string, int64_t index_string_size) {
+  ProbingSignatures probing_signatures(std::u32string& string, int64_t index_string_size) {
     std::vector<std::vector<Signature>> signatures;
     int32_t offset = 0;
     auto string_size = static_cast<int32_t>(string.size());
 
     for (int32_t partition = 0; partition < partition_count(); ++partition) {
       int32_t part_size = partition_size(index_string_size, partition);
-      util::RabinFingerprint fp(part_size);
+      util::RabinFingerprint<std::u32string::value_type> fp(part_size);
 
       int32_t start_pos = probe_start_pos(partition, offset);
       int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);

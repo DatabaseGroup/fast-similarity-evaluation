@@ -109,7 +109,9 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
     data::StringParser string_parser;
     dataset = string_parser.parse(filepath);
   } else if (data_str == "tree") {
-    // todo
+    data_id = types::DatatypeId::TREE;
+    data::TreeParser tree_parser;
+    dataset = tree_parser.parse(filepath);
   }
 
   return {data_id, std::move(dataset)};
@@ -169,7 +171,8 @@ int main(int argc, char** argv) {
   std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   timing::JoinTiming timing;
 
-  join::PlanExecutor executor(config.batch_count, join::PlanExecutor::get_allpairs_batches(dataset.statistics->count));
+  // cache size has to be at least 1
+  join::PlanExecutor executor(config.batch_count, join::PlanExecutor::get_allpairs_batches(config.batch_count) + 1);
   timing.join_time.start();
   executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();

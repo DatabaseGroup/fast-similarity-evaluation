@@ -194,7 +194,7 @@ private:
     };
 
   public:
-    explicit KeyIterator(std::string& string, similarity::PassJoinSignature& signature) : string(string), signature(signature), partition_range(0, signature.partition_count()) {}
+    explicit KeyIterator(types::String::str_t& string, similarity::PassJoinSignature& signature) : string(string), signature(signature), partition_range(0, signature.partition_count()) {}
 
   public:
     template<int32_t LEVEL>
@@ -216,7 +216,7 @@ private:
     int64_t index_string_size{0};
     int64_t current_partition_number{0};
     similarity::PassJoinSignature::ProbingSignatures current_signatures;
-    std::string& string;
+    types::String::str_t& string;
     similarity::PassJoinSignature& signature;
     boost::integer_range<int64_t> partition_range;
   };

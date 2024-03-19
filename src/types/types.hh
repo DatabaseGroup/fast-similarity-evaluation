@@ -3,6 +3,9 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#include <tsim/node/node.h>
+#include <tsim/label/string_label.h>
+
 #if __cplusplus > 201703L
 #include <span>
 #else
@@ -64,12 +67,14 @@ std::ostream& operator<<(std::ostream& os, const Set& obj)
 
 class String : public Data {
 public:
-  std::string str;
+  // we have to use "longer" strings here as a reduction to strings might result in requiring more than 8 bits for each character
+  using str_t = std::u32string;
+  str_t str;
 
   String() : Data(INVALID) {}
   // todo remove
-  String(Id id, std::string str) : Data(id), str(std::move(str)) {}
-  String(Id id, const char* s, const std::streamsize n) : Data(id), str(s, n) {}
+  String(Id id, str_t str) : Data(id), str(std::move(str)) {}
+  String(Id id, const std::string& str) : Data(id), str(str.begin(), str.end()) {}
 };
 using Strings = std::vector<String>;
 using StringBatch = span<String>;
@@ -77,7 +82,13 @@ using StringBatch = span<String>;
 std::ostream& operator<<(std::ostream& os, const String& obj)
 {
   os << "(" << obj.id << ", [";
-  os << obj.str;
+  for (auto c : obj.str) {
+    if (c > std::numeric_limits<char>::max()) {
+      os << static_cast<int32_t>(c) << ", ";
+    } else {
+      os << static_cast<char>(c);
+    }
+  }
   os << "])";
   return os;
 }
@@ -85,7 +96,14 @@ std::ostream& operator<<(std::ostream& os, const String& obj)
 // todo add constructors
 class Tree : public Data {
 public:
-  explicit Tree() : Data(INVALID) {}
+  using Label = tsim::label::StringLabel;
+  using Node = tsim::node::Node<Label>;
+
+public:
+  explicit Tree(Id id, Node&& node) : Data(id), root(std::forward<Node>(node)) {}
+
+public:
+  Node root;
 };
 using Trees = std::vector<Tree>;
 using TreeBatch = span<Tree>;

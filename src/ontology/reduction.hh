@@ -53,10 +53,8 @@ public:
   void reduce_data(types::Batch& input_batch, types::Batch& output_batch) override {
     assert(std::holds_alternative<types::StringBatch>(input_batch) &&
            std::holds_alternative<types::SetBatch>(output_batch));
-
     auto& in_strings = std::get<types::StringBatch>(input_batch);
     auto& out_strings = std::get<types::SetBatch>(output_batch);
-
     assert(in_strings.size() == out_strings.size());
 
     auto in_iter = in_strings.begin();
@@ -102,8 +100,8 @@ public:
 private:
   static int64_t mask_highest_bit(uint64_t n) { return static_cast<int64_t>(n & (~(1uLL << 63))); }
 
-  void generate_qgrams(types::String& string, types::Set& set) const {
-    util::RabinFingerprint rf{q};
+public: void generate_qgrams(types::String& string, types::Set& set) const {
+    util::RabinFingerprint<types::String::str_t::value_type> rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
 
     for (int32_t i = 1; i < q; ++i) {
@@ -133,8 +131,46 @@ private:
 private:
   int32_t q;
 
-  static const uint8_t PADDING =
-    127;  // 127 is not a printable ASCII character (it is DEL), it hopefully does not/cannot appear in text
+  static const types::String::str_t::value_type PADDING =
+    0;
+};
+
+class TraversalStringReduction : public Reduction {
+public:
+  void reduce_data(types::Batch& input_batch, types::Batch& output_batch) override {
+    assert(std::holds_alternative<types::TreeBatch>(input_batch) &&
+           std::holds_alternative<types::StringBatch>(output_batch));
+    auto& in_trees = std::get<types::TreeBatch>(input_batch);
+    auto& out_strings = std::get<types::StringBatch>(output_batch);
+    assert(in_trees.size() == out_strings.size());
+
+
+  }
+  similarity::Similarity reduce_similarity(similarity::Similarity& similarity) override {
+    // todo
+  }
+  const std::string get_label() override {
+    return "traversal_strings";
+  }
+
+  types::Dataset reduce_data(types::Dataset& dataset) override {
+    return Reduction::forward_as_batch<types::Dataset, types::Strings>(dataset, *this);
+  }
+
+  types::Dataset reduce_data(types::Batch& input_batch) override {
+    return Reduction::forward_as_batch<types::Batch, types::Strings>(input_batch, *this);
+  }
+
+private:
+  void generate_preorder(types::Tree& tree, types::String& string) {
+    std::vector<std::reference_wrapper<types::Tree::Node>> queue;
+    queue.emplace_back(tree.root);
+
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+    }
+  }
 };
 
 }  // namespace ontology

@@ -24,6 +24,7 @@ ExternalProject_Add(tree-similarity
         GIT_TAG origin/master
         INSTALL_DIR external/tsim
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/tsim
+        UPDATE_COMMAND ""
 )
 ExternalProject_Get_property(tree-similarity INSTALL_DIR)
 set(TREE_SIMILARITY_INCLUDE "${INSTALL_DIR}/include")
