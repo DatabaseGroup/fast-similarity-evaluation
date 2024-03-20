@@ -38,11 +38,12 @@ template <class Handler>
 class SignatureJoin : public JoinAlgorithm<Handler> {
 public:
   void prepare_indexing_batch(types::Batch& batch) = 0;
+  bool has_independent_probing_signatures() = 0;
   void prepare_probing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;
 
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
   void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
 };
 
 // Used to support add_small_results for PrefixSignature
@@ -79,8 +80,13 @@ public:
     index = std::move(new_index);
   }
 
+  bool has_independent_probing_signatures() override {
+    return false;
+  }
+
   void prepare_probing_batch(types::Batch& batch) override {
-    // todo nothing? Maybe remove
+    throw std::invalid_argument(
+      "Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
 
   void index_batch(types::Batch& batch) override {
@@ -307,6 +313,10 @@ public:
     }
   }
 
+  bool has_independent_probing_signatures() override {
+    return true;
+  }
+
   void prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
     // nothing to be done?
   }
@@ -331,9 +341,6 @@ public:
 
       int64_t minimum_candidate_size = similarity.minimum_length_bound(string.str.size());
       int64_t maximum_candidate_size = similarity.maximum_length_bound(string.str.size());
-
-      // first find sets that might be similar due to size alone
-      add_small_results(string, indexed_strings, minimum_candidate_size, maximum_candidate_size, similarity, candidates, already_seen);
 
       index.query(
         indexing::KeyRange(minimum_candidate_size, maximum_candidate_size),
