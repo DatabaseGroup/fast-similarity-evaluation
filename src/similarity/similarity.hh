@@ -24,6 +24,10 @@ public:
   virtual double similarity(const T& o1, const T& o2) = 0;
   virtual bool is_in_threshold(const T& o1, const T& o2) = 0;
 
+  virtual int64_t always_similar_below_size(const T& o1) {
+    return 0;
+  }
+
 public:
   double threshold;
 };
@@ -196,12 +200,19 @@ public:
     return r[std::abs(m - n) + 2 * p + kp + 1] <= _thresh;
   }
 
-  [[nodiscard]] int64_t length_lower_bound(size_t string_size) const {
+  [[nodiscard]] int64_t minimum_length_bound(size_t string_size) const {
     return std::max(INT64_C(0), static_cast<int64_t>(string_size) - _thresh);
   }
 
-  [[nodiscard]] int64_t length_upper_bound(size_t string_size) const {
+  [[nodiscard]] int64_t maximum_length_bound(size_t string_size) const {
     return static_cast<int64_t>(string_size) + _thresh;
+  }
+
+  int64_t always_similar_below_size(const types::String& o1) override {
+    if (static_cast<int32_t>(o1.str.size()) < _thresh) {
+      return std::max(static_cast<int64_t>(o1.str.size()) - _thresh, INT64_C(0));
+    }
+    return 0;
   }
 
 private:
@@ -221,6 +232,13 @@ public:
 
   int64_t minimum_length_bound(int64_t size) override { return size - integer_threshold; }
   int64_t maximum_length_bound(int64_t size) override { return size + integer_threshold; }
+
+  int64_t always_similar_below_size(const types::Set& o1) override {
+    if (static_cast<int64_t>(o1.tokens.size()) <= q * integer_threshold) {
+      return q * integer_threshold;
+    }
+    return 0;
+  }
 
 private:
   int32_t q;
