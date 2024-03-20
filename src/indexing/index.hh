@@ -41,12 +41,12 @@ public:
   }
 
   template<int32_t LEVEL>
-  IteratorHolder<LEVEL>::iter get_level_iterator() {
+  typename IteratorHolder<LEVEL>::iter get_level_iterator() {
     IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
   template<int32_t LEVEL>
-  IteratorHolder<LEVEL>::iter get_level_end() {
+  typename IteratorHolder<LEVEL>::iter get_level_end() {
     IteratorHolder<LEVEL>::get_level_end(*this);
   }
 };
@@ -87,12 +87,12 @@ public:
   }
 
   template<int32_t LEVEL>
-  IteratorHolder<LEVEL>::iter get_level_iterator() {
+  typename IteratorHolder<LEVEL>::iter get_level_iterator() {
     return IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
   template<int32_t LEVEL>
-  IteratorHolder<LEVEL>::iter get_level_end() {
+  typename IteratorHolder<LEVEL>::iter get_level_end() {
     return IteratorHolder<LEVEL>::get_level_end(*this);
   }
 
@@ -172,7 +172,7 @@ private:
 
 // fast floor(log_2(x)) using bit-representation
 // log_2(x) is (0-indexed) position of highest bit set to 1 in x
-int32_t log2(uint32_t x) { return (31 - __builtin_clz(x)); }
+inline int32_t log2(uint32_t x) { return (31 - __builtin_clz(x)); }
 
 template <class ValueType>
 class ComplexIndex<ValueType, DISCRETE> {

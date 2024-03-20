@@ -5,6 +5,7 @@
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
 #include <tsim/node/node.h>
+#include <tsim/cost_model/unit_cost_model.h>
 
 #if __cplusplus > 201703L
 #include <span>
@@ -100,15 +101,15 @@ public:
 
   String() : Data(INVALID) {}
   // todo remove
-  String(Id id, str_t str) : Data(id), str(std::move(str)) {}
-  String(Id id, const std::string& str) : Data(id), str(str.begin(), str.end()) {}
+  String(const Id id, str_t str) : Data(id), str(std::move(str)) {}
+  String(const Id id, const std::string& str) : Data(id), str(str.begin(), str.end()) {}
 };
 template <>
 class Meta<String> {};
 using Strings = DataMeta<String>;
 using StringBatch = DataBatch<String>;
 
-std::ostream& operator<<(std::ostream& os, const String& obj) {
+inline std::ostream& operator<<(std::ostream& os, const String& obj) {
   os << "(" << obj.id << ", [";
   for (auto c : obj.str) {
     if (c > std::numeric_limits<char>::max()) {
@@ -126,6 +127,8 @@ class Tree : public Data {
 public:
   using Label = tsim::label::StringLabel;
   using Node = tsim::node::Node<Label>;
+  using LabelDictionary = tsim::label::LabelDictionary<Label>;
+  using CostModel = tsim::cost_model::UnitCostModelLD<Label>;
 
 public:
   explicit Tree(Id id, Node&& node) : Data(id), root(std::forward<Node>(node)) {}
@@ -135,12 +138,14 @@ public:
 };
 template <>
 class Meta<Tree> {
-  tsim::label::LabelDictionary<Tree::Label> label_dict;
+public:
+  Tree::LabelDictionary label_dict;
+  Tree::CostModel cost_model{label_dict};
 };
 using Trees = DataMeta<Tree>;
 using TreeBatch = DataBatch<Tree>;
 
-std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unused]] const Tree& obj) {
+inline std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unused]] const Tree& obj) {
   throw std::invalid_argument(
     "Printing trees is not implemented yet. Maybe do bracket notation? See tree-edit library");
 }
@@ -148,7 +153,7 @@ std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unused]] con
 using Dataset = std::variant<Sets, Strings, Trees>;
 using Batch = std::variant<SetBatch, StringBatch, TreeBatch>;
 
-Batch dataset_to_batch(Dataset& dataset) {
+inline Batch dataset_to_batch(Dataset& dataset) {
   return std::visit(
     [](auto&& data) {
       using DatasetType = std::decay_t<decltype(data)>;
@@ -157,7 +162,7 @@ Batch dataset_to_batch(Dataset& dataset) {
     dataset);
 }
 
-Batch get_batch(Dataset& dataset, const int64_t batch_idx, const int64_t batch_size) {
+inline Batch get_batch(Dataset& dataset, const int64_t batch_idx, const int64_t batch_size) {
   int64_t offset = batch_idx * batch_size;
   return std::visit(
     [&](auto&& actual_dataset) {
@@ -171,7 +176,7 @@ Batch get_batch(Dataset& dataset, const int64_t batch_idx, const int64_t batch_s
     dataset);
 }
 
-void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {
+inline void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {
   std::visit(
     [&](auto& actual_dataset) {
       for (auto [id1, id2] : pairs) {

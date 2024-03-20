@@ -2,6 +2,7 @@
 #define SRC_PLAN_EXECUTION_HH
 
 #include <algorithm>
+#include <utility>
 
 #include "../ontology/bandit.hh"
 #include "../ontology/planner.hh"
@@ -120,7 +121,7 @@ struct IndexedBatch {
   const size_t id;
   types::Batch batch;
 
-  IndexedBatch(size_t id, types::Batch batch) : id(id), batch(batch) {}
+  IndexedBatch(size_t id, types::Batch batch) : id(id), batch(std::move(batch)) {}
 };
 
 struct CacheHashKey {

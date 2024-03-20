@@ -1,6 +1,7 @@
 #ifndef SRC_DATASET_HH
 #define SRC_DATASET_HH
 
+#include <nlohmann/json.hpp>
 #include "../types/types.hh"
 
 namespace data {
@@ -9,9 +10,20 @@ namespace data {
 class Statistics {
 public:
   int64_t count;
+  virtual ~Statistics() = default;
+
+  virtual nlohmann::json to_json() {
+    nlohmann::json json;
+
+    json["count"] = count;
+
+    return json;
+  }
 };
 
 class StringStatistics : public Statistics {};
+
+class TreeStatistics : public Statistics {};
 
 class Dataset {
 public:

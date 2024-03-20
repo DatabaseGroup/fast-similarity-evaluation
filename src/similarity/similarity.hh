@@ -1,6 +1,10 @@
 #ifndef SRC_SIMILARITY_HH
 #define SRC_SIMILARITY_HH
 
+#include <tsim/node/tree_indexer.h>
+#include <tsim/ted/apted_tree_index.h>
+#include <tsim/ted/touzet_kr_set_tree_index.h>
+
 #include <memory>
 #include <numeric>
 #include <variant>
@@ -9,7 +13,7 @@
 
 namespace similarity {
 
-enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT };
+enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT, TREE_EDIT_DISTANCE };
 
 template <class T>
 class AbstractSimilarity {
@@ -110,7 +114,10 @@ public:
 };
 using StringSimilarityPtr = std::unique_ptr<StringSimilarity>;
 
-class TreeSimilarity : public AbstractSimilarity<types::Tree> {};
+class TreeSimilarity : public AbstractSimilarity<types::Tree> {
+public:
+  explicit TreeSimilarity(double threshold) : AbstractSimilarity(threshold) {}
+};
 using TreeSimilarityPtr = std::unique_ptr<TreeSimilarity>;
 
 class JaccardSimilarity : public SetSimilarity {
@@ -127,9 +134,9 @@ public:
   }
 };
 
-class SEDSimilarity : public StringSimilarity {
+class StringEditDistance : public StringSimilarity {
 public:
-  explicit SEDSimilarity(double threshold) : StringSimilarity(threshold), _thresh(static_cast<int32_t>(threshold)) {}
+  explicit StringEditDistance(double threshold) : StringSimilarity(threshold), _thresh(static_cast<int32_t>(threshold)) {}
 
   double similarity(const types::String& s1, const types::String& s2) override {
     auto& str1 = s1.str.size() <= s2.str.size() ? s1.str : s2.str;
@@ -172,7 +179,7 @@ public:
     std::vector<int32_t> r(std::abs(m - n) + 2 * p + 3, std::numeric_limits<int32_t>::max() / 2);
 
     for (int32_t i = 0; i <= m; ++i) {
-      for (int32_t j = 0; j <= std::abs(m - n) + 2*p; ++j) {
+      for (int32_t j = 0; j <= std::abs(m - n) + 2 * p; ++j) {
         if (i == 0 && i == j + k) {
           r[j + 1] = 0;
         } else if (i == 0) {
@@ -186,7 +193,7 @@ public:
       ++k;
     }
 
-    return r[std::abs(m - n) + 2*p + kp + 1] <= _thresh;
+    return r[std::abs(m - n) + 2 * p + kp + 1] <= _thresh;
   }
 
   [[nodiscard]] int64_t length_lower_bound(size_t string_size) const {
@@ -218,6 +225,38 @@ public:
 private:
   int32_t q;
   int32_t integer_threshold;
+};
+
+class TreeEditDistance : public TreeSimilarity {
+public:
+  TreeEditDistance(const double threshold,
+                   types::Tree::LabelDictionary& label_dictionary,
+                   types::Tree::CostModel& cost_model)
+      : TreeSimilarity(threshold), integer_threshold(static_cast<int32_t>(threshold)), label_dictionary(label_dictionary), cost_model(cost_model), apted(cost_model), touzet(cost_model) {}
+
+  double similarity(const types::Tree& o1, const types::Tree& o2) override {
+    tsim::node::TreeIndexAPTED t1;
+    tsim::node::TreeIndexAPTED t2;
+    index_tree(t1, o1.root, label_dictionary, cost_model);
+    index_tree(t2, o2.root, label_dictionary, cost_model);
+
+    return apted.ted(t1, t2);
+  }
+  bool is_in_threshold(const types::Tree& o1, const types::Tree& o2) override {
+    tsim::node::TreeIndexTouzetKRSet t1;
+    tsim::node::TreeIndexTouzetKRSet t2;
+    index_tree(t1, o1.root, label_dictionary, cost_model);
+    index_tree(t2, o2.root, label_dictionary, cost_model);
+
+    return touzet.ted_k(t1, t2, integer_threshold) <= threshold;
+  }
+
+private:
+  const int32_t integer_threshold;
+  types::Tree::LabelDictionary& label_dictionary;
+  types::Tree::CostModel& cost_model;
+  tsim::ted::APTEDTreeIndex<types::Tree::CostModel> apted;
+  tsim::ted::TouzetKRSetTreeIndex<types::Tree::CostModel> touzet;
 };
 
 using Similarity = std::variant<SetSimilarityPtr, StringSimilarityPtr, TreeSimilarityPtr>;

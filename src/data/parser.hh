@@ -23,7 +23,7 @@ public:
       strings.data.emplace_back(data_id, std::u32string(line.begin(), line.end()));
       ++data_id;
     }
-    statistics->count = static_cast<int64_t>(data_id);
+    statistics->count = data_id;
 
     dataset.statistics = std::move(statistics);
     return dataset;
@@ -34,7 +34,8 @@ class TreeParser {
 public:
   Dataset parse(const std::string& filename) {
     Dataset dataset;
-    dataset.data = types::Trees{};
+    dataset.data.emplace<types::Trees>();
+    auto statistics = std::make_unique<TreeStatistics>();
     auto& trees = std::get<types::Trees>(dataset.data);
 
     tsim::parser::BracketNotationParser<types::Tree::Label> parser;
@@ -45,8 +46,13 @@ public:
       if (!parser.validate_input(line)) {
         continue;
       }
-      trees.data.emplace_back(++data_id, parser.parse_single(line));
+      trees.data.emplace_back(data_id, parser.parse_single(line));
+      ++data_id;
     }
+    statistics->count = data_id;
+
+    dataset.statistics = std::move(statistics);
+    return dataset;
   }
 };
 

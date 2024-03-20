@@ -1,6 +1,8 @@
 #ifndef SRC_REDUCTION_HH
 #define SRC_REDUCTION_HH
 
+#include <ranges>
+
 #include "../similarity/similarity.hh"
 #include "../types/types.hh"
 #include "../util/hashing.hh"
@@ -15,10 +17,12 @@ public:
 protected:
   template <class InDataset, class OutDatasetType>
   static types::Dataset forward_as_batch(InDataset& dataset, Reduction& reduction) {
-    return std::visit([&](auto&& data){
-      using DatasetType = std::decay_t<decltype(data)>;
-      return types::Dataset(_reduce_like_batch<DatasetType, OutDatasetType>(data, reduction));
-    }, dataset);
+    return std::visit(
+      [&](auto&& data) {
+        using DatasetType = std::decay_t<decltype(data)>;
+        return types::Dataset(_reduce_like_batch<DatasetType, OutDatasetType>(data, reduction));
+      },
+      dataset);
   }
 
 private:
@@ -59,7 +63,7 @@ public:
            std::holds_alternative<types::SetBatch>(output_batch));
     auto& in_strings = std::get<types::StringBatch>(input_batch);
     auto& out_strings = std::get<types::SetBatch>(output_batch);
-    assert(in_strings.size() == out_strings.size());
+    assert(in_strings.data.size() == out_strings.data.size());
 
     auto in_iter = in_strings.data.begin();
     auto in_iter_end = in_strings.data.end();
@@ -91,20 +95,19 @@ public:
 
     // assert: Similarity is String Edit Distance
     auto& sed =
-      dynamic_cast<similarity::SEDSimilarity&>(std::get<similarity::StringSimilarityPtr>(similarity).operator*());
+      dynamic_cast<similarity::StringEditDistance&>(std::get<similarity::StringSimilarityPtr>(similarity).operator*());
 
     similarity::Similarity qgc_sim(std::make_unique<similarity::QGramCountSimilarity>(sed.threshold, this->q));
     return qgc_sim;
   }
 
-  std::string const get_label() override {
-    return std::to_string(q) + "gram";
-  }
+  std::string const get_label() override { return std::to_string(q) + "gram"; }
 
 private:
-  static int64_t mask_highest_bit(uint64_t n) { return static_cast<int64_t>(n & (~(1uLL << 63))); }
+  static int64_t mask_highest_bit(const uint64_t n) { return static_cast<int64_t>(n & ~(1uLL << 63)); }
 
-public: void generate_qgrams(types::String& string, types::Set& set) const {
+public:
+  void generate_qgrams(types::String& string, types::Set& set) const {
     util::RabinFingerprint<types::String::str_t::value_type> rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
 
@@ -135,8 +138,7 @@ public: void generate_qgrams(types::String& string, types::Set& set) const {
 private:
   int32_t q;
 
-  static const types::String::str_t::value_type PADDING =
-    0;
+  static const types::String::str_t::value_type PADDING = 0;
 };
 
 class TraversalStringReduction : public Reduction {
@@ -146,16 +148,35 @@ public:
            std::holds_alternative<types::StringBatch>(output_batch));
     auto& in_trees = std::get<types::TreeBatch>(input_batch);
     auto& out_strings = std::get<types::StringBatch>(output_batch);
-    assert(in_trees.size() == out_strings.size());
+    assert(in_trees.data.size() == out_strings.data.size());
 
+    auto in_iter = in_trees.data.begin();
+    auto in_iter_end = in_trees.data.end();
+    auto out_iter = out_strings.data.begin();
+    // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
 
+    while (in_iter != in_iter_end) {
+      auto& tree = *in_iter;
+      auto& string = *out_iter;
+
+      string.id = tree.id;
+      generate_preorder(in_trees.meta.label_dict, tree, string);
+
+      ++in_iter;
+      ++out_iter;
+    }
   }
   similarity::Similarity reduce_similarity(similarity::Similarity& similarity) override {
-    // todo
+    assert(std::holds_alternative<similarity::TreeSimilarityPtr>(similarity));
+
+    // assert: Similarity is Tree Edit Distance
+    auto& ted =
+      dynamic_cast<similarity::TreeEditDistance&>(std::get<similarity::TreeSimilarityPtr>(similarity).operator*());
+
+    similarity::Similarity sed(std::make_unique<similarity::StringEditDistance>(ted.threshold));
+    return sed;
   }
-  const std::string get_label() override {
-    return "traversal_strings";
-  }
+  const std::string get_label() override { return "traversal_strings"; }
 
   types::Dataset reduce_data(types::Dataset& dataset) override {
     return Reduction::forward_as_batch<types::Dataset, types::Strings>(dataset, *this);
@@ -166,13 +187,20 @@ public:
   }
 
 private:
-  void generate_preorder(types::Tree& tree, types::String& string) {
-    std::vector<std::reference_wrapper<types::Tree::Node>> queue;
+  void generate_preorder(types::Tree::LabelDictionary& ld, types::Tree& tree, types::String& string) {
+    std::vector<std::reference_wrapper<const types::Tree::Node>> queue;
     queue.emplace_back(tree.root);
 
     while (!queue.empty()) {
       auto node = queue.back();
       queue.pop_back();
+
+      auto label = ld.insert(node.get().label());
+      string.str.push_back(static_cast<char32_t>(label));
+
+      for (auto& children = node.get().get_children(); const auto& it : std::ranges::reverse_view(children)) {
+        queue.emplace_back(it);
+      }
     }
   }
 };

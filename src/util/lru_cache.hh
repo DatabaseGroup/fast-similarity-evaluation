@@ -54,9 +54,8 @@ public:
 
       // my eyes hurt from this
       return value_it.first->second.first;
-    } else {
-      return it->second.first;
     }
+    return it->second.first;
   }
 
   std::optional<Value> get(const Key& key) {

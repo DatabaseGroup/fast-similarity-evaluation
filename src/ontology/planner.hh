@@ -171,16 +171,20 @@ private:
 class StandardReductionGraph : public ReductionGraph {
 public:
   StandardReductionGraph() {
-    auto& qgram_reduction = *(reductions.emplace_back(std::make_unique<QGramReduction>(3)).get());
+    auto& traversal_string_reduction = *reductions.emplace_back(std::make_unique<TraversalStringReduction>()).get();
+    auto& qgram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3)).get();
 
     // insert nodes first (otherwise pointers might change)
+    insert_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     insert_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
     insert_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
 
     // now get references
+    auto& ted = get_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     auto& sed = get_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
     auto& qgram = get_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
 
+    ted.edges.emplace_back(traversal_string_reduction, sed);
     sed.edges.emplace_back(qgram_reduction, qgram);
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     qgram.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);

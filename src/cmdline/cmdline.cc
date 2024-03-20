@@ -82,14 +82,19 @@ nlohmann::json get_metadata(Config& config) {
 }
 
 std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(const std::string& sim_str,
-                                                                               const double threshold) {
+                                                                               const double threshold,
+                                                                               data::Dataset& dataset) {
   similarity::SimilarityId sim_id;
   similarity::Similarity sim;
 
   // this could be replaced by a hashtable, but who cares?
   if (sim_str == "sed") {
-    sim = std::make_unique<similarity::SEDSimilarity>(threshold);
+    sim = std::make_unique<similarity::StringEditDistance>(threshold);
     sim_id = similarity::SimilarityId::STRING_EDIT_DISTANCE;
+  } else if (sim_str == "ted") {
+    auto& trees = std::get<types::Trees>(dataset.data);
+    sim = std::make_unique<similarity::TreeEditDistance>(threshold, trees.meta.label_dict, trees.meta.cost_model);
+    sim_id = similarity::SimilarityId::TREE_EDIT_DISTANCE;
   } /*else if (sim_str == "jaccard") {  // todo fix jaccard
     sim = std::make_unique<similarity::JaccardSimilarity>(threshold);
     sim_id = similarity::SimilarityId::STRING_EDIT_DISTANCE;
@@ -99,7 +104,6 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
 
 std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data_str, const std::string& filepath) {
   types::DatatypeId data_id;
-  data::Dataset dataset;
 
   // this could be replaced by a hashtable, but who cares?
   if (data_str == "set") {
@@ -107,14 +111,12 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
   } else if (data_str == "string") {
     data_id = types::DatatypeId::STRING;
     data::StringParser string_parser;
-    dataset = string_parser.parse(filepath);
+    return {data_id, string_parser.parse(filepath)};
   } else if (data_str == "tree") {
     data_id = types::DatatypeId::TREE;
     data::TreeParser tree_parser;
-    dataset = tree_parser.parse(filepath);
+    return {data_id, tree_parser.parse(filepath)};
   }
-
-  return {data_id, std::move(dataset)};
 }
 
 nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
@@ -160,8 +162,8 @@ int main(int argc, char** argv) {
     exit(-1);
   }
 
-  auto [similarity_id, similarity] = resolve_similarity(config.similarity, config.threshold);
   auto [data_id, dataset] = resolve_data(config.datatype, config.input_file);
+  auto [similarity_id, similarity] = resolve_similarity(config.similarity, config.threshold, dataset);
 
   ontology::StandardReductionGraph graph;
   ontology::PlannerConfiguration plan_config;
@@ -179,6 +181,7 @@ int main(int argc, char** argv) {
 
   nlohmann::json result;
   result["meta"] = get_metadata(config);
+  result["dataset_statistics"] = dataset.statistics->to_json();
 
   nlohmann::json local_statistics;
   for (size_t i = 0; i < plans.size(); ++i) {

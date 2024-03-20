@@ -66,7 +66,7 @@ public:
     });
   }
 
-  boost::span<Signature>::const_iterator begin_indexing_signatures(const types::Set& set) {
+  boost::span<Signature>::const_iterator begin_indexing_signatures(const types::Set& set) { // NOLINT(*-convert-member-functions-to-static)
     return &(*set.tokens.begin());
   }
 
@@ -102,7 +102,7 @@ public:
   using ProbingSignatures = std::vector<std::vector<Signature>>;
 
 public:
-  explicit PassJoinSignature(SEDSimilarity& similarity) : similarity(similarity) {
+  explicit PassJoinSignature(StringEditDistance& similarity) : similarity(similarity) {
     threshold = static_cast<int32_t>(similarity.threshold);
   }
 
@@ -178,7 +178,7 @@ private:
   }
 
 private:
-  similarity::SEDSimilarity& similarity;
+  similarity::StringEditDistance& similarity;
   int32_t threshold;
 };
 

@@ -203,12 +203,12 @@ private:
     }
 
     template<int32_t LEVEL>
-    IteratorHolder<LEVEL>::iter get_level_iterator() {
+    typename IteratorHolder<LEVEL>::iter get_level_iterator() {
       return IteratorHolder<LEVEL>::get_level_iterator(*this);
     }
 
     template<int32_t LEVEL>
-    IteratorHolder<LEVEL>::iter get_level_end() {
+    typename IteratorHolder<LEVEL>::iter get_level_end() {
       return IteratorHolder<LEVEL>::get_level_end(*this);
     }
 
@@ -222,7 +222,7 @@ private:
   };
 public:
   // assume PassJoin gets a SEDSimilarity (nothing else works anyway)
-  explicit PassJoin(similarity::Similarity& similarity) : similarity(dynamic_cast<similarity::SEDSimilarity&>(*std::get<similarity::StringSimilarityPtr>(similarity))), signature(this->similarity){}
+  explicit PassJoin(similarity::Similarity& similarity) : similarity(dynamic_cast<similarity::StringEditDistance&>(*std::get<similarity::StringSimilarityPtr>(similarity))), signature(this->similarity){}
 
 public:
   void prepare_indexing_batch(types::Batch& batch) override {
@@ -322,7 +322,7 @@ public:
   }
 
 private:
-  similarity::SEDSimilarity& similarity;
+  similarity::StringEditDistance& similarity;
   similarity::PassJoinSignature signature;
   indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::DISCRETE, indexing::IndexType::HASH> index;
   std::vector<RefString> indexed_strings;
