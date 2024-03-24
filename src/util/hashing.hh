@@ -19,6 +19,25 @@ uint64_t random_prime_in_range(uint64_t lower, uint64_t upper, uint32_t seed = s
 }
  */
 
+class TabulationHash {
+public:
+  uint64_t get(size_t key) {
+    if (key >= hashes.size()) {
+      size_t old_size = hashes.size();
+      hashes.reserve(key - old_size + 1);
+
+      for (; old_size <= key; ++old_size) {
+        hashes.push_back(absl::Uniform<uint64_t>(bitgen));
+      }
+    }
+    return hashes[key];
+  }
+
+private:
+  std::vector<uint64_t> hashes;
+  absl::BitGen bitgen;
+};
+
 template<class INTEGER>
 class RabinFingerprint {
 public:

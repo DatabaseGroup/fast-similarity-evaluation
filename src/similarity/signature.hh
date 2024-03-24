@@ -101,6 +101,17 @@ public:
   using IndexingSignatures = std::vector<Signature>;
   using ProbingSignatures = std::vector<std::vector<Signature>>;
 
+  struct CachedSignatures {
+    struct LengthEntry {
+      size_t begin_offset;
+      size_t end_offset;
+
+      LengthEntry(size_t begin_offset, size_t end_offset) : begin_offset(begin_offset), end_offset(end_offset) {}
+    };
+    std::vector<similarity::PassJoinSignature::Signature> hashes;
+    std::vector<LengthEntry> offsets;
+  };
+
 public:
   explicit PassJoinSignature(StringEditDistance& similarity) : similarity(similarity) {
     threshold = static_cast<int32_t>(similarity.threshold);
@@ -159,6 +170,41 @@ public:
     return signatures;
   }
 
+  CachedSignatures cached_probing_signatures(const std::u32string& string) {
+    CachedSignatures cache;
+    auto string_size = static_cast<int32_t>(string.size());
+
+    for (int64_t index_string_size = string_size - threshold; index_string_size <= string_size + threshold; ++index_string_size) {
+      size_t length_begin = cache.hashes.size();
+
+      int32_t offset = 0;
+      for (int32_t partition = 0; partition < partition_count(); ++partition) {
+        int32_t part_size = partition_size(index_string_size, partition);
+        util::RabinFingerprint<std::u32string::value_type> fp(part_size);
+
+        int32_t start_pos = probe_start_pos(partition, offset);
+        int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);
+
+        for (int32_t i = start_pos; i < start_pos + part_size; ++i) {
+          fp.roll(string[i]);
+        }
+        cache.hashes.push_back(apply_partition_hash(fp.get_state(), partition));
+
+        for (int32_t i = 0; i < (end_pos - start_pos); ++i) {
+          fp.remove(string[start_pos + i]);
+          auto hash = fp.roll(string[start_pos + part_size + i]);
+          cache.hashes.push_back(apply_partition_hash(hash, partition));
+        }
+
+        offset += part_size;
+      }
+
+      cache.offsets.emplace_back(length_begin, cache.hashes.size());
+    }
+
+    return cache;
+  }
+
   [[nodiscard]] int32_t partition_count() const {
     return threshold + 1;
   }
@@ -177,9 +223,14 @@ private:
     return std::min(string_length - partition_length, partition_start + partition_idx);
   }
 
+  uint64_t apply_partition_hash(uint64_t hash, int32_t partition) {
+    return hash ^ partition_hash.get(partition);
+  }
+
 private:
   similarity::StringEditDistance& similarity;
   int32_t threshold;
+  util::TabulationHash partition_hash;
 };
 
 }  // namespace similarity

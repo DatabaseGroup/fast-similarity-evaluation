@@ -39,11 +39,11 @@ class SignatureJoin : public JoinAlgorithm<Handler> {
 public:
   void prepare_indexing_batch(types::Batch& batch) = 0;
   bool has_independent_probing_signatures() = 0;
-  void prepare_probing_batch(types::Batch& batch) = 0;
+  std::any prepare_probing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) = 0;
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) = 0;
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) = 0;
 };
 
 // Used to support add_small_results for PrefixSignature
@@ -84,7 +84,7 @@ public:
     return false;
   }
 
-  void prepare_probing_batch(types::Batch& batch) override {
+  std::vector<std::any> prepare_probing_batch(types::Batch& batch) override {
     throw std::invalid_argument(
       "Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
@@ -109,11 +109,11 @@ public:
     }
   }
 
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, [[maybe_unused]]std::shared_ptr<std::any> probing_signatures) override {
     return _join_batch<false>(batch, handler, statistics);
   }
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, [[maybe_unused]]std::shared_ptr<std::any> probing_signatures) override {
     return _join_batch<true>(batch, handler, statistics);
   }
 
@@ -201,6 +201,10 @@ private:
   using StringId = int64_t;
   using RefString = std::reference_wrapper<types::String>;
 
+public:
+  using CachedSignatures = similarity::PassJoinSignature::CachedSignatures;
+
+private:
   class KeyIterator {
     template <int32_t LEVEL, class DUMMY = void>
     struct IteratorHolder {};
@@ -271,7 +275,7 @@ public:
   explicit PassJoin(similarity::Similarity& similarity)
       : similarity(
           dynamic_cast<similarity::StringEditDistance&>(*std::get<similarity::StringSimilarityPtr>(similarity))),
-        signature(this->similarity) {}
+        passjoin_signature(this->similarity) {}
 
 public:
   void prepare_indexing_batch(types::Batch& batch) override {
@@ -301,7 +305,7 @@ public:
     int64_t id = 0;
     for (auto string_ref : indexed_strings) {
       auto& string = string_ref.get().str;
-      auto signatures = signature.indexing_signatures(string);
+      auto signatures = passjoin_signature.indexing_signatures(string);
 
       int64_t partition = 0;
       for (auto sig : signatures) {
@@ -317,27 +321,48 @@ public:
     return true;
   }
 
-  void prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
-    // nothing to be done?
+  std::any prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
+    auto strings = std::get<types::StringBatch>(batch);
+
+    std::vector<CachedSignatures> signatures;
+    signatures.reserve(strings.data.size());
+
+    for (auto & string : strings.data) {
+      signatures.emplace_back(passjoin_signature.cached_probing_signatures(string.str));
+    }
+
+    return signatures;
   }
 
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
-    _join_batch<false>(batch, handler, statistics);
+  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) override {
+    if (probing_signatures->has_value()) {
+      auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
+      _join_batch<false>(batch, signatures, handler, statistics);
+    } else {
+      auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+      _join_batch<false>(batch, signatures, handler, statistics);
+    }
   }
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) override {
-    _join_batch<true>(batch, handler, statistics);
+  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics,  std::shared_ptr<std::any> probing_signatures) override {
+    if (probing_signatures->has_value()) {
+      auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
+      _join_batch<true>(batch, signatures, handler, statistics);
+    } else {
+      auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+      _join_batch<true>(batch, signatures, handler, statistics);
+    }
   }
 
   template <bool IS_SELF_JOIN>
-  void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
+  void _join_batch(types::Batch& batch, std::vector<CachedSignatures>& probing_signatures, Handler handler, statistics::JoinStatistics& statistics) {
     auto strings = std::get<types::StringBatch>(batch);
 
     std::vector<bool> already_seen(indexed_strings.size());
     std::vector<StringId> candidates;
 
     for (auto& string : strings.data) {
-      KeyIterator key_iterator(string.str, signature);
+      KeyIterator key_iterator(string.str, passjoin_signature);
 
       int64_t minimum_candidate_size = similarity.minimum_length_bound(string.str.size());
       int64_t maximum_candidate_size = similarity.maximum_length_bound(string.str.size());
@@ -379,7 +404,7 @@ public:
 
 private:
   similarity::StringEditDistance& similarity;
-  similarity::PassJoinSignature signature;
+  similarity::PassJoinSignature passjoin_signature;
   indexing::
     ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::DISCRETE, indexing::IndexType::HASH>
       index;
