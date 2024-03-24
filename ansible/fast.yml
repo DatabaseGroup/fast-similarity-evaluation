@@ -1,0 +1,74 @@
+- name: Install FAST
+  hosts: all
+
+  tasks:
+    - name: Install dependencies
+      ansible.builtin.apt:
+        state: present
+        update_cache: true
+        pkg:
+          - "build-essential"
+          - "cmake"
+          - "curl"
+          - "git"
+          - "python3"
+          - "python3.11-venv"
+          - "tar"
+          - "tmux"
+          - "unzip"
+          - "pkg-config"
+          - "zip"
+
+    - name: Create home directory
+      ansible.builtin.file:
+        path: "{{ home_dir }}/{{ item }}"
+        mode: "0755"
+        state: directory
+      loop:
+        - "bin"
+        - "datasets"
+        - "download"
+        - "experiments"
+        - "fast"
+        - ".vcpkg"
+
+    - name: Clone VCPKG
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/.vcpkg"
+        repo: "https://github.com/microsoft/vcpkg.git"
+        version: master
+      register: clonevcpkg
+
+    - name: Bootstrap VCPKG
+      ansible.builtin.command:
+        chdir: "{{ home_dir }}/.vcpkg"
+        cmd: "./bootstrap-vcpkg.sh -disableMetrics"
+      when: clonevcpkg.changed
+
+    - name: Clone FAST
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/fast"
+        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/fast.git"
+        version: master
+      register: clonefast
+
+    - name: Compile FAST
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/fast/src"
+        cmd: "{{ item }}"
+      loop:
+        - "rm -rf build && mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make"
+        - "cp -rf build/bin/* {{ home_dir }}/experiments"
+      # only recompile if git repo changed
+      when: clonefast.changed
+
+    - name: Extract datasets
+      ansible.builtin.unarchive:
+        remote_src: true
+        src: "https://kitten.cosy.sbg.ac.at/index.php/s/rgXntJpscw8WMXK/download/Datasets.tar.zst"
+        dest: "{{ home_dir }}/datasets/"
+        creates: "{{ home_dir }}/datasets/sets"
+        extra_opts: ['--strip-components=1', '--show-stored-names']

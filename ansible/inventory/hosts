@@ -1,0 +1,6 @@
+clusterservers:
+  hosts:
+    leafviper
+  vars:
+    ansible_python_interpreter: auto
+    home_dir: /root
