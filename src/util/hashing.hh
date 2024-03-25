@@ -21,6 +21,9 @@ uint64_t random_prime_in_range(uint64_t lower, uint64_t upper, uint32_t seed = s
 
 class TabulationHash {
 public:
+  TabulationHash() = default;
+  explicit TabulationHash(std::seed_seq seq) : bitgen(seq) {}
+public:
   uint64_t get(size_t key) {
     if (key >= hashes.size()) {
       size_t old_size = hashes.size();
@@ -52,7 +55,7 @@ public:
 
   void remove(INTEGER c) {
     // + MODULO to avoid underflows
-    state = state + MODULO - c * leftmost_base;
+    state = state + MODULO - (c * leftmost_base % MODULO);
     state %= MODULO;
   }
 
@@ -86,9 +89,39 @@ private:
   // picking a prime here is reasonable
   static constexpr uint64_t BASE_CONSTANT = 31;
   // MODULO is the largest prime less than the 2^64 / maximum alphabet size (2^32)
-  // we need this to support multiplying the state with a value in the alphabet
+  // we need this to support multiplying the leftmost base a value in the alphabet
   static constexpr uint64_t MODULO = UINT64_C(4294967291);
 };
+
+// todo: make this a real test
+inline void test_tab_hash() {
+  std::string test = "unconstitutionalities";
+  std::u32string u32test;
+  const int32_t window = 7;
+  u32test.insert(u32test.begin(), test.begin(), test.end());
+
+  std::vector<uint64_t> expected;
+  for (size_t start = 0; start < u32test.size() - window; ++start) {
+    RabinFingerprint<std::u32string::value_type> fp(window);
+    for (int32_t i = 0; i < window; ++i) {
+      fp.roll(u32test[start + i]);
+    }
+    expected.push_back(fp.get_state());
+  }
+
+  RabinFingerprint<std::u32string::value_type> fp(window);
+  for (int32_t i = 0; i < window; ++i) {
+    fp.roll(u32test[i]);
+  }
+  assert(fp.get_state() == expected.front());
+
+  for (int32_t i = 0; i < static_cast<int32_t>(u32test.size()) - window - 1; ++i) {
+    fp.remove(u32test[i]);
+    fp.roll(u32test[i + window]);
+
+    assert(fp.get_state() == expected[i + 1]);
+  }
+}
 
 }  // namespace util
 

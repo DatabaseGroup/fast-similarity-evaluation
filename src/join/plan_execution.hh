@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "../data/dataset.hh"
 #include "../ontology/bandit.hh"
 #include "../ontology/planner.hh"
 #include "../similarity/similarity.hh"
@@ -227,6 +228,31 @@ private:
   util::LRUCache<CacheHashKey, std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache;
 };
 
+class ProbingSignaturesCache {
+public:
+  using AlgBatchPair = std::pair<int64_t, size_t>;
+
+  explicit ProbingSignaturesCache(size_t size) : cache(size) {}
+
+  std::shared_ptr<std::any> get_cached_probing_signatures(int64_t plan_id, size_t batch_id, types::Batch& probe_batch, join::JoinAlgorithm<MaterializeHandler>& join_algorithm, statistics::LocalJoinStatistics& statistics) {
+    auto cache_key = AlgBatchPair(plan_id, batch_id);
+
+    auto cache_result = cache.get(cache_key);
+    if (cache_result.has_value()) {
+      statistics.probing_signature_cache_hits.inc();
+      return cache_result.value();
+    } else {
+      statistics.probing_signature_cache_misses.inc();
+      auto result = cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.prepare_probing_batch(probe_batch)));
+      return result;
+    }
+  }
+
+private:
+  util::LRUCache<AlgBatchPair, std::shared_ptr<std::any>> cache;
+};
+
+// this implicitly caches indexing signatures
 class AlgorithmCache {
 private:
   struct AlgorithmInstance {
@@ -235,8 +261,8 @@ private:
     bool initialized{false};
   };
 public:
-  AlgorithmCache(IndexedBatch& index_batch, ReductionCache& reductionCache, size_t algorithm_count)
-      : index_batch(index_batch), reduction_cache(reductionCache), algorithms(algorithm_count) {}
+  AlgorithmCache(IndexedBatch& index_batch, ReductionCache& reductionCache, ProbingSignaturesCache& probing_signatures_cache, size_t algorithm_count)
+      : index_batch(index_batch), reduction_cache(reductionCache), probing_signatures_cache(probing_signatures_cache), algorithms(algorithm_count) {}
 
 public:
   void probe_using_plan(IndexedBatch& probe_batch,
@@ -269,21 +295,32 @@ public:
       alg_instance.initialized = true;
     }
 
+    std::shared_ptr<std::any> cached_probing_signatures;
+    // do join
     if (plan.steps.empty()) {
       // the dataset and similarity are owned by the caller
+      if (alg_instance.algorithm->has_independent_probing_signatures()) {
+        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics);
+      }
+
       if (index_batch.id == probe_batch.id) {
-        alg_instance.algorithm->selfjoin_batch(probe_batch.batch, handler, statistics);
+        alg_instance.algorithm->selfjoin_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
       } else {
-        alg_instance.algorithm->join_batch(probe_batch.batch, handler, statistics);
+        alg_instance.algorithm->join_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
       }
     } else {
       // reduce first, this function is temporary owner of the data
       auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics);
       auto batch = types::dataset_to_batch(reduced_probe->first);
+
+      if (alg_instance.algorithm->has_independent_probing_signatures()) {
+        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics);
+      }
+
       if (index_batch.id == probe_batch.id) {
-        alg_instance.algorithm->selfjoin_batch(batch, handler, statistics);
+        alg_instance.algorithm->selfjoin_batch(batch, handler, statistics, cached_probing_signatures);
       } else {
-        alg_instance.algorithm->join_batch(batch, handler, statistics);
+        alg_instance.algorithm->join_batch(batch, handler, statistics, cached_probing_signatures);
       }
     }
   }
@@ -291,12 +328,13 @@ public:
 private:
   IndexedBatch& index_batch;
   ReductionCache& reduction_cache;
+  ProbingSignaturesCache& probing_signatures_cache;
   std::vector<AlgorithmInstance> algorithms;
 };
 
 class PlanExecutor {
 public:
-  explicit PlanExecutor(int64_t batch_count, size_t cache_size) : batch_count(batch_count), reduction_cache(cache_size) {}
+  explicit PlanExecutor(int64_t batch_count, size_t reduction_cache_size, size_t probing_cache_size) : batch_count(batch_count), reduction_cache(reduction_cache_size), probing_signatures_cache(probing_cache_size) {}
 
 public:
   void execute_plans(data::Dataset& dataset,
@@ -312,7 +350,7 @@ public:
       auto index_batch = IndexedBatch(index_batch_idx, types::get_batch(dataset.data, index_batch_idx, batch_size));
       auto index_offset = get_offset_into_batch(index_batch_idx, batch_size);
 
-      AlgorithmCache algorithm_cache(index_batch, reduction_cache, plans.size());
+      AlgorithmCache algorithm_cache(index_batch, reduction_cache, probing_signatures_cache, plans.size());
 
       for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
         auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch(dataset.data, probe_batch_idx, batch_size));
@@ -354,7 +392,7 @@ public:
         bandit.update_weights(plan_id, loss);
         plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
 
-        // types::print_result_pairs(std::cout, result_pairs, dataset.data);
+        // types::print_result_pairs(std::cerr, result_pairs, dataset.data);
       }
     }
 
@@ -372,6 +410,7 @@ public:
 private:
   int64_t batch_count;
   ReductionCache reduction_cache;
+  ProbingSignaturesCache probing_signatures_cache;
 };
 
 }  // namespace join

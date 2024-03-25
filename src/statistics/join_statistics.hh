@@ -47,6 +47,9 @@ struct LocalJoinStatistics : public JoinStatistics {
   CountItem<> reduction_cache_hits;
   CountItem<> reduction_cache_misses;
 
+  CountItem<> probing_signature_cache_hits;
+  CountItem<> probing_signature_cache_misses;
+
   nlohmann::json description;
 
   explicit LocalJoinStatistics(nlohmann::json description) : description(std::move(description)) {}
@@ -59,6 +62,11 @@ struct LocalJoinStatistics : public JoinStatistics {
     reduction_cache_misses.add_to_json("reduction_cache_misses", json);
     json["reduction_cache_hitrate"] = static_cast<double>(reduction_cache_hits.value) /
                                       static_cast<double>(reduction_cache_hits.value + reduction_cache_misses.value);
+    probing_signature_cache_hits.add_to_json("probing_signature_cache_hits", json);
+    probing_signature_cache_misses.add_to_json("probing_signature_cache_misses", json);
+    json["probing_signature_cache_hitrate"] = static_cast<double>(probing_signature_cache_hits.value) /
+                                      static_cast<double>(probing_signature_cache_hits.value + probing_signature_cache_misses.value);
+
     json["description"] = description;
     return json;
   }

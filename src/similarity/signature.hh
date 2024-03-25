@@ -108,12 +108,15 @@ public:
 
       LengthEntry(size_t begin_offset, size_t end_offset) : begin_offset(begin_offset), end_offset(end_offset) {}
     };
-    std::vector<similarity::PassJoinSignature::Signature> hashes;
+    std::vector<Signature> hashes;
     std::vector<LengthEntry> offsets;
   };
 
 public:
-  explicit PassJoinSignature(StringEditDistance& similarity) : similarity(similarity) {
+  // we want "sufficiently random", but consistent numbers here; seeding the tabulation hash this way ensures
+  // execution-specific fixed random numbers (they might be different from run to run, which is a property that we
+  // actually want)
+  explicit PassJoinSignature(StringEditDistance& similarity) : similarity(similarity), partition_hash(std::seed_seq{0x42424242, 0x1337}) {
     threshold = static_cast<int32_t>(similarity.threshold);
   }
 
@@ -131,39 +134,7 @@ public:
         fp.roll(string[i]);
       }
 
-      signatures.emplace_back(fp.get_state());
-      offset += part_size;
-    }
-
-    return signatures;
-  }
-
-  // multiple hashes of partition i at [i]
-  ProbingSignatures probing_signatures(const std::u32string& string, int64_t index_string_size) {
-    std::vector<std::vector<Signature>> signatures;
-    int32_t offset = 0;
-    auto string_size = static_cast<int32_t>(string.size());
-
-    for (int32_t partition = 0; partition < partition_count(); ++partition) {
-      int32_t part_size = partition_size(index_string_size, partition);
-      util::RabinFingerprint<std::u32string::value_type> fp(part_size);
-
-      int32_t start_pos = probe_start_pos(partition, offset);
-      int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);
-      auto& part_hashes = signatures.emplace_back();
-      part_hashes.reserve(end_pos - start_pos);
-
-      for (int32_t i = start_pos; i < start_pos + part_size; ++i) {
-        fp.roll(string[i]);
-      }
-      part_hashes.emplace_back(fp.get_state());
-
-      for (int32_t i = 0; i < (end_pos - start_pos); ++i) {
-        fp.remove(string[start_pos + i]);
-        auto hash = fp.roll(string[start_pos + part_size + i]);
-        part_hashes.emplace_back(hash);
-      }
-
+      signatures.emplace_back(apply_partition_hash(fp.get_state(), partition));
       offset += part_size;
     }
 

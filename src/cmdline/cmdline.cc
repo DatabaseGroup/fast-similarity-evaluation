@@ -174,7 +174,8 @@ int main(int argc, char** argv) {
   timing::JoinTiming timing;
 
   // cache size has to be at least 1
-  join::PlanExecutor executor(config.batch_count, join::PlanExecutor::get_allpairs_batches(config.batch_count) + 1);
+  auto cache_size = join::PlanExecutor::get_allpairs_batches(config.batch_count) + 1;
+  join::PlanExecutor executor(config.batch_count, cache_size, cache_size);
   timing.join_time.start();
   executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();

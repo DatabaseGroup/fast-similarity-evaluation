@@ -52,7 +52,7 @@ public:
   virtual types::Dataset reduce_data(types::Batch& input_batch) = 0;
   virtual void reduce_data(types::Batch& input_batch, types::Batch& output_batch) = 0;
   virtual similarity::Similarity reduce_similarity(similarity::Similarity& similarity) = 0;
-  virtual const std::string get_label() = 0;
+  [[nodiscard]] virtual std::string get_label() const = 0;
 };
 
 class QGramReduction : public Reduction {
@@ -101,7 +101,7 @@ public:
     return qgc_sim;
   }
 
-  std::string const get_label() override { return std::to_string(q) + "gram"; }
+  std::string get_label() const override { return std::to_string(q) + "gram"; }
 
 private:
   static int64_t mask_highest_bit(const uint64_t n) { return static_cast<int64_t>(n & ~(1uLL << 63)); }
@@ -176,7 +176,7 @@ public:
     similarity::Similarity sed(std::make_unique<similarity::StringEditDistance>(ted.threshold));
     return sed;
   }
-  const std::string get_label() override { return "traversal_strings"; }
+  std::string get_label() const override { return "traversal_strings"; }
 
   types::Dataset reduce_data(types::Dataset& dataset) override {
     return Reduction::forward_as_batch<types::Dataset, types::Strings>(dataset, *this);

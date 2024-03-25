@@ -11,11 +11,17 @@ namespace join {
 
 using SetId = int64_t;
 
-template<class DataType>
+template <class DataType>
 struct SizeGetter {};
 
-template<class DataType, class SimilarityType>
-inline void add_small_results(typename DataType::value_type data, DataType& indexed_data, int64_t minimum_candidate_size, int64_t maximum_candidate_size, SimilarityType& similarity, std::vector<SetId>& candidates, std::vector<bool>& already_seen) {
+template <class DataType, class SimilarityType>
+inline void add_small_results(typename DataType::value_type data,
+                              DataType& indexed_data,
+                              int64_t minimum_candidate_size,
+                              int64_t maximum_candidate_size,
+                              SimilarityType& similarity,
+                              std::vector<SetId>& candidates,
+                              std::vector<bool>& already_seen) {
   auto always_similar_bound = similarity.always_similar_below_size(data);
   for (int64_t i = 0; i < static_cast<int64_t>(indexed_data.size()); ++i) {
     auto& candidate = indexed_data[i];
@@ -42,16 +48,20 @@ public:
   std::any prepare_probing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) = 0;
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) = 0;
+  void selfjoin_batch(types::Batch& batch,
+                      Handler handler,
+                      statistics::JoinStatistics& statistics,
+                      std::shared_ptr<std::any> probing_signatures) = 0;
+  void join_batch(types::Batch& batch,
+                  Handler handler,
+                  statistics::JoinStatistics& statistics,
+                  std::shared_ptr<std::any> probing_signatures) = 0;
 };
 
 // Used to support add_small_results for PrefixSignature
-template<>
+template <>
 struct SizeGetter<types::Set> {
-  static int64_t get_size(types::Set& set) {
-    return static_cast<int64_t>(set.tokens.size());
-  }
+  static int64_t get_size(types::Set& set) { return static_cast<int64_t>(set.tokens.size()); }
 };
 
 template <class Handler>
@@ -80,13 +90,10 @@ public:
     index = std::move(new_index);
   }
 
-  bool has_independent_probing_signatures() override {
-    return false;
-  }
+  bool has_independent_probing_signatures() override { return false; }
 
-  std::vector<std::any> prepare_probing_batch(types::Batch& batch) override {
-    throw std::invalid_argument(
-      "Cannot prepare a batch for an algorithm with dependent probing signatures.");
+  std::any prepare_probing_batch(types::Batch& batch) override {
+    throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
 
   void index_batch(types::Batch& batch) override {
@@ -109,11 +116,17 @@ public:
     }
   }
 
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, [[maybe_unused]]std::shared_ptr<std::any> probing_signatures) override {
+  void join_batch(types::Batch& batch,
+                  Handler handler,
+                  statistics::JoinStatistics& statistics,
+                  [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) override {
     return _join_batch<false>(batch, handler, statistics);
   }
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, [[maybe_unused]]std::shared_ptr<std::any> probing_signatures) override {
+  void selfjoin_batch(types::Batch& batch,
+                      Handler handler,
+                      statistics::JoinStatistics& statistics,
+                      [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) override {
     return _join_batch<true>(batch, handler, statistics);
   }
 
@@ -135,7 +148,8 @@ public:
       auto maximum_candidate_size = similarity.maximum_length_bound(set_size);
 
       // first find sets that might be similar due to size alone
-      add_small_results(set, indexed_sets, minimum_candidate_size, maximum_candidate_size, similarity, candidates, already_seen);
+      add_small_results(
+        set, indexed_sets, minimum_candidate_size, maximum_candidate_size, similarity, candidates, already_seen);
 
       auto it = prefix_signature.begin_probing_signatures(set);
       auto it_end = prefix_signature.end_probing_signatures(set);
@@ -186,9 +200,8 @@ private:
   std::vector<types::Set> indexed_sets;
 };
 
-
 // used to support add_small_results in PassJoin
-template<>
+template <>
 struct SizeGetter<std::reference_wrapper<types::String>> {
   static int64_t get_size(std::reference_wrapper<types::String>& string) {
     return static_cast<int64_t>(string.get().str.size());
@@ -209,41 +222,31 @@ private:
     template <int32_t LEVEL, class DUMMY = void>
     struct IteratorHolder {};
 
+    // string size level
     template <class DUMMY>
     struct IteratorHolder<0, DUMMY> {
-      using iter = boost::integer_range<int64_t>::const_iterator;
+      using iter = types::span<similarity::PassJoinSignature::Signature>::iterator;
 
       static void set_level_key(KeyIterator& iterator, indexing::KeyType key) {
         iterator.index_string_size = key;
+        int64_t size_diff = iterator.index_string_size - iterator.probing_string_size + iterator.epsilon;
+        auto& length_entry = iterator.cached_signatures.offsets[size_diff];
+        auto& hashes = iterator.cached_signatures.hashes;
+
         iterator.current_signatures =
-          iterator.signature.probing_signatures(iterator.string, iterator.index_string_size);
+          types::span<similarity::PassJoinSignature::Signature>(hashes.begin() + length_entry.begin_offset, hashes.begin() + length_entry.end_offset);
       }
 
-      static iter get_level_iterator(KeyIterator& iterator) { return iterator.partition_range.begin(); }
+      static iter get_level_iterator(KeyIterator& iterator) { return iterator.current_signatures.begin(); }
 
-      static iter get_level_end(KeyIterator& iterator) { return iterator.partition_range.end(); }
-    };
-
-    template <class DUMMY>
-    struct IteratorHolder<1, DUMMY> {
-      using iter = similarity::PassJoinSignature::ProbingSignatures::value_type::const_iterator;
-
-      static void set_level_key(KeyIterator& iterator, indexing::KeyType key) {
-        iterator.current_partition_number = key;
-      }
-
-      static iter get_level_iterator(KeyIterator& iterator) {
-        return iterator.current_signatures[iterator.current_partition_number].begin();
-      }
-
-      static iter get_level_end(KeyIterator& iterator) {
-        return iterator.current_signatures[iterator.current_partition_number].end();
-      }
+      static iter get_level_end(KeyIterator& iterator) { return iterator.current_signatures.end(); }
     };
 
   public:
-    explicit KeyIterator(types::String::str_t& string, similarity::PassJoinSignature& signature)
-        : string(string), signature(signature), partition_range(0, signature.partition_count()) {}
+    explicit KeyIterator(int64_t probing_string_size, CachedSignatures& cached_signatures)
+        : probing_string_size(probing_string_size),
+          cached_signatures(cached_signatures),
+          epsilon((static_cast<int64_t>(cached_signatures.offsets.size()) - 1) / 2) {}
 
   public:
     template <int32_t LEVEL>
@@ -261,13 +264,12 @@ private:
       return IteratorHolder<LEVEL>::get_level_end(*this);
     }
 
-  private:
+  public:
+    const int64_t probing_string_size;
     int64_t index_string_size{0};
-    int64_t current_partition_number{0};
-    similarity::PassJoinSignature::ProbingSignatures current_signatures;
-    types::String::str_t& string;
-    similarity::PassJoinSignature& signature;
-    boost::integer_range<int64_t> partition_range;
+    types::span<similarity::PassJoinSignature::Signature> current_signatures;
+    CachedSignatures& cached_signatures;
+    int64_t epsilon;
   };
 
 public:
@@ -290,9 +292,8 @@ public:
       auto& str2 = s2.get().str;
       if (str1.size() != str2.size()) {
         return str1.size() < str2.size();
-      } else {
-        return std::lexicographical_compare(str1.begin(), str1.end(), str2.begin(), str2.end());
       }
+      return std::ranges::lexicographical_compare(str1, str2);
     });
   }
 
@@ -305,21 +306,16 @@ public:
     int64_t id = 0;
     for (auto string_ref : indexed_strings) {
       auto& string = string_ref.get().str;
-      auto signatures = passjoin_signature.indexing_signatures(string);
 
-      int64_t partition = 0;
-      for (auto sig : signatures) {
-        index.insert(id, static_cast<int64_t>(string.size()), partition, sig);
-        ++partition;
+      for (auto signatures = passjoin_signature.indexing_signatures(string); const auto sig : signatures) {
+        index.insert(id, static_cast<int64_t>(string.size()), sig);
       }
 
       ++id;
     }
   }
 
-  bool has_independent_probing_signatures() override {
-    return true;
-  }
+  bool has_independent_probing_signatures() override { return true; }
 
   std::any prepare_probing_batch([[maybe_unused]] types::Batch& batch) override {
     auto strings = std::get<types::StringBatch>(batch);
@@ -327,14 +323,17 @@ public:
     std::vector<CachedSignatures> signatures;
     signatures.reserve(strings.data.size());
 
-    for (auto & string : strings.data) {
+    for (auto& string : strings.data) {
       signatures.emplace_back(passjoin_signature.cached_probing_signatures(string.str));
     }
 
     return signatures;
   }
 
-  void join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics, std::shared_ptr<std::any> probing_signatures) override {
+  void join_batch(types::Batch& batch,
+                  Handler handler,
+                  statistics::JoinStatistics& statistics,
+                  std::shared_ptr<std::any> probing_signatures) override {
     if (probing_signatures->has_value()) {
       auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
       _join_batch<false>(batch, signatures, handler, statistics);
@@ -344,7 +343,10 @@ public:
     }
   }
 
-  void selfjoin_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics,  std::shared_ptr<std::any> probing_signatures) override {
+  void selfjoin_batch(types::Batch& batch,
+                      Handler handler,
+                      statistics::JoinStatistics& statistics,
+                      std::shared_ptr<std::any> probing_signatures) override {
     if (probing_signatures->has_value()) {
       auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
       _join_batch<true>(batch, signatures, handler, statistics);
@@ -355,14 +357,20 @@ public:
   }
 
   template <bool IS_SELF_JOIN>
-  void _join_batch(types::Batch& batch, std::vector<CachedSignatures>& probing_signatures, Handler handler, statistics::JoinStatistics& statistics) {
+  void _join_batch(types::Batch& batch,
+                   std::vector<CachedSignatures>& cached_probing_signatures,
+                   Handler handler,
+                   statistics::JoinStatistics& statistics) {
     auto strings = std::get<types::StringBatch>(batch);
 
     std::vector<bool> already_seen(indexed_strings.size());
     std::vector<StringId> candidates;
 
-    for (auto& string : strings.data) {
-      KeyIterator key_iterator(string.str, passjoin_signature);
+    for (size_t i = 0; i < strings.data.size(); ++i) {
+      auto& string = strings.data[i];
+      auto& probing_signatures = cached_probing_signatures[i];
+
+      KeyIterator key_iterator(static_cast<int64_t>(string.str.size()), probing_signatures);
 
       int64_t minimum_candidate_size = similarity.minimum_length_bound(string.str.size());
       int64_t maximum_candidate_size = similarity.maximum_length_bound(string.str.size());
@@ -405,9 +413,7 @@ public:
 private:
   similarity::StringEditDistance& similarity;
   similarity::PassJoinSignature passjoin_signature;
-  indexing::
-    ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::DISCRETE, indexing::IndexType::HASH>
-      index;
+  indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::HASH> index;
   std::vector<RefString> indexed_strings;
 };
 
