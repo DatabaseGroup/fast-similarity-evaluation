@@ -233,8 +233,8 @@ private:
         auto& length_entry = iterator.cached_signatures.offsets[size_diff];
         auto& hashes = iterator.cached_signatures.hashes;
 
-        iterator.current_signatures =
-          types::span<similarity::PassJoinSignature::Signature>(hashes.begin() + length_entry.begin_offset, hashes.begin() + length_entry.end_offset);
+        iterator.current_signatures = types::span<similarity::PassJoinSignature::Signature>(
+          hashes.begin() + length_entry.begin_offset, hashes.begin() + length_entry.end_offset);
       }
 
       static iter get_level_iterator(KeyIterator& iterator) { return iterator.current_signatures.begin(); }

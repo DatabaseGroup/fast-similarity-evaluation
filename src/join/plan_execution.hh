@@ -161,8 +161,12 @@ public:
   explicit ReductionCache(size_t cache_size) : cache(cache_size) {}
 
 public:
-  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>
-  reduce_to_level(IndexedBatch& batch, similarity::Similarity& similarity, ontology::QueryPlan& plan, int32_t level, statistics::LocalJoinStatistics& statistics) {
+  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_level(
+    IndexedBatch& batch,
+    similarity::Similarity& similarity,
+    ontology::QueryPlan& plan,
+    int32_t level,
+    statistics::LocalJoinStatistics& statistics) {
     assert(!plan.steps.empty());
     // find lowest, processed step
     auto batch_id = batch.id;
@@ -216,10 +220,11 @@ public:
     return result_pair;
   }
 
-  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_end(IndexedBatch& batch,
-                                                                                   similarity::Similarity& similarity,
-                                                                                   ontology::QueryPlan& plan,
-                                                                                   statistics::LocalJoinStatistics& statistics) {
+  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_end(
+    IndexedBatch& batch,
+    similarity::Similarity& similarity,
+    ontology::QueryPlan& plan,
+    statistics::LocalJoinStatistics& statistics) {
     return reduce_to_level(batch, similarity, plan, 0, statistics);
   }
 
@@ -234,7 +239,11 @@ public:
 
   explicit ProbingSignaturesCache(size_t size) : cache(size) {}
 
-  std::shared_ptr<std::any> get_cached_probing_signatures(int64_t plan_id, size_t batch_id, types::Batch& probe_batch, join::JoinAlgorithm<MaterializeHandler>& join_algorithm, statistics::LocalJoinStatistics& statistics) {
+  std::shared_ptr<std::any> get_cached_probing_signatures(int64_t plan_id,
+                                                          size_t batch_id,
+                                                          types::Batch& probe_batch,
+                                                          join::JoinAlgorithm<MaterializeHandler>& join_algorithm,
+                                                          statistics::LocalJoinStatistics& statistics) {
     auto cache_key = AlgBatchPair(plan_id, batch_id);
 
     auto cache_result = cache.get(cache_key);
@@ -243,7 +252,8 @@ public:
       return cache_result.value();
     } else {
       statistics.probing_signature_cache_misses.inc();
-      auto result = cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.prepare_probing_batch(probe_batch)));
+      auto result =
+        cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.prepare_probing_batch(probe_batch)));
       return result;
     }
   }
@@ -260,9 +270,16 @@ private:
     std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> owned_data{};
     bool initialized{false};
   };
+
 public:
-  AlgorithmCache(IndexedBatch& index_batch, ReductionCache& reductionCache, ProbingSignaturesCache& probing_signatures_cache, size_t algorithm_count)
-      : index_batch(index_batch), reduction_cache(reductionCache), probing_signatures_cache(probing_signatures_cache), algorithms(algorithm_count) {}
+  AlgorithmCache(IndexedBatch& index_batch,
+                 ReductionCache& reductionCache,
+                 ProbingSignaturesCache& probing_signatures_cache,
+                 size_t algorithm_count)
+      : index_batch(index_batch),
+        reduction_cache(reductionCache),
+        probing_signatures_cache(probing_signatures_cache),
+        algorithms(algorithm_count) {}
 
 public:
   void probe_using_plan(IndexedBatch& probe_batch,
@@ -285,7 +302,8 @@ public:
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics);
         alg_instance.owned_data = reduced;
-        alg_instance.algorithm = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, alg_instance.owned_data->second);
+        alg_instance.algorithm =
+          resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, alg_instance.owned_data->second);
 
         auto batch = types::dataset_to_batch(alg_instance.owned_data->first);
         alg_instance.algorithm->prepare_indexing_batch(batch);
@@ -300,7 +318,8 @@ public:
     if (plan.steps.empty()) {
       // the dataset and similarity are owned by the caller
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
-        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics);
+        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
+          plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics);
       }
 
       if (index_batch.id == probe_batch.id) {
@@ -314,7 +333,8 @@ public:
       auto batch = types::dataset_to_batch(reduced_probe->first);
 
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
-        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics);
+        cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
+          plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics);
       }
 
       if (index_batch.id == probe_batch.id) {
@@ -334,7 +354,8 @@ private:
 
 class PlanExecutor {
 public:
-  explicit PlanExecutor(int64_t batch_count, size_t reduction_cache_size, size_t probing_cache_size) : batch_count(batch_count), reduction_cache(reduction_cache_size), probing_signatures_cache(probing_cache_size) {}
+  explicit PlanExecutor(int64_t batch_count, size_t reduction_cache_size, size_t probing_cache_size)
+      : batch_count(batch_count), reduction_cache(reduction_cache_size), probing_signatures_cache(probing_cache_size) {}
 
 public:
   void execute_plans(data::Dataset& dataset,
@@ -369,11 +390,9 @@ public:
         algorithm_cache.probe_using_plan(probe_batch, similarity, plan_id, plans, handler, plan_statistics);
 
         for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
-          auto reduced_index =
-            reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
+          auto reduced_index = reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
           auto reduced_index_batch = types::dataset_to_batch(reduced_index->first);
-          auto reduced_probe =
-            reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics);
+          auto reduced_probe = reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics);
           auto reduced_probe_batch = types::dataset_to_batch(reduced_probe->first);
 
           plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));

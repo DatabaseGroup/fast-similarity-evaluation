@@ -6,7 +6,7 @@ include(ExternalProject)
 include(find_os_cpp)
 include(GetGitRevisionDescription)
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 file(COPY cmdline/wrapper DESTINATION bin)

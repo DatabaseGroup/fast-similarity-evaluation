@@ -16,7 +16,7 @@ using KeyRange = std::pair<KeyType, KeyType>;
 
 // "Interface" of index iterator
 class KeyIterator {
-  template<int32_t LEVEL, class DUMMY = void>
+  template <int32_t LEVEL, class DUMMY = void>
   class IteratorHolder {
     // using iter = ...
 
@@ -35,17 +35,17 @@ class KeyIterator {
   };
 
 public:
-  template<int32_t LEVEL>
+  template <int32_t LEVEL>
   void set_level_key(KeyType key) {
     IteratorHolder<LEVEL>::set_level_key(*this, key);
   }
 
-  template<int32_t LEVEL>
+  template <int32_t LEVEL>
   typename IteratorHolder<LEVEL>::iter get_level_iterator() {
     IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
-  template<int32_t LEVEL>
+  template <int32_t LEVEL>
   typename IteratorHolder<LEVEL>::iter get_level_end() {
     IteratorHolder<LEVEL>::get_level_end(*this);
   }
@@ -54,13 +54,13 @@ public:
 // arguably somewhat terrible code, but highly customizable due to the templates
 // specializing a templated method of a templated class is terrible (and only works
 // for partial specialization for some arcane reason)
-template<class KeyClass>
+template <class KeyClass>
 class StaticKeyIterator {
   // the dummy only exists to make specializations partial instead of explicit (i.e., full)
-  template<int32_t LEVEL, class DUMMY = void>
+  template <int32_t LEVEL, class DUMMY = void>
   struct IteratorHolder {};
 
-  template<class DUMMY>
+  template <class DUMMY>
   struct IteratorHolder<0, DUMMY> {
     using iter = std::array<KeyClass, 1>::const_iterator;
 
@@ -68,30 +68,26 @@ class StaticKeyIterator {
       // nop
     }
 
-    static iter get_level_iterator(StaticKeyIterator& iterator) {
-      return iterator.stored_key.begin();
-    }
+    static iter get_level_iterator(StaticKeyIterator& iterator) { return iterator.stored_key.begin(); }
 
-    static iter get_level_end(StaticKeyIterator& iterator) {
-      return iterator.stored_key.end();
-    }
+    static iter get_level_end(StaticKeyIterator& iterator) { return iterator.stored_key.end(); }
   };
 
 public:
   explicit StaticKeyIterator(KeyClass key) : stored_key({key}) {}
 
 public:
-  template<int32_t LEVEL>
-  void set_level_key([[maybe_unused]]KeyType key) {
+  template <int32_t LEVEL>
+  void set_level_key([[maybe_unused]] KeyType key) {
     return IteratorHolder<LEVEL>::set_level_key(*this, key);
   }
 
-  template<int32_t LEVEL>
+  template <int32_t LEVEL>
   typename IteratorHolder<LEVEL>::iter get_level_iterator() {
     return IteratorHolder<LEVEL>::get_level_iterator(*this);
   }
 
-  template<int32_t LEVEL>
+  template <int32_t LEVEL>
   typename IteratorHolder<LEVEL>::iter get_level_end() {
     return IteratorHolder<LEVEL>::get_level_end(*this);
   }
@@ -115,7 +111,7 @@ class ComplexIndex {
 template <class ValueType>
 class ComplexIndex<ValueType, HASH> {
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyType key, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
     auto iter = map.find(key);
 
@@ -127,13 +123,9 @@ public:
     }
   }
 
-  void insert(ValueType value, KeyType key) {
-    map[key].emplace_back(value);
-  }
+  void insert(ValueType value, KeyType key) { map[key].emplace_back(value); }
 
-  static constexpr int32_t LEVEL() {
-    return 0;
-  }
+  static constexpr int32_t LEVEL() { return 0; }
 
 private:
   types::HashTable<KeyType, std::vector<ValueType>> map;
@@ -142,7 +134,7 @@ private:
 template <class ValueType, IndexType... TailIndexes>
 class ComplexIndex<ValueType, HASH, TailIndexes...> {
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyType key, CallbackFun callback, KeyFun& key_function) {
     auto it = map.find(key);
 
@@ -150,7 +142,9 @@ public:
       auto& inner_index = it->second;
 
       key_function.template set_level_key<LEVEL>(key);
-      for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>(); next_key_iter != key_function.template get_level_end<LEVEL>(); ++next_key_iter) {
+      for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
+           next_key_iter != key_function.template get_level_end<LEVEL>();
+           ++next_key_iter) {
         auto next_key = *next_key_iter;
         inner_index.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
       }
@@ -162,9 +156,7 @@ public:
     map[key].insert(value, keys...);
   }
 
-  static constexpr int32_t LEVEL() {
-    return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1;
-  }
+  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
 private:
   types::HashTable<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
@@ -181,7 +173,7 @@ public:
   ComplexIndex() = default;
 
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyType key, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
     if (key < map.size() && 0 <= key) {
       auto& vec = map[key];
@@ -200,9 +192,7 @@ public:
     map[key].emplace_back(value);
   }
 
-  static constexpr int32_t LEVEL() {
-    return 0;
-  }
+  static constexpr int32_t LEVEL() { return 0; }
 
 private:
   std::vector<std::vector<ValueType>> map;
@@ -215,13 +205,15 @@ public:
   ComplexIndex() = default;
 
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyType key, CallbackFun callback, KeyFun& key_function) {
     if (key < static_cast<int64_t>(map.size()) && 0 <= key) {
       auto& inner_index = map[key];
 
       key_function.template set_level_key<LEVEL>(key);
-      for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>(); next_key_iter != key_function.template get_level_end<LEVEL>(); ++next_key_iter) {
+      for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
+           next_key_iter != key_function.template get_level_end<LEVEL>();
+           ++next_key_iter) {
         auto next_key = *next_key_iter;
         inner_index.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
       }
@@ -239,9 +231,7 @@ public:
     map[key].insert(value, keys...);
   }
 
-  static constexpr int32_t LEVEL() {
-    return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1;
-  }
+  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
 private:
   std::vector<ComplexIndex<ValueType, TailIndexes...>> map;
@@ -253,7 +243,7 @@ private:
   using KeyValuePair = std::pair<KeyType, ValueType>;
 
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyRange key_range, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
     auto key_begin = key_range.first;
     auto key_end = key_range.second;
@@ -272,9 +262,7 @@ public:
 
   void insert(ValueType value, KeyType key) { map.emplace_back(key, value); }
 
-  static constexpr int32_t LEVEL() {
-    return 0;
-  }
+  static constexpr int32_t LEVEL() { return 0; }
 
 private:
   std::vector<KeyValuePair> map;
@@ -286,7 +274,7 @@ private:
   using KeyIndexPair = std::pair<KeyType, ComplexIndex<ValueType, TailIndexes...>>;
 
 public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL=0>
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
   void query(KeyRange key_range, CallbackFun callback, KeyFun& key_function) {
     auto key_begin = key_range.first;
     auto key_end = key_range.second;
@@ -300,7 +288,9 @@ public:
       } else {
         auto key = iter->first;
         key_function.template set_level_key<LEVEL>(key);
-        for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>(); next_key_iter != key_function.template get_level_end<LEVEL>(); ++next_key_iter) {
+        for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
+             next_key_iter != key_function.template get_level_end<LEVEL>();
+             ++next_key_iter) {
           auto next_key = *next_key_iter;
           iter->second.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
         }
@@ -319,9 +309,7 @@ public:
     map.back().second.insert(value, keys...);
   }
 
-  static constexpr int32_t LEVEL() {
-    return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1;
-  }
+  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
 private:
   std::vector<KeyIndexPair> map;

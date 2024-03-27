@@ -5,8 +5,8 @@
 #include "../indexing/index.hh"
 #include "../join/plan_execution.hh"
 #include "../statistics/join_statistics.hh"
-#include "../util/git_sha.hh"
 #include "../timing/join_timing.hh"
+#include "../util/git_sha.hh"
 
 struct Config {
   std::string input_file;
@@ -14,6 +14,8 @@ struct Config {
   std::string similarity;
   double threshold{};
   int64_t batch_count{};
+  int64_t reduction_cache_size{};
+  int64_t probing_signatures_cache_size{};
   std::string label;
   std::vector<std::string> excluded_algorithms;
 };
@@ -27,7 +29,12 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
     "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into")(
-    "label,l", po::value(&config.label), "label for the run (printed in json)")("exclude,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms");
+    "label,l", po::value(&config.label), "label for the run (printed in json)")(
+    "exclude,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms")(
+    "probe-cache-size,p",
+    po::value(&config.probing_signatures_cache_size)->default_value(20),
+    "Probing signatures cache size")(
+    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size");
 
   const std::string exec_name(argv[0]);
 
@@ -75,6 +82,8 @@ nlohmann::json get_metadata(Config& config) {
   json["similarity"] = config.similarity;
   json["threshold"] = config.threshold;
   json["batch_count"] = config.batch_count;
+  json["reduction_cache_size"] = config.reduction_cache_size;
+  json["probing_signatures_cache_size"] = config.probing_signatures_cache_size;
   json["datatype"] = config.datatype;
   json["label"] = config.label;
 
@@ -149,9 +158,7 @@ statistics::JoinStatistics sum_statistics(std::vector<statistics::LocalJoinStati
 
 std::vector<join::AlgorithmId> find_excluded_algorithms(std::vector<std::string>& alg_list) {
   std::vector<join::AlgorithmId> res;
-  std::for_each(alg_list.begin(), alg_list.end(), [&](auto& str) {
-    res.push_back(join::string_to_algorithm(str));
-  });
+  std::for_each(alg_list.begin(), alg_list.end(), [&](auto& str) { res.push_back(join::string_to_algorithm(str)); });
   return res;
 }
 
@@ -174,8 +181,12 @@ int main(int argc, char** argv) {
   timing::JoinTiming timing;
 
   // cache size has to be at least 1
-  auto cache_size = join::PlanExecutor::get_allpairs_batches(config.batch_count) + 1;
-  join::PlanExecutor executor(config.batch_count, cache_size, cache_size);
+  config.reduction_cache_size = std::max(INT64_C(1), config.reduction_cache_size);
+  config.probing_signatures_cache_size = std::max(INT64_C(1), config.probing_signatures_cache_size);
+  // batch count is always at most the size of the dataset
+  config.batch_count = std::min(dataset.statistics->count, config.batch_count);
+
+  join::PlanExecutor executor(config.batch_count, config.reduction_cache_size, config.probing_signatures_cache_size);
   timing.join_time.start();
   executor.execute_plans(dataset, similarity, plans, statistics);
   timing.join_time.stop();

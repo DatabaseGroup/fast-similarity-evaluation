@@ -24,9 +24,7 @@ public:
   virtual double similarity(const T& o1, const T& o2) = 0;
   virtual bool is_in_threshold(const T& o1, const T& o2) = 0;
 
-  virtual int64_t always_similar_below_size(const T& o1) {
-    return 0;
-  }
+  virtual int64_t always_similar_below_size(const T& o1) { return 0; }
 
 public:
   double threshold;
@@ -140,7 +138,8 @@ public:
 
 class StringEditDistance : public StringSimilarity {
 public:
-  explicit StringEditDistance(double threshold) : StringSimilarity(threshold), _thresh(static_cast<int32_t>(threshold)) {}
+  explicit StringEditDistance(double threshold)
+      : StringSimilarity(threshold), _thresh(static_cast<int32_t>(threshold)) {}
 
   double similarity(const types::String& s1, const types::String& s2) override {
     auto& str1 = s1.str.size() <= s2.str.size() ? s1.str : s2.str;
@@ -250,7 +249,12 @@ public:
   TreeEditDistance(const double threshold,
                    types::Tree::LabelDictionary& label_dictionary,
                    types::Tree::CostModel& cost_model)
-      : TreeSimilarity(threshold), integer_threshold(static_cast<int32_t>(threshold)), label_dictionary(label_dictionary), cost_model(cost_model), apted(cost_model), touzet(cost_model) {}
+      : TreeSimilarity(threshold),
+        integer_threshold(static_cast<int32_t>(threshold)),
+        label_dictionary(label_dictionary),
+        cost_model(cost_model),
+        apted(cost_model),
+        touzet(cost_model) {}
 
   double similarity(const types::Tree& o1, const types::Tree& o2) override {
     tsim::node::TreeIndexAPTED t1;

@@ -64,8 +64,9 @@ struct LocalJoinStatistics : public JoinStatistics {
                                       static_cast<double>(reduction_cache_hits.value + reduction_cache_misses.value);
     probing_signature_cache_hits.add_to_json("probing_signature_cache_hits", json);
     probing_signature_cache_misses.add_to_json("probing_signature_cache_misses", json);
-    json["probing_signature_cache_hitrate"] = static_cast<double>(probing_signature_cache_hits.value) /
-                                      static_cast<double>(probing_signature_cache_hits.value + probing_signature_cache_misses.value);
+    json["probing_signature_cache_hitrate"] =
+      static_cast<double>(probing_signature_cache_hits.value) /
+      static_cast<double>(probing_signature_cache_hits.value + probing_signature_cache_misses.value);
 
     json["description"] = description;
     return json;

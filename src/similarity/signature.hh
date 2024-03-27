@@ -1,8 +1,8 @@
 #ifndef SRC_SIGNATURE_HH
 #define SRC_SIGNATURE_HH
 
-#include <vector>
 #include <boost/core/span.hpp>
+#include <vector>
 
 #include "../types/types.hh"
 
@@ -31,12 +31,11 @@ public:
       entries.emplace_back(entry.first, entry.second.count);
     }
 
-    std::ranges::sort(entries, [](const TokenCountPair& o1, const TokenCountPair& o2){
-      return o1.second < o2.second;
-    });
+    std::ranges::sort(entries,
+                      [](const TokenCountPair& o1, const TokenCountPair& o2) { return o1.second < o2.second; });
 
     int64_t current_token = 1;
-    for (auto&key : entries | std::views::keys) {
+    for (auto& key : entries | std::views::keys) {
       token_map[key].token = current_token;
       ++current_token;
     }
@@ -58,7 +57,7 @@ public:
       std::ranges::sort(set.tokens);
     }
 
-    std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2){
+    std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2) {
       if (s1.tokens.size() != s2.tokens.size()) {
         return s1.tokens.size() < s2.tokens.size();
       }
@@ -66,7 +65,8 @@ public:
     });
   }
 
-  boost::span<Signature>::const_iterator begin_indexing_signatures(const types::Set& set) { // NOLINT(*-convert-member-functions-to-static)
+  boost::span<Signature>::const_iterator begin_indexing_signatures(
+    const types::Set& set) {  // NOLINT(*-convert-member-functions-to-static)
     return &(*set.tokens.begin());
   }
 
@@ -116,7 +116,8 @@ public:
   // we want "sufficiently random", but consistent numbers here; seeding the tabulation hash this way ensures
   // execution-specific fixed random numbers (they might be different from run to run, which is a property that we
   // actually want)
-  explicit PassJoinSignature(StringEditDistance& similarity) : similarity(similarity), partition_hash(std::seed_seq{0x42424242, 0x1337}) {
+  explicit PassJoinSignature(StringEditDistance& similarity)
+      : similarity(similarity), partition_hash(std::seed_seq{0x42424242, 0x1337}) {
     threshold = static_cast<int32_t>(similarity.threshold);
   }
 
@@ -145,7 +146,8 @@ public:
     CachedSignatures cache;
     auto string_size = static_cast<int32_t>(string.size());
 
-    for (int64_t index_string_size = string_size - threshold; index_string_size <= string_size + threshold; ++index_string_size) {
+    for (int64_t index_string_size = string_size - threshold; index_string_size <= string_size + threshold;
+         ++index_string_size) {
       size_t length_begin = cache.hashes.size();
 
       int32_t offset = 0;
@@ -176,27 +178,27 @@ public:
     return cache;
   }
 
-  [[nodiscard]] int32_t partition_count() const {
-    return threshold + 1;
-  }
+  [[nodiscard]] int32_t partition_count() const { return threshold + 1; }
 
 private:
   // idx is 0 indexed
   [[nodiscard]] int32_t partition_size(size_t s, int32_t idx) const {
-    return static_cast<int32_t>(s) / partition_count() + ((static_cast<int32_t>(s) % partition_count()) >= (partition_count() - idx));
+    return static_cast<int32_t>(s) / partition_count() +
+           ((static_cast<int32_t>(s) % partition_count()) >= (partition_count() - idx));
   }
 
   static int32_t probe_start_pos(int32_t partition_idx, int32_t partition_start) {
     return std::max(0, partition_start - partition_idx);
   }
 
-  static int32_t probe_end_pos(int32_t partition_idx, int32_t partition_start, int32_t partition_length, int32_t string_length) {
+  static int32_t probe_end_pos(int32_t partition_idx,
+                               int32_t partition_start,
+                               int32_t partition_length,
+                               int32_t string_length) {
     return std::min(string_length - partition_length, partition_start + partition_idx);
   }
 
-  uint64_t apply_partition_hash(uint64_t hash, int32_t partition) {
-    return hash ^ partition_hash.get(partition);
-  }
+  uint64_t apply_partition_hash(uint64_t hash, int32_t partition) { return hash ^ partition_hash.get(partition); }
 
 private:
   similarity::StringEditDistance& similarity;
