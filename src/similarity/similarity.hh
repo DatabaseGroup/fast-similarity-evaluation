@@ -4,6 +4,7 @@
 #include <tsim/node/tree_indexer.h>
 #include <tsim/ted/apted_tree_index.h>
 #include <tsim/ted/touzet_kr_set_tree_index.h>
+#include <tsim/ted_ub/lgm_tree_index.h>
 
 #include <memory>
 #include <numeric>
@@ -13,7 +14,7 @@
 
 namespace similarity {
 
-enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT, TREE_EDIT_DISTANCE };
+enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT, TREE_EDIT_DISTANCE, HAMMING_DISTANCE };
 
 template <class T>
 class AbstractSimilarity {
@@ -218,9 +219,10 @@ private:
   const int32_t _thresh;
 };
 
-class QGramCountSimilarity : public SetSimilarity {
+// == the "set edit distance"; number of tokens to insert, delete, or replace to make both sets equal
+class StructuralSetSimilarity : public SetSimilarity {
 public:
-  QGramCountSimilarity(double threshold, int32_t q)
+  StructuralSetSimilarity(double threshold, int32_t q)
       : SetSimilarity(threshold), q(q), integer_threshold(static_cast<int32_t>(threshold)) {}
 
   int64_t equivalent_overlap(int64_t s1, int64_t s2) override {
@@ -244,6 +246,36 @@ private:
   int32_t integer_threshold;
 };
 
+class HammingDistance : public SetSimilarity {
+public:
+  explicit HammingDistance(double threshold)
+      : SetSimilarity(threshold), integer_threshold(static_cast<int32_t>(threshold)) {}
+
+  int64_t minimum_length_bound(int64_t size) override { return std::max(INT64_C(0), size - integer_threshold); }
+  int64_t maximum_length_bound(int64_t size) override { return size + integer_threshold; }
+
+  int64_t always_similar_below_size(const types::Set& o1) override {
+    auto set_size = static_cast<int64_t>(o1.tokens.size());
+    if (set_size < integer_threshold) {
+      return integer_threshold - set_size;
+    }
+    return 0;
+  }
+
+  double similarity(const types::Set& s1, const types::Set& s2) override {
+    return static_cast<double>(s1.tokens.size() + s2.tokens.size() - 2 * overlap(s1, s2));
+  }
+
+protected:
+  int64_t equivalent_overlap(int64_t s1, int64_t s2) override {
+    // + 1 compensates for having to round up
+    return (s1 + s2 - integer_threshold + 1) / 2;
+  }
+
+private:
+  int32_t integer_threshold;
+};
+
 class TreeEditDistance : public TreeSimilarity {
 public:
   TreeEditDistance(const double threshold,
@@ -254,7 +286,8 @@ public:
         label_dictionary(label_dictionary),
         cost_model(cost_model),
         apted(cost_model),
-        touzet(cost_model) {}
+        touzet(cost_model),
+        lgm_algorithm(cost_model) {}
 
   double similarity(const types::Tree& o1, const types::Tree& o2) override {
     tsim::node::TreeIndexAPTED t1;
@@ -265,6 +298,21 @@ public:
     return apted.ted(t1, t2);
   }
   bool is_in_threshold(const types::Tree& o1, const types::Tree& o2) override {
+    {
+      tsim::node::TreeIndexLGM ti_1;
+      tsim::node::TreeIndexLGM ti_2;
+      tsim::node::index_tree(ti_1, o1.root,
+                       label_dictionary, cost_model);
+      tsim::node::index_tree(ti_2, o2.root,label_dictionary, cost_model);
+
+      double ubted =
+        lgm_algorithm.ted_k(ti_1, ti_2, integer_threshold);
+
+      if (ubted <= integer_threshold) {
+        return true;
+      }
+    }
+
     tsim::node::TreeIndexTouzetKRSet t1;
     tsim::node::TreeIndexTouzetKRSet t2;
     index_tree(t1, o1.root, label_dictionary, cost_model);
@@ -279,6 +327,7 @@ private:
   types::Tree::CostModel& cost_model;
   tsim::ted::APTEDTreeIndex<types::Tree::CostModel> apted;
   tsim::ted::TouzetKRSetTreeIndex<types::Tree::CostModel> touzet;
+  tsim::ted_ub::LGMTreeIndex<types::Tree::CostModel> lgm_algorithm;
 };
 
 using Similarity = std::variant<SetSimilarityPtr, StringSimilarityPtr, TreeSimilarityPtr>;

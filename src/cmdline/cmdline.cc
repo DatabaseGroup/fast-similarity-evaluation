@@ -18,6 +18,7 @@ struct Config {
   int64_t probing_signatures_cache_size{};
   std::string label;
   std::vector<std::string> excluded_algorithms;
+  std::vector<std::string> excluded_reductions;
 };
 
 bool process_program_options(int argc, char** argv, Config& config) {
@@ -30,7 +31,8 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
     "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into")(
     "label,l", po::value(&config.label), "label for the run (printed in json)")(
-    "exclude,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms")(
+    "exclude-algorithm,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms")(
+    "exclude-reduction,y", po::value(&config.excluded_reductions)->multitoken(), "Excluded reductions")(
     "probe-cache-size,p",
     po::value(&config.probing_signatures_cache_size)->default_value(20),
     "Probing signatures cache size")(
@@ -100,6 +102,9 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
   if (sim_str == "sed") {
     sim = std::make_unique<similarity::StringEditDistance>(threshold);
     sim_id = similarity::SimilarityId::STRING_EDIT_DISTANCE;
+  } else if (sim_str == "hd") {
+    sim = std::make_unique<similarity::HammingDistance>(threshold);
+    sim_id = similarity::SimilarityId::HAMMING_DISTANCE;
   } else if (sim_str == "ted") {
     auto& trees = std::get<types::Trees>(dataset.data);
     sim = std::make_unique<similarity::TreeEditDistance>(threshold, trees.meta.label_dict, trees.meta.cost_model);
@@ -175,6 +180,7 @@ int main(int argc, char** argv) {
   ontology::StandardReductionGraph graph;
   ontology::PlannerConfiguration plan_config;
   plan_config.excluded_algorithms = find_excluded_algorithms(config.excluded_algorithms);
+  plan_config.excluded_reductions = config.excluded_reductions;
   auto plans = graph.enumerate_plans(data_id, similarity_id, plan_config);
 
   std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);

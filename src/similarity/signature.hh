@@ -58,10 +58,7 @@ public:
     }
 
     std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2) {
-      if (s1.tokens.size() != s2.tokens.size()) {
-        return s1.tokens.size() < s2.tokens.size();
-      }
-      return std::ranges::lexicographical_compare(s1.tokens, s2.tokens);
+      return s1.tokens.size() < s2.tokens.size();
     });
   }
 
@@ -117,7 +114,7 @@ public:
   // execution-specific fixed random numbers (they might be different from run to run, which is a property that we
   // actually want)
   explicit PassJoinSignature(StringEditDistance& similarity)
-      : similarity(similarity), partition_hash(std::seed_seq{0x42424242, 0x1337}) {
+      : partition_hash(std::seed_seq{0x42424242, 0x1337}) {
     threshold = static_cast<int32_t>(similarity.threshold);
   }
 
@@ -201,7 +198,6 @@ private:
   uint64_t apply_partition_hash(uint64_t hash, int32_t partition) { return hash ^ partition_hash.get(partition); }
 
 private:
-  similarity::StringEditDistance& similarity;
   int32_t threshold;
   util::TabulationHash partition_hash;
 };

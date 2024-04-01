@@ -97,7 +97,7 @@ public:
     auto& sed =
       dynamic_cast<similarity::StringEditDistance&>(std::get<similarity::StringSimilarityPtr>(similarity).operator*());
 
-    similarity::Similarity qgc_sim(std::make_unique<similarity::QGramCountSimilarity>(sed.threshold, this->q));
+    similarity::Similarity qgc_sim(std::make_unique<similarity::StructuralSetSimilarity>(sed.threshold, this->q));
     return qgc_sim;
   }
 
@@ -202,6 +202,81 @@ private:
         queue.emplace_back(it);
       }
     }
+  }
+};
+
+class LabelSetReduction : public Reduction {
+public:
+  void reduce_data(types::Batch& input_batch, types::Batch& output_batch) override {
+    assert(std::holds_alternative<types::TreeBatch>(input_batch) &&
+           std::holds_alternative<types::SetBatch>(output_batch));
+    auto& in_trees = std::get<types::TreeBatch>(input_batch);
+    auto& out_sets = std::get<types::SetBatch>(output_batch);
+    assert(in_trees.data.size() == out_sets.data.size());
+
+    auto in_iter = in_trees.data.begin();
+    auto in_iter_end = in_trees.data.end();
+    auto out_iter = out_sets.data.begin();
+    // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
+
+    while (in_iter != in_iter_end) {
+      auto& tree = *in_iter;
+      auto& set = *out_iter;
+
+      set.id = tree.id;
+      generate_labelset(in_trees.meta.label_dict, tree, set);
+
+      ++in_iter;
+      ++out_iter;
+    }
+  }
+  similarity::Similarity reduce_similarity(similarity::Similarity& similarity) override {
+    assert(std::holds_alternative<similarity::TreeSimilarityPtr>(similarity));
+
+    // assert: Similarity is Tree Edit Distance
+    auto& ted =
+      dynamic_cast<similarity::TreeEditDistance&>(std::get<similarity::TreeSimilarityPtr>(similarity).operator*());
+
+    similarity::Similarity hd(std::make_unique<similarity::StructuralSetSimilarity>(ted.threshold, 1));
+    return hd;
+  }
+
+  types::Dataset reduce_data(types::Dataset& dataset) override {
+    return Reduction::forward_as_batch<types::Dataset, types::Sets>(dataset, *this);
+  }
+  types::Dataset reduce_data(types::Batch& input_batch) override {
+    return Reduction::forward_as_batch<types::Batch, types::Sets>(input_batch, *this);
+  }
+
+  std::string get_label() const override {
+    return "label_sets";
+  }
+
+private:
+  void generate_labelset(types::Tree::LabelDictionary& ld, types::Tree& tree, types::Set& set) {
+    std::vector<std::reference_wrapper<const types::Tree::Node>> queue;
+    queue.emplace_back(tree.root);
+
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+
+      set.tokens.push_back(hash(node.get().label().get_label()));
+
+      for (auto& children = node.get().get_children(); const auto& it : children) {
+        queue.emplace_back(it);
+      }
+    }
+  }
+
+  static int64_t hash(const std::string& s) {
+    uint64_t h = 11162313925820027003u;
+    for (auto c : s) {
+      h = (h << 13) | (h >> 19);
+      h = h + c;
+    }
+
+    return static_cast<int64_t>(h & ~(UINT64_C(1) << 63));
   }
 };
 

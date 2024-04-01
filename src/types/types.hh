@@ -146,8 +146,14 @@ using Trees = DataMeta<Tree>;
 using TreeBatch = DataBatch<Tree>;
 
 inline std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unused]] const Tree& obj) {
-  throw std::invalid_argument(
-    "Printing trees is not implemented yet. Maybe do bracket notation? See tree-edit library");
+  os << "(" << obj.id << ", [";
+  std::vector<std::string> labels;
+  obj.root.get_all_labels_recursion(labels);
+  for (auto& str : labels) {
+    os << str << ", ";
+  }
+  os << "])";
+  return os;
 }
 
 using Dataset = std::variant<Sets, Strings, Trees>;

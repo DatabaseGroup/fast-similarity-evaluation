@@ -1,13 +1,13 @@
 #ifndef SRC_PLANNER_HH
 #define SRC_PLANNER_HH
 
+#include <boost/functional/hash.hpp>
+
 #include "../join/join_algorithm.hh"
 #include "../join/result_handler.hh"
 #include "../similarity/similarity.hh"
 #include "../types/types.hh"
 #include "reduction.hh"
-
-#include <boost/functional/hash.hpp>
 
 namespace ontology {
 
@@ -92,16 +92,16 @@ namespace ontology {
 
 struct PlannerConfiguration {
   std::vector<join::AlgorithmId> excluded_algorithms;
+  std::vector<std::string> excluded_reductions;
 };
 
 class ReductionGraph {
 public:
   virtual ~ReductionGraph() = default;
 
-  std::vector<QueryPlan> enumerate_plans(
-    types::DatatypeId type,
-    similarity::SimilarityId similarity,
-    const PlannerConfiguration& configuration = PlannerConfiguration()) {
+  std::vector<QueryPlan> enumerate_plans(types::DatatypeId type,
+                                         similarity::SimilarityId similarity,
+                                         const PlannerConfiguration& configuration = PlannerConfiguration()) {
     NodeKey node_key{type, similarity};
 
     // assume it exists
@@ -139,13 +139,16 @@ private:
 
     // recursive case
     for (auto& edge : node.edges) {
-      current_plan.steps.emplace_back(running_reduction_id++, edge.reduction);
+      auto& excl_red = configuration.excluded_reductions;
+      if (std::find(excl_red.begin(), excl_red.end(), edge.reduction.get_label()) == excl_red.end()) {
+        current_plan.steps.emplace_back(running_reduction_id++, edge.reduction);
 
-      Node& next_node = edge.to_node;
-      enumerate_plans_recursive(next_node, current_plan, plans, configuration);
+        Node& next_node = edge.to_node;
+        enumerate_plans_recursive(next_node, current_plan, plans, configuration);
 
-      // remove last reduction step to prepare for next iteration
-      current_plan.steps.pop_back();
+        // remove last reduction step to prepare for next iteration
+        current_plan.steps.pop_back();
+      }
     }
   }
 
@@ -171,23 +174,28 @@ private:
 class StandardReductionGraph : public ReductionGraph {
 public:
   StandardReductionGraph() {
-    auto& traversal_string_reduction = *reductions.emplace_back(std::make_unique<TraversalStringReduction>()).get();
-    auto& qgram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3)).get();
+    auto& traversal_string_reduction = *reductions.emplace_back(std::make_unique<TraversalStringReduction>());
+    auto& qgram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3));
+    auto& label_set_reduction = *reductions.emplace_back(std::make_unique<LabelSetReduction>());
 
     // insert nodes first (otherwise pointers might change)
     insert_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     insert_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
     insert_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
+    insert_node(types::DatatypeId::SET, similarity::SimilarityId::HAMMING_DISTANCE);
 
     // now get references
     auto& ted = get_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     auto& sed = get_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
     auto& qgram = get_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
+    auto& set_hd = get_node(types::DatatypeId::SET, similarity::SimilarityId::HAMMING_DISTANCE);
 
     ted.edges.emplace_back(traversal_string_reduction, sed);
+    ted.edges.emplace_back(label_set_reduction, qgram);
     sed.edges.emplace_back(qgram_reduction, qgram);
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     qgram.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
+    set_hd.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
   }
 };
 
