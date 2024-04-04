@@ -301,12 +301,10 @@ public:
     {
       tsim::node::TreeIndexLGM ti_1;
       tsim::node::TreeIndexLGM ti_2;
-      tsim::node::index_tree(ti_1, o1.root,
-                       label_dictionary, cost_model);
-      tsim::node::index_tree(ti_2, o2.root,label_dictionary, cost_model);
+      tsim::node::index_tree(ti_1, o1.root, label_dictionary, cost_model);
+      tsim::node::index_tree(ti_2, o2.root, label_dictionary, cost_model);
 
-      double ubted =
-        lgm_algorithm.ted_k(ti_1, ti_2, integer_threshold);
+      double ubted = lgm_algorithm.ted_k(ti_1, ti_2, integer_threshold);
 
       if (ubted <= integer_threshold) {
         return true;

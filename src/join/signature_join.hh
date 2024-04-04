@@ -44,8 +44,6 @@ template <class Handler>
 class SignatureJoin : public JoinAlgorithm<Handler> {
 public:
   void prepare_indexing_batch(types::Batch& batch) = 0;
-  bool has_independent_probing_signatures() = 0;
-  std::any prepare_probing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;
 
   void selfjoin_batch(types::Batch& batch,
@@ -90,12 +88,6 @@ public:
     index = std::move(new_index);
   }
 
-  bool has_independent_probing_signatures() override { return false; }
-
-  std::any prepare_probing_batch(types::Batch& batch) override {
-    throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
-  }
-
   void index_batch(types::Batch& batch) override {
     // assert batch == indexed_Sets
 
@@ -134,10 +126,13 @@ public:
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
     auto& set_batch = std::get<types::SetBatch>(batch);
 
-    std::vector<types::Set> probing_sets;
-    probing_sets.reserve(set_batch.data.size());
-    probing_sets.insert(probing_sets.begin(), set_batch.data.begin(), set_batch.data.end());
-    prefix_signature.prepare_probe(probing_sets);
+    std::vector<types::Set> prepared_probing_sets;
+    if constexpr (!IS_SELF_JOIN) {
+      prepared_probing_sets.reserve(set_batch.data.size());
+      prepared_probing_sets.insert(prepared_probing_sets.begin(), set_batch.data.begin(), set_batch.data.end());
+      prefix_signature.prepare_probe(prepared_probing_sets);
+    }
+    auto& probing_sets = IS_SELF_JOIN ? indexed_sets : prepared_probing_sets;
 
     std::vector<bool> already_seen(indexed_sets.size());
     std::vector<SetId> candidates;

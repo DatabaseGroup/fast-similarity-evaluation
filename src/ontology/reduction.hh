@@ -269,13 +269,14 @@ private:
     }
   }
 
+  // FNV-1a hash
   static int64_t hash(const std::string& s) {
-    uint64_t h = 11162313925820027003u;
+    uint64_t h = UINT64_C(0xcbf29ce484222325);
     for (auto c : s) {
-      h = (h << 13) | (h >> 19);
-      h = h + c;
+      h = (h ^ c) * UINT64_C(0x00000100000001B3);
     }
 
+    // set highest bit to 0 (to make the number non-negative)
     return static_cast<int64_t>(h & ~(UINT64_C(1) << 63));
   }
 };

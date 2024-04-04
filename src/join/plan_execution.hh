@@ -15,6 +15,7 @@
 #include "../util/visit_overload.hh"
 #include "result_handler.hh"
 #include "signature_join.hh"
+#include "tjoin_algorithm.hh"
 
 namespace join {
 
@@ -28,7 +29,8 @@ std::unique_ptr<JoinAlgorithm<Handler>> resolve_algorithmid(AlgorithmId id, simi
     break;
   case PASS_JOIN:
     return std::make_unique<PassJoin<Handler>>(similarity);
-    break;
+  case TJOIN:
+    return std::make_unique<TJoinLite<Handler>>(similarity);
   }
   return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
 }

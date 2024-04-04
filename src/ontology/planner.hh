@@ -196,6 +196,7 @@ public:
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     qgram.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     set_hd.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
+    ted.algorithms.emplace_back(join::AlgorithmId::TJOIN);
   }
 };
 
