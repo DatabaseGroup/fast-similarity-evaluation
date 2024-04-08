@@ -195,8 +195,8 @@ private:
       auto node = queue.back();
       queue.pop_back();
 
-      auto label = ld.insert(node.get().label());
-      string.str.push_back(static_cast<char32_t>(label));
+      auto label = std::hash<std::string>{}(node.get().label().to_string());
+      string.str.push_back(static_cast<char32_t>(label ^ (label >> 32)));
 
       for (auto& children = node.get().get_children(); const auto& it : std::ranges::reverse_view(children)) {
         queue.emplace_back(it);
@@ -261,23 +261,12 @@ private:
       auto node = queue.back();
       queue.pop_back();
 
-      set.tokens.push_back(hash(node.get().label().get_label()));
+      set.tokens.push_back(std::hash<std::string>{}(node.get().label().to_string()) & std::numeric_limits<types::Set::Token>::max());
 
       for (auto& children = node.get().get_children(); const auto& it : children) {
         queue.emplace_back(it);
       }
     }
-  }
-
-  // FNV-1a hash
-  static int64_t hash(const std::string& s) {
-    uint64_t h = UINT64_C(0xcbf29ce484222325);
-    for (auto c : s) {
-      h = (h ^ c) * UINT64_C(0x00000100000001B3);
-    }
-
-    // set highest bit to 0 (to make the number non-negative)
-    return static_cast<int64_t>(h & ~(UINT64_C(1) << 63));
   }
 };
 
