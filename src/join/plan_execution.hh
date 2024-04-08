@@ -375,7 +375,17 @@ public:
 
       AlgorithmCache algorithm_cache(index_batch, reduction_cache, probing_signatures_cache, plans.size());
 
-      for (int64_t probe_batch_idx = index_batch_idx; probe_batch_idx < batch_count; ++probe_batch_idx) {
+      // even rounds are left-to-right, odd right-to-left
+      bool left_to_right_direction = (index_batch_idx & INT64_C(1)) == 0;
+
+      for (int64_t i = index_batch_idx; i < batch_count; ++i) {
+        int64_t probe_batch_idx;
+        if (left_to_right_direction) {
+          probe_batch_idx = i;
+        } else {
+          probe_batch_idx = batch_count + index_batch_idx - i - 1;
+        }
+
         auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch(dataset.data, probe_batch_idx, batch_size));
         auto probe_offset = get_offset_into_batch(probe_batch_idx, batch_size);
 
