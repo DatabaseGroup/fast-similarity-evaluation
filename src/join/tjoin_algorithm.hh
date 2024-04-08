@@ -25,7 +25,7 @@ private:
   using Label = types::Tree::Label;
   using CandidateIndex = tsim::candidate_index::CandidateIndex;
   using Converter = tsim::label_set_converter::Converter<Label>;
-  using TokenMap = std::unordered_map<Label, int, Converter::labelhash>;
+  using TokenFrequencyMap = std::unordered_map<int, int>;
   using SetEntry = std::pair<int, std::vector<tsim::label_set_converter::LabelSetElement>>;
   using SetsCollection = std::vector<SetEntry>;
   using SetData = tsim::candidate_index::SetData;
@@ -38,7 +38,7 @@ public:
   void prepare_indexing_batch(types::Batch& batch) override {
     auto& tree_batch = std::get<types::TreeBatch>(batch);
 
-    label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map, token_map_list);
+    label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map_list);
 
     std::for_each(tree_batch.data.begin(), tree_batch.data.end(), [&](auto& tree) { indexed_trees.emplace_back(std::ref(tree)); });
 
@@ -48,7 +48,7 @@ public:
   }
 
   void index_batch([[maybe_unused]] types::Batch& batch) override {
-    index.prepare(label_converter.get_number_of_labels());
+    index.prepare(token_map_list.size() + 1);
 
     for (int set_id = 0; set_id < static_cast<int>(indexed_sets.size()); ++set_id) {
       auto& set_data = indexed_set_data.emplace_back();
@@ -56,12 +56,12 @@ public:
     }
   }
 
-  bool has_independent_probing_signatures() override { return false; }
+  bool has_independent_probing_signatures() override { return true; }
   std::any prepare_probing_batch(types::Batch& batch) override {
     auto& tree_batch = std::get<types::TreeBatch>(batch);
 
     SetsCollection probing_sets;
-    label_converter.convertForeign(tree_batch.data, probing_sets, token_map);
+    label_converter.convertForeign(tree_batch.data, probing_sets);
     return probing_sets;
   }
 
@@ -146,8 +146,7 @@ private:
   std::vector<SetData> indexed_set_data;
   std::vector<std::reference_wrapper<types::Tree>> indexed_trees;
   Converter label_converter;
-  TokenMap token_map;
-  std::vector<int> token_map_list;
+  TokenFrequencyMap token_map_list;
 };
 
 }  // namespace join
