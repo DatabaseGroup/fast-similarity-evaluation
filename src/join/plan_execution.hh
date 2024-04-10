@@ -158,6 +158,30 @@ struct std::hash<join::CacheHashKey> {
 
 namespace join {
 
+struct CostPair {
+  timing::ExecutionCost start;
+  timing::ExecutionCost end;
+
+  [[nodiscard]] timing::cost_type get_cost() const { return timing::get_cost(start, end); }
+};
+
+struct BatchCost {
+  CostPair indexing;
+  CostPair probing_preprocessing;
+  CostPair candidate_generation;
+  CostPair verification;
+
+  [[nodiscard]] timing::cost_type get_cost() const {
+    timing::cost_type cost;
+    cost += indexing.get_cost();
+    cost += probing_preprocessing.get_cost();
+    cost += candidate_generation.get_cost();
+    cost += verification.get_cost();
+
+    return cost;
+  }
+};
+
 class ReductionCache {
 public:
   explicit ReductionCache(size_t cache_size) : cache(cache_size) {}
@@ -289,9 +313,11 @@ public:
                         int64_t plan_idx,
                         std::vector<ontology::QueryPlan>& plans,
                         MaterializeHandler& handler,
+                        BatchCost& batch_cost,
                         statistics::LocalJoinStatistics& statistics) {
     auto& plan = plans[plan_idx];
 
+    batch_cost.indexing.start = timing::start_cost_measurement();
     auto& alg_instance = algorithms[plan_idx];
     if (!alg_instance.initialized) {
       // if reductions are necessary
@@ -314,22 +340,28 @@ public:
 
       alg_instance.initialized = true;
     }
+    batch_cost.indexing.end = timing::end_cost_measurement();
 
     std::shared_ptr<std::any> cached_probing_signatures;
     // do join
     if (plan.steps.empty()) {
+      batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // the dataset and similarity are owned by the caller
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
           plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics);
       }
+      batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
+      batch_cost.candidate_generation.start = timing::start_cost_measurement();
       if (index_batch.id == probe_batch.id) {
         alg_instance.algorithm->selfjoin_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
       } else {
         alg_instance.algorithm->join_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
       }
+      batch_cost.candidate_generation.end = timing::end_cost_measurement();
     } else {
+      batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
       auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics);
       auto batch = types::dataset_to_batch(reduced_probe->first);
@@ -338,12 +370,15 @@ public:
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
           plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics);
       }
+      batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
+      batch_cost.candidate_generation.start = timing::start_cost_measurement();
       if (index_batch.id == probe_batch.id) {
         alg_instance.algorithm->selfjoin_batch(batch, handler, statistics, cached_probing_signatures);
       } else {
         alg_instance.algorithm->join_batch(batch, handler, statistics, cached_probing_signatures);
       }
+      batch_cost.candidate_generation.end = timing::end_cost_measurement();
     }
   }
 
@@ -364,8 +399,9 @@ public:
                      similarity::Similarity& similarity,
                      std::vector<ontology::QueryPlan>& plans,
                      std::vector<statistics::LocalJoinStatistics>& all_statistics) {
-    int64_t all_batch_pairs = get_allpairs_batches(batch_count);
-    int64_t batch_size = get_batch_size(batch_count, dataset.statistics->count);
+    const int64_t all_batch_pairs = get_allpairs_batches(batch_count);
+    const int64_t batch_size = get_batch_size(batch_count, dataset.statistics->count);
+    int64_t remaining_all_batch_pairs = all_batch_pairs;
 
     ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
@@ -390,7 +426,7 @@ public:
         auto probe_offset = get_offset_into_batch(probe_batch_idx, batch_size);
 
         int64_t plan_id = bandit.select_arm();
-        timing::ExecutionCost start_cost = timing::start_cost_measurement();
+        BatchCost batch_cost;
 
         auto& plan = plans[plan_id];
         auto& plan_statistics = all_statistics[plan_id];
@@ -399,8 +435,9 @@ public:
         types::ResultPairs result_pairs;
         MaterializeHandler handler(result_pairs);
 
-        algorithm_cache.probe_using_plan(probe_batch, similarity, plan_id, plans, handler, plan_statistics);
+        algorithm_cache.probe_using_plan(probe_batch, similarity, plan_id, plans, handler, batch_cost, plan_statistics);
 
+        batch_cost.verification.start = timing::start_cost_measurement();
         for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
           auto reduced_index = reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
           auto reduced_index_batch = types::dataset_to_batch(reduced_index->first);
@@ -414,21 +451,37 @@ public:
 
         // if data was actually reduced, we still have to verify with the "outermost" similarity
         if (!plan.steps.empty()) {
-          plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+          plan_statistics.last_level_verifications.add(static_cast<int64_t>(result_pairs.size()));
           verify_with_similarity(dataset.data, similarity, result_pairs);
         }
+        batch_cost.verification.end = timing::end_cost_measurement();
 
-        timing::ExecutionCost end_cost = timing::start_cost_measurement();
-        auto loss = static_cast<long double>(timing::get_cost(start_cost, end_cost));
+        auto loss = static_cast<long double>(batch_cost.get_cost());
         bandit.update_weights(plan_id, loss);
+        plan_statistics.incurred_loss += loss;
         plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
 
         // types::print_result_pairs(std::cerr, result_pairs, dataset.data);
+
+        /* somewhat useful for debugging the bandit
+        std::cerr << "Algorithm " << plan.to_string() << "\n\tloss:" << loss << std::endl;
+        std::cerr << "\tweights:" << std::endl;
+        for (int32_t j = 0; j < static_cast<int32_t>(plans.size()); ++j) {
+          std::cerr << "\t\t" << plans[j].to_string() << ": " << bandit.get_normalized_weight(j) << std::endl;
+        }
+         */
+
+        --remaining_all_batch_pairs;
+        if (remaining_all_batch_pairs % (all_batch_pairs / 10) == 0) {
+          for (int32_t j = 0; j < static_cast<int32_t>(plans.size()); ++j) {
+            all_statistics[j].bandit_weights.push_back(bandit.get_normalized_weight(j));
+          }
+        }
       }
     }
 
-    for (int32_t i = 0; i < static_cast<int32_t>(plans.size()); ++i) {
-      all_statistics[i].bandit_weight = bandit.get_normalized_weight(i);
+    for (int32_t j = 0; j < static_cast<int32_t>(plans.size()); ++j) {
+      all_statistics[j].expected_total_loss = bandit.get_expected_total_loss(j);
     }
   }
 

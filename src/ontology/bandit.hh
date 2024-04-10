@@ -36,7 +36,9 @@ public:
     return arms - 1;
   }
 
-  void update_weights(int64_t selected_arm, double loss) {
+  void update_weights(int64_t selected_arm, long double loss) {
+    incurred_loss += loss;
+
     // unbiased estimator for loss (loss of selection / probability of selection)
     long double loss_estimate = loss / (weight[selected_arm] / weight_sum);
 
@@ -64,6 +66,7 @@ public:
     std::fill(expected_total_loss.begin(), expected_total_loss.end(), 0);
     min_total_loss = std::numeric_limits<long double>::max();
 
+    incurred_loss = 0;
     epoch = 0;
     trials = trials - current_trial;
     current_trial = 0;
@@ -72,14 +75,22 @@ public:
     update_eta();
   }
 
-  long double get_normalized_weight(int64_t arm) {
-    return weight[arm] / weight_sum;
-  }
+  long double get_normalized_weight(int64_t arm) { return weight[arm] / weight_sum; }
+
+  [[nodiscard]] long double get_incurred_loss() const { return incurred_loss; }
+
+  [[nodiscard]] long double get_expected_total_loss(int64_t arm) const { return expected_total_loss[arm]; }
 
 private:
   void update_eta() {
     eta = std::sqrt((2 * (std::log(arms) + static_cast<long double>(arms) * std::log(trials))) /
                     (static_cast<long double>(arms) * std::pow(4, epoch)));
+    // weights have to be recalculated due to new eta
+    weight_sum = 0;
+    for (int64_t arm = 0; arm < arms; ++arm) {
+      weight[arm] = std::exp(-eta * expected_total_loss[arm] / loss_bound);
+      weight_sum += weight[arm];
+    }
   }
 
 private:
@@ -93,18 +104,21 @@ private:
   long double weight_sum;
   std::vector<long double> expected_total_loss;
   long double min_total_loss;
+  long double incurred_loss;
   absl::BitGen gen;
 };
 
 class Exp3LightA {
 public:
-  Exp3LightA(int64_t arms, int64_t trials) : arms(arms), trials(trials), current_trial(1), epoch(0), loss_bound(1), bandit_solver(arms, trials, loss_bound)  {
+  Exp3LightA(int64_t arms, int64_t trials)
+      : arms(arms),
+        trials(trials),
+        current_trial(1),
+        epoch(0),
+        loss_bound(1),
+        bandit_solver(arms, trials, loss_bound) {}
 
-  }
-
-  int64_t select_arm() {
-    return bandit_solver.select_arm();
-  }
+  int64_t select_arm() { return bandit_solver.select_arm(); }
 
   void update_weights(int64_t selected_arm, long double loss) {
     if (loss > loss_bound) {
@@ -116,7 +130,12 @@ public:
     }
   }
 
-  long double get_normalized_weight(int64_t arm) { return bandit_solver.get_normalized_weight(arm);
+  long double get_normalized_weight(int64_t arm) { return bandit_solver.get_normalized_weight(arm); }
+
+  [[nodiscard]] long double get_incurred_loss() const { return bandit_solver.get_incurred_loss(); }
+
+  [[nodiscard]] long double get_expected_total_loss(int64_t arm) const {
+    return bandit_solver.get_expected_total_loss(arm);
   }
 
 private:

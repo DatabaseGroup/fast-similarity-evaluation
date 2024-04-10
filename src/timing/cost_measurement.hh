@@ -25,6 +25,7 @@ using cost_type = uint64_t;
 struct ExecutionCost {
   uint64_t ticks;
 
+  ExecutionCost() : ticks(0) {}
   explicit ExecutionCost(uint64_t ticks) : ticks(ticks) {}
 };
 #endif
