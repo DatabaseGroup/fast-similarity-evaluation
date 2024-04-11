@@ -13,9 +13,10 @@
 #include "../types/types.hh"
 #include "../util/lru_cache.hh"
 #include "../util/visit_overload.hh"
+#include "pass_join.hh"
+#include "prefix_join.hh"
 #include "result_handler.hh"
-#include "signature_join.hh"
-#include "tjoin_algorithm.hh"
+#include "t_join.hh"
 
 namespace join {
 

@@ -1,5 +1,5 @@
-#ifndef SRC_TJOIN_ALGORITHM_HH
-#define SRC_TJOIN_ALGORITHM_HH
+#ifndef SRC_T_JOIN_HH
+#define SRC_T_JOIN_HH
 
 #include <tsim/join/tjoin/candidate_index.h>
 #include <tsim/join/tjoin/label_set_converter.h>
@@ -151,4 +151,4 @@ private:
 
 }  // namespace join
 
-#endif  // SRC_TJOIN_ALGORITHM_HH
+#endif  // SRC_T_JOIN_HH
