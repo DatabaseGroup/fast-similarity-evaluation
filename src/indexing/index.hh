@@ -92,7 +92,7 @@ public:
     return IteratorHolder<LEVEL>::get_level_end(*this);
   }
 
-private:
+public:
   std::array<KeyClass, 1> stored_key;
 };
 
@@ -127,7 +127,7 @@ public:
 
   static constexpr int32_t LEVEL() { return 0; }
 
-private:
+public:
   types::HashTable<KeyType, std::vector<ValueType>> map;
 };
 
@@ -158,7 +158,7 @@ public:
 
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
-private:
+public:
   types::HashTable<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
 };
 
@@ -194,7 +194,7 @@ public:
 
   static constexpr int32_t LEVEL() { return 0; }
 
-private:
+public:
   std::vector<std::vector<ValueType>> map;
 };
 
@@ -233,7 +233,7 @@ public:
 
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
-private:
+public:
   std::vector<ComplexIndex<ValueType, TailIndexes...>> map;
 };
 
@@ -264,7 +264,7 @@ public:
 
   static constexpr int32_t LEVEL() { return 0; }
 
-private:
+public:
   std::vector<KeyValuePair> map;
 };
 
@@ -311,7 +311,7 @@ public:
 
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
-private:
+public:
   std::vector<KeyIndexPair> map;
 };
 

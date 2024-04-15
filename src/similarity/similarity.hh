@@ -36,8 +36,6 @@ public:
   explicit SetSimilarity(double threshold) : AbstractSimilarity<types::Set>(threshold) {}
 
 protected:
-  virtual int64_t equivalent_overlap(int64_t s1, int64_t s2) = 0;
-
   static int32_t overlap(const types::Set& s1, const types::Set& s2) {
     auto it1 = s1.tokens.begin();
     auto it2 = s2.tokens.begin();
@@ -88,6 +86,12 @@ protected:
   }
 
 public:
+  virtual int64_t equivalent_overlap(int64_t s1, int64_t s2) = 0;
+
+  virtual int64_t equivalent_hd(int64_t s1, int64_t s2) {
+    return s1 + s2 - 2 * equivalent_overlap(s1, s2);
+  }
+
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
 
   bool is_in_threshold(const types::Set& s1, const types::Set& s2) override {

@@ -13,6 +13,7 @@
 #include "../types/types.hh"
 #include "../util/lru_cache.hh"
 #include "../util/visit_overload.hh"
+#include "palloc_join.hh"
 #include "pass_join.hh"
 #include "prefix_join.hh"
 #include "result_handler.hh"
@@ -32,6 +33,8 @@ std::unique_ptr<JoinAlgorithm<Handler>> resolve_algorithmid(AlgorithmId id, simi
     return std::make_unique<PassJoin<Handler>>(similarity);
   case TJOIN:
     return std::make_unique<TJoinLite<Handler>>(similarity);
+  case PALLOC:
+    return std::make_unique<PallocJoin<Handler>>(similarity);
   }
   return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
 }
@@ -173,7 +176,7 @@ struct BatchCost {
   CostPair verification;
 
   [[nodiscard]] timing::cost_type get_cost() const {
-    timing::cost_type cost;
+    timing::cost_type cost{};
     cost += indexing.get_cost();
     cost += probing_preprocessing.get_cost();
     cost += candidate_generation.get_cost();

@@ -75,6 +75,13 @@ public:
   std::vector<Token> tokens;
   explicit Set(Id id) : Data(id) {}
   Set() : Data(INVALID) {}
+
+  bool operator<(const Set& rhs) const {
+    if (tokens.size() != rhs.tokens.size()) {
+      return tokens.size() < rhs.tokens.size();
+    }
+    return tokens < rhs.tokens;
+  }
 };
 
 template <>
@@ -103,6 +110,13 @@ public:
   // todo remove
   String(const Id id, str_t str) : Data(id), str(std::move(str)) {}
   String(const Id id, const std::string& str) : Data(id), str(str.begin(), str.end()) {}
+
+  bool operator<(const String& rhs) const {
+    if (str.size() != rhs.str.size()) {
+      return str.size() < rhs.str.size();
+    }
+    return str < rhs.str;
+  }
 };
 template <>
 class Meta<String> {};

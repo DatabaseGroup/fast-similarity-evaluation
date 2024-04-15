@@ -61,7 +61,6 @@ public:
   }
 
   uint64_t roll(INTEGER c) {
-    // state <= ALPHABET_SIZE / 2
     state *= BASE_CONSTANT;
     state %= MODULO;
     state += c;

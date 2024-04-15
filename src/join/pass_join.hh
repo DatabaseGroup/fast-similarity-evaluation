@@ -49,7 +49,7 @@ private:
     };
 
   public:
-    explicit KeyIterator(int64_t probing_string_size, CachedSignatures& cached_signatures)
+    KeyIterator(int64_t probing_string_size, CachedSignatures& cached_signatures)
         : probing_string_size(probing_string_size),
           cached_signatures(cached_signatures),
           epsilon((static_cast<int64_t>(cached_signatures.offsets.size()) - 1) / 2) {}
@@ -94,12 +94,7 @@ public:
     indexed_strings.insert(indexed_strings.begin(), strings.data.begin(), strings.data.end());
 
     std::sort(indexed_strings.begin(), indexed_strings.end(), [](RefString& s1, RefString& s2) {
-      auto& str1 = s1.get().str;
-      auto& str2 = s2.get().str;
-      if (str1.size() != str2.size()) {
-        return str1.size() < str2.size();
-      }
-      return std::ranges::lexicographical_compare(str1, str2);
+      return s1.get() < s2.get();
     });
   }
 

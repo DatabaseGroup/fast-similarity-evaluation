@@ -96,7 +96,6 @@ class PassJoinSignature {
 public:
   using Signature = uint64_t;
   using IndexingSignatures = std::vector<Signature>;
-  using ProbingSignatures = std::vector<std::vector<Signature>>;
 
   struct CachedSignatures {
     struct LengthEntry {
@@ -113,8 +112,7 @@ public:
   // we want "sufficiently random", but consistent numbers here; seeding the tabulation hash this way ensures
   // execution-specific fixed random numbers (they might be different from run to run, which is a property that we
   // actually want)
-  explicit PassJoinSignature(StringEditDistance& similarity)
-      : partition_hash(std::seed_seq{0x42424242, 0x1337}) {
+  explicit PassJoinSignature(StringEditDistance& similarity) : partition_hash(std::seed_seq{0x42424242, 0x1337}) {
     threshold = static_cast<int32_t>(similarity.threshold);
   }
 
@@ -178,7 +176,7 @@ public:
   [[nodiscard]] int32_t partition_count() const { return threshold + 1; }
 
 private:
-  // idx is 0 indexed
+  // idx is 0-indexed
   [[nodiscard]] int32_t partition_size(size_t s, int32_t idx) const {
     return static_cast<int32_t>(s) / partition_count() +
            ((static_cast<int32_t>(s) % partition_count()) >= (partition_count() - idx));
@@ -200,6 +198,84 @@ private:
 private:
   int32_t threshold;
   util::TabulationHash partition_hash;
+};
+
+class PallocSignature {
+public:
+  using Signature = uint64_t;
+  struct Signatures {
+    struct PartitionEntry {
+      size_t begin_offset;
+      size_t end_offset;
+
+      PartitionEntry(size_t begin_offset, size_t end_offset) : begin_offset(begin_offset), end_offset(end_offset) {}
+    };
+    std::vector<Signature> normal_signatures;
+    std::vector<Signature> deletion_signatures;
+    std::vector<PartitionEntry> deletion_partition_offsets;
+  };
+
+public:
+  PallocSignature() : partition_hash(std::seed_seq{0x42424242, 0x1337}), is_deletion_hash(std::seed_seq{0x3133735}) {}
+
+  Signatures indexing_signatures(types::Set& set, int32_t partition_count) {
+    Signatures signatures;
+
+    std::vector<int32_t> partition_size(partition_count + 1, 0);
+
+    signatures.normal_signatures.reserve(partition_count);
+    // initialize with partition-specific hash value
+    for (auto i = 0; i < partition_count; ++i) {
+      signatures.normal_signatures.push_back(partition_hash.get(i));
+    }
+    for (auto token : set.tokens) {
+      auto part = partition(token, partition_count);
+      signatures.normal_signatures[part] ^= hash_token(token);
+      ++partition_size[part + 1];
+    }
+    std::partial_sum(partition_size.begin(), partition_size.end(), partition_size.begin());
+
+    for (auto i = 0; i < partition_count; ++i) {
+      signatures.deletion_partition_offsets.emplace_back(partition_size[i], partition_size[i + 1]);
+    }
+
+    auto deletion_hash = is_deletion_hash.get(0);
+    for (auto token : set.tokens) {
+      auto part = partition(token, partition_count);
+      signatures.deletion_signatures[partition_size[part]] = signatures.normal_signatures[part] ^ hash_token(token) ^ deletion_hash;
+      ++partition_size[part];
+    }
+
+    return signatures;
+  }
+
+private:
+  static uint64_t _pseudo_fmix64(types::Set::Token token, const uint64_t c1, const uint64_t c2) {
+    auto hash = static_cast<uint64_t>(token);
+
+    hash ^= hash >> 33;
+    hash *= c1;
+    hash ^= hash >> 33;
+    hash *= c2;
+    hash ^= hash >> 33;
+
+    return hash;
+  }
+
+  // fmix64
+  static uint64_t hash_token(types::Set::Token token) {
+    return _pseudo_fmix64(token, UINT64_C(0xff51afd7ed558ccd), UINT64_C(0xc4ceb9fe1a85ec53));
+  }
+
+  // some random numbers from http://zimbry.blogspot.com/2011/09/better-bit-mixing-improving-on.html
+  static uint64_t partition(types::Set::Token token, int32_t partition_count) {
+    auto hash = _pseudo_fmix64(token, UINT64_C(0x16a6ac37883af045), UINT64_C(0xcc9c31a4274686a5));
+    return hash % partition_count;
+  }
+
+private:
+  util::TabulationHash partition_hash;
+  util::TabulationHash is_deletion_hash;
 };
 
 }  // namespace similarity
