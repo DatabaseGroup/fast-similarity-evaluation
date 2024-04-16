@@ -82,7 +82,7 @@ public:
     size_t set_id = 0;
     for (auto& set : indexed_sets) {
       auto set_size = static_cast<int32_t>(set.get().tokens.size());
-      while (size_groups[group_idx].lower > set_size) {
+      while (size_groups[group_idx].upper < set_size) {
         ++group_idx;
       }
 
@@ -114,24 +114,23 @@ public:
     std::vector<CachedSignatures> signatures(sets.data.size());
 
     // this has to be independent of the indexed data
-    // group_idx = index of middle--upper group (hence starts at 1)
+    // group_idx = index of upper group (hence starts at 3)
     size_t group_idx = 2;
     // bound of kind [..., ...) (upper is exclusive)
     int32_t lower_bound = 1;
     int32_t middle_low_bound = similarity.maximum_length_bound(lower_bound) + 1;
     int32_t middle_upper_bound = similarity.maximum_length_bound(middle_low_bound) + 1;
     int32_t upper_bound = similarity.maximum_length_bound(middle_upper_bound) + 1;
-    int32_t lower_partition_count = similarity.equivalent_hd(lower_bound, middle_low_bound - 1);
-    int32_t mid_partition_count = similarity.equivalent_hd(middle_low_bound, middle_upper_bound - 1);
-    ;
-    int32_t upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1);
+    int32_t lower_partition_count = similarity.equivalent_hd(lower_bound, middle_low_bound - 1) + 1;
+    int32_t mid_partition_count = similarity.equivalent_hd(middle_low_bound, middle_upper_bound - 1) + 1;
+    int32_t upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1) + 1;
 
     for (auto& entry : probed_sets) {
       auto& set = entry.first.get();
       auto& sig_entry = signatures[entry.second];
       sig_entry.probing_set_id = entry.second;
       auto set_size = static_cast<int32_t>(set.tokens.size());
-      while (upper_bound < set_size) {
+      while (middle_upper_bound <= set_size) {
         ++group_idx;
         lower_bound = middle_low_bound;
         middle_low_bound = middle_upper_bound;
@@ -139,7 +138,7 @@ public:
         upper_bound = similarity.maximum_length_bound(upper_bound) + 1;
         lower_partition_count = mid_partition_count;
         mid_partition_count = upper_partition_count;
-        upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1);
+        upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1) + 1;
       }
 
       sig_entry.lower.group_id = group_idx - 2;
@@ -157,7 +156,7 @@ public:
                       Handler handler,
                       statistics::JoinStatistics& statistics,
                       std::shared_ptr<std::any> probing_signatures) override {
-    if (probing_signatures->has_value()) {
+    if (probing_signatures) {
       auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
       _join_batch<true>(batch, signatures, handler, statistics);
     } else {
@@ -170,7 +169,7 @@ public:
                   Handler handler,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override {
-    if (probing_signatures->has_value()) {
+    if (probing_signatures) {
       auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
       _join_batch<false>(batch, signatures, handler, statistics);
     } else {
@@ -204,7 +203,7 @@ public:
         index.map.begin(),
         index.map.end(),
         sig.lower.group_id,
-        [](auto& entry, auto value) { return entry.first > value; });
+        [](auto& entry, auto value) { return entry.first < value; });
 
       auto last_group = IS_SELF_JOIN ? sig.mid.group_id : sig.upper.group_id;
       std::vector<std::reference_wrapper<GroupSignatures>> sig_vector{
@@ -217,6 +216,9 @@ public:
         auto group_id = size_index.first;
         if (group_id > last_group) {
           break;
+        }
+        while (sig_iter->get().group_id != group_id) {
+          ++sig_iter;
         }
 
         _probe_size_group<IS_SELF_JOIN>(probing_set,
@@ -282,7 +284,7 @@ public:
 
     std::make_heap(costs.begin(), costs.end(), std::greater{});
 
-    int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;
+    int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;  // todo probably some change required for larger group (compare to size_group.lower)
 
     while (0 < hamming_distance) {
       std::pop_heap(costs.begin(), costs.end(), std::greater{});
@@ -297,10 +299,21 @@ public:
           }
         }
 
-        // 2. get cost of deletion ils, update heap
         int64_t cost = 0;
+        // 2. get cost of probing normal signature against deletion index
+        {
+          auto sig = signature.select_other_index(nor_sig[partition]);
+          auto it = size_index.map.find(sig);
+          if (it != size_index.map.end()) {
+            auto& list = it->second;
+            cost += static_cast<int64_t>(list.size());
+            normal_ils[partition] = std::experimental::make_observer(&list);
+          }
+        }
+
+        // 3. get cost of probing deletion signatures against normal index
         for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
-          auto sig = del_sig[i];
+          auto sig = signature.select_other_index(del_sig[i]);
 
           auto it = size_index.map.find(sig);
           if (it != size_index.map.end()) {
@@ -310,11 +323,18 @@ public:
           }
         }
 
+        // 4. update heap
         entry.is_normal = false;
         entry.cost = cost;
 
         std::push_heap(costs.begin(), costs.end(), std::greater{});
       } else {
+        if (normal_ils[partition]) {
+          for (auto id : *normal_ils[partition]) {
+            handler(id);
+          }
+        }
+
         for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
           if (deletion_ils[i]) {
             for (auto id : *deletion_ils[i]) {

@@ -56,7 +56,7 @@ void PassJoin<Handler>::join_batch(types::Batch& batch,
                 Handler handler,
                 statistics::JoinStatistics& statistics,
                 std::shared_ptr<std::any> probing_signatures) {
-  if (probing_signatures->has_value()) {
+  if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<false>(batch, signatures, handler, statistics);
   } else {
@@ -70,7 +70,7 @@ void PassJoin<Handler>::selfjoin_batch(types::Batch& batch,
                     Handler handler,
                     statistics::JoinStatistics& statistics,
                     std::shared_ptr<std::any> probing_signatures) {
-  if (probing_signatures->has_value()) {
+  if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<true>(batch, signatures, handler, statistics);
   } else {

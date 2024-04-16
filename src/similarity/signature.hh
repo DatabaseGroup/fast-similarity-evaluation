@@ -218,7 +218,11 @@ public:
   };
 
 public:
-  PallocSignature() : partition_hash(std::seed_seq{0x42424242, 0x1337}), is_deletion_hash(std::seed_seq{0x3133735}) {}
+  PallocSignature() : partition_hash(std::seed_seq{0x42424242, 0x1337}),
+                      deletion_hash(
+                        // util::TabulationHash(std::seed_seq{0x3133735}).get(0)
+                        0
+                        ) {}
 
   Signatures indexing_signatures(types::Set& set, int32_t partition_count) {
     Signatures signatures;
@@ -241,7 +245,7 @@ public:
       signatures.deletion_partition_offsets.emplace_back(partition_size[i], partition_size[i + 1]);
     }
 
-    auto deletion_hash = is_deletion_hash.get(0);
+    signatures.deletion_signatures.resize(set.tokens.size());
     for (auto token : set.tokens) {
       auto part = partition(token, partition_count);
       signatures.deletion_signatures[partition_size[part]] = signatures.normal_signatures[part] ^ hash_token(token) ^ deletion_hash;
@@ -249,6 +253,10 @@ public:
     }
 
     return signatures;
+  }
+
+  Signature select_other_index(Signature s) {
+    return s ^ deletion_hash;
   }
 
 private:
@@ -277,7 +285,7 @@ private:
 
 private:
   util::TabulationHash partition_hash;
-  util::TabulationHash is_deletion_hash;
+  const uint64_t deletion_hash;
 };
 
 }  // namespace similarity

@@ -8,6 +8,35 @@
 
 namespace data {
 
+class SetParser {
+public:
+  Dataset parse(const std::string& filename) {
+    Dataset dataset;
+    dataset.data = types::Sets{};
+
+    auto statistics = std::make_unique<SetStatistics>();
+    auto& sets = std::get<types::Sets>(dataset.data);
+
+    std::ifstream file(filename);
+
+    types::Data::Id data_id = 0;
+    for (std::string line; std::getline(file, line);) {
+      std::stringstream integers(line);
+      auto& s = sets.data.emplace_back(data_id);
+      while (integers.good() && !integers.eof()) {
+        types::Set::Token token;
+        integers >> token;
+        s.tokens.push_back(token);
+      }
+      ++data_id;
+    }
+    statistics->count = data_id;
+
+    dataset.statistics = std::move(statistics);
+    return dataset;
+  }
+};
+
 class StringParser {
 public:
   Dataset parse(const std::string& filename) {

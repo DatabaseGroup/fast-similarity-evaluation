@@ -21,8 +21,8 @@ public:
   }
 };
 
+class SetStatistics : public Statistics {};
 class StringStatistics : public Statistics {};
-
 class TreeStatistics : public Statistics {};
 
 class Dataset {

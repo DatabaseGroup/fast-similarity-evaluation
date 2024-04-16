@@ -109,11 +109,10 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
     auto& trees = std::get<types::Trees>(dataset.data);
     sim = std::make_unique<similarity::TreeEditDistance>(threshold, trees.meta.label_dict, trees.meta.cost_model);
     sim_id = similarity::SimilarityId::TREE_EDIT_DISTANCE;
-  } /*else if (sim_str == "jaccard") {  // todo fix jaccard
+  } else if (sim_str == "jaccard") {
     sim = std::make_unique<similarity::JaccardSimilarity>(threshold);
-    sim_id = similarity::SimilarityId::STRING_EDIT_DISTANCE;
-  }*/
-  else {
+    sim_id = similarity::SimilarityId::JACCARD;
+  } else {
     throw std::invalid_argument("Similarity \"" + sim_str + "\" unknown.");
   }
   return {sim_id, std::move(sim)};
@@ -124,7 +123,9 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
 
   // this could be replaced by a hashtable, but who cares?
   if (data_str == "set") {
-    // todo
+    data_id = types::DatatypeId::SET;
+    data::SetParser set_parser;
+    return {data_id, set_parser.parse(filepath)};
   } else if (data_str == "string") {
     data_id = types::DatatypeId::STRING;
     data::StringParser string_parser;

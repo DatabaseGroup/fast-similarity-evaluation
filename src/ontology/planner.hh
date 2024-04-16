@@ -181,22 +181,27 @@ public:
     // insert nodes first (otherwise pointers might change)
     insert_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     insert_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
-    insert_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
+    insert_node(types::DatatypeId::SET, similarity::SimilarityId::STRUCTUAL_SET_SIM);
     insert_node(types::DatatypeId::SET, similarity::SimilarityId::HAMMING_DISTANCE);
+    insert_node(types::DatatypeId::SET, similarity::SimilarityId::JACCARD);
 
     // now get references
     auto& ted = get_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
     auto& sed = get_node(types::DatatypeId::STRING, similarity::SimilarityId::STRING_EDIT_DISTANCE);
-    auto& qgram = get_node(types::DatatypeId::SET, similarity::SimilarityId::QGRAM_COUNT);
+    auto& struct_set_sim = get_node(types::DatatypeId::SET, similarity::SimilarityId::STRUCTUAL_SET_SIM);
     auto& set_hd = get_node(types::DatatypeId::SET, similarity::SimilarityId::HAMMING_DISTANCE);
+    auto& jaccard = get_node(types::DatatypeId::SET, similarity::SimilarityId::JACCARD);
 
     ted.edges.emplace_back(traversal_string_reduction, sed);
-    ted.edges.emplace_back(label_set_reduction, qgram);
-    sed.edges.emplace_back(qgram_reduction, qgram);
+    ted.edges.emplace_back(label_set_reduction, struct_set_sim);
+    sed.edges.emplace_back(qgram_reduction, struct_set_sim);
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
-    qgram.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
+    struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
+    struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PALLOC);
     set_hd.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     ted.algorithms.emplace_back(join::AlgorithmId::TJOIN);
+    jaccard.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
+    jaccard.algorithms.emplace_back(join::AlgorithmId::PALLOC);
   }
 };
 

@@ -14,7 +14,7 @@
 
 namespace similarity {
 
-enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, QGRAM_COUNT, TREE_EDIT_DISTANCE, HAMMING_DISTANCE };
+enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, STRUCTUAL_SET_SIM, TREE_EDIT_DISTANCE, HAMMING_DISTANCE };
 
 template <class T>
 class AbstractSimilarity {
@@ -86,11 +86,11 @@ protected:
   }
 
 public:
-  virtual int64_t equivalent_overlap(int64_t s1, int64_t s2) = 0;
-
-  virtual int64_t equivalent_hd(int64_t s1, int64_t s2) {
-    return s1 + s2 - 2 * equivalent_overlap(s1, s2);
+  virtual int64_t equivalent_overlap(int64_t s1, int64_t s2) {
+    return std::ceil(equivalent_fractional_overlap(s1, s2));
   }
+  virtual double equivalent_fractional_overlap(int64_t s1, int64_t s2) = 0;
+  virtual int64_t equivalent_hd(int64_t s1, int64_t s2) { return static_cast<int64_t>(static_cast<double>(s1 + s2) - 2 * equivalent_fractional_overlap(s1, s2)); }
 
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
 
@@ -105,8 +105,8 @@ public:
   }
 
   int64_t probing_prefix_size(const types::Set& s1) {
-    return static_cast<int64_t>(s1.tokens.size()) -
-           equivalent_overlap(static_cast<int64_t>(s1.tokens.size()), static_cast<int64_t>(s1.tokens.size())) + 1;
+    auto size = static_cast<int64_t>(s1.tokens.size());
+    return size - equivalent_overlap(minimum_length_bound(size), size) + 1;
   }
 
   virtual int64_t minimum_length_bound(int64_t size) = 0;
@@ -139,6 +139,12 @@ public:
 
     return 1.0 * o / (l1 + l2 - o);
   }
+
+  double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
+    return (threshold / (1 + threshold)) * static_cast<double>((s1 + s2));
+  }
+  int64_t minimum_length_bound(int64_t size) override { return std::ceil(static_cast<double>(size) * threshold); }
+  int64_t maximum_length_bound(int64_t size) override { return std::floor(static_cast<double>(size) / threshold); }
 };
 
 class StringEditDistance : public StringSimilarity {
@@ -229,7 +235,7 @@ public:
   StructuralSetSimilarity(double threshold, int32_t q)
       : SetSimilarity(threshold), q(q), integer_threshold(static_cast<int32_t>(threshold)) {}
 
-  int64_t equivalent_overlap(int64_t s1, int64_t s2) override {
+  double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
     return static_cast<int32_t>(std::max(s1, s2)) - q * integer_threshold;
   }
 
@@ -271,9 +277,8 @@ public:
   }
 
 protected:
-  int64_t equivalent_overlap(int64_t s1, int64_t s2) override {
-    // + 1 compensates for having to round up
-    return (s1 + s2 - integer_threshold + 1) / 2;
+  double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
+    return static_cast<double>(s1 + s2 - integer_threshold) / 2;
   }
 
 private:
