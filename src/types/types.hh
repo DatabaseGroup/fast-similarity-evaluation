@@ -90,7 +90,7 @@ class Meta<Set> {};
 using Sets = DataMeta<Set>;
 using SetBatch = DataBatch<Set>;
 
-std::ostream& operator<<(std::ostream& os, const Set& obj) {
+inline std::ostream& operator<<(std::ostream& os, const Set& obj) {
   os << "(" << obj.id << ", [";
   for (auto token : obj.tokens) {
     os << token << ", ";

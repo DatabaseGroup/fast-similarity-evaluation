@@ -113,6 +113,9 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
     sim = std::make_unique<similarity::JaccardSimilarity>(threshold);
     sim_id = similarity::SimilarityId::STRING_EDIT_DISTANCE;
   }*/
+  else {
+    throw std::invalid_argument("Similarity \"" + sim_str + "\" unknown.");
+  }
   return {sim_id, std::move(sim)};
 }
 
@@ -131,6 +134,8 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
     data::TreeParser tree_parser;
     return {data_id, tree_parser.parse(filepath)};
   }
+
+  throw std::invalid_argument("Data type \"" + data_str + "\" unknown.");
 }
 
 nlohmann::json plan_to_json(ontology::QueryPlan& plan) {

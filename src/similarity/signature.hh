@@ -3,8 +3,10 @@
 
 #include <boost/core/span.hpp>
 #include <vector>
+#include <ranges>
 
 #include "../types/types.hh"
+#include "../util/hashing.hh"
 
 namespace similarity {
 

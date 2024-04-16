@@ -1,6 +1,7 @@
 #ifndef SRC_HASHING_HH
 #define SRC_HASHING_HH
 
+#include <absl/random/random.h>
 #include <boost/multiprecision/miller_rabin.hpp>
 
 namespace util {

@@ -9,7 +9,7 @@ namespace join {
 enum AlgorithmId { FALLBACK, PREFIX_SIGNATURE_JOIN, PASS_JOIN, TJOIN, PALLOC };
 
 // there are better ways to do this, but they aren't worth it here
-std::string algorithm_to_string(AlgorithmId id) {
+inline std::string algorithm_to_string(AlgorithmId id) {
   switch (id) {
   case FALLBACK:
     return "fallback";
@@ -25,7 +25,7 @@ std::string algorithm_to_string(AlgorithmId id) {
   return "fallback";
 }
 
-AlgorithmId string_to_algorithm(const std::string& algorithm) {
+inline AlgorithmId string_to_algorithm(const std::string& algorithm) {
   static const std::unordered_map<std::string, AlgorithmId> map{
     {"prefix-signature", AlgorithmId::PREFIX_SIGNATURE_JOIN},
     {"pass-join", AlgorithmId::PASS_JOIN},

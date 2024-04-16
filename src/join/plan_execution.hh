@@ -21,22 +21,21 @@
 
 namespace join {
 
-template <class Handler>
-std::unique_ptr<JoinAlgorithm<Handler>> resolve_algorithmid(AlgorithmId id, similarity::Similarity& similarity) {
+std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(AlgorithmId id, similarity::Similarity& similarity) {
   switch (id) {
   case PREFIX_SIGNATURE_JOIN:
-    return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
+    return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity);
   case FALLBACK:
     // todo implement comparing all pairs as obvious fallback
     break;
   case PASS_JOIN:
-    return std::make_unique<PassJoin<Handler>>(similarity);
+    return std::make_unique<PassJoin<MaterializeHandler>>(similarity);
   case TJOIN:
-    return std::make_unique<TJoinLite<Handler>>(similarity);
+    return std::make_unique<TJoinLite<MaterializeHandler>>(similarity);
   case PALLOC:
-    return std::make_unique<PallocJoin<Handler>>(similarity);
+    return std::make_unique<PallocJoin<MaterializeHandler>>(similarity);
   }
-  return std::make_unique<PrefixSignatureJoin<Handler>>(similarity);
+  return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity);
 }
 
 template <class DataType, class SimilarityPtr>
@@ -327,7 +326,7 @@ public:
       // if reductions are necessary
       if (plan.steps.empty()) {
         // the dataset and similarity are owned by the caller
-        alg_instance.algorithm = resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, similarity);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity);
         alg_instance.algorithm->prepare_indexing_batch(index_batch.batch);
         alg_instance.algorithm->index_batch(index_batch.batch);
       } else {
@@ -335,7 +334,7 @@ public:
         auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics);
         alg_instance.owned_data = reduced;
         alg_instance.algorithm =
-          resolve_algorithmid<MaterializeHandler>(plan.algorithm_id, alg_instance.owned_data->second);
+          resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
 
         auto batch = types::dataset_to_batch(alg_instance.owned_data->first);
         alg_instance.algorithm->prepare_indexing_batch(batch);

@@ -193,14 +193,6 @@ public:
       auto& probing_set = sets.data[sig.probing_set_id];
       auto set_size = static_cast<int64_t>(probing_set.tokens.size());
 
-      auto length_lower_bound = similarity.minimum_length_bound(set_size);
-      int64_t length_upper_bound;
-      if constexpr (IS_SELF_JOIN) {
-        length_upper_bound = set_size;
-      } else {
-        length_upper_bound = similarity.maximum_length_bound(set_size);
-      }
-
       auto candidate_handler = [&](SetId set_id) {
         if (!already_seen[set_id]) {
           already_seen[set_id] = true;
@@ -223,8 +215,8 @@ public:
       while (index_iter != index.map.end() && sig_iter != sig_vector.end()) {
         auto& size_index = *index_iter;
         auto group_id = size_index.first;
-        if (group_id > sig.upper.group_id) {
-          last_group;
+        if (group_id > last_group) {
+          break;
         }
 
         _probe_size_group<IS_SELF_JOIN>(probing_set,
