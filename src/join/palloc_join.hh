@@ -17,12 +17,11 @@ public:
     int64_t group_id{};
   };
   struct CachedSignatures {
-    GroupSignatures lower;
-    GroupSignatures mid;  // == signatures of own group
-    GroupSignatures upper;
+    std::vector<GroupSignatures> group_signatures;
 
     // only has local scope
-    size_t probing_set_id{};
+    int32_t probing_set_id{};
+    int32_t own_group_id{};
   };
 
 private:
@@ -130,6 +129,9 @@ public:
       auto& sig_entry = signatures[entry.second];
       sig_entry.probing_set_id = entry.second;
       auto set_size = static_cast<int32_t>(set.tokens.size());
+      auto min_set_size = similarity.minimum_length_bound(set_size);
+      auto max_set_size = similarity.maximum_length_bound(set_size);
+
       while (middle_upper_bound <= set_size) {
         ++group_idx;
         lower_bound = middle_low_bound;
@@ -141,12 +143,22 @@ public:
         upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1) + 1;
       }
 
-      sig_entry.lower.group_id = group_idx - 2;
-      sig_entry.lower.signatures = signature.indexing_signatures(set, lower_partition_count);
-      sig_entry.mid.group_id = group_idx - 1;
-      sig_entry.mid.signatures = signature.indexing_signatures(set, mid_partition_count);
-      sig_entry.upper.group_id = group_idx;
-      sig_entry.upper.signatures = signature.indexing_signatures(set, upper_partition_count);
+      if (min_set_size < middle_low_bound) {
+        auto& e = sig_entry.group_signatures.emplace_back();
+        e.group_id = group_idx - 2;
+        e.signatures = signature.indexing_signatures(set, lower_partition_count);
+      }
+      {
+        auto& e = sig_entry.group_signatures.emplace_back();
+        e.group_id = sig_entry.own_group_id = group_idx - 1;
+        e.signatures = signature.indexing_signatures(set, mid_partition_count);
+      }
+
+      if (middle_upper_bound <= max_set_size) {
+        auto& e = sig_entry.group_signatures.emplace_back();
+        e.group_id = group_idx;
+        e.signatures = signature.indexing_signatures(set, upper_partition_count);
+      }
     }
 
     return signatures;
@@ -202,28 +214,26 @@ public:
       auto index_iter = std::lower_bound(
         index.map.begin(),
         index.map.end(),
-        sig.lower.group_id,
+        sig.group_signatures.front().group_id,
         [](auto& entry, auto value) { return entry.first < value; });
 
-      auto last_group = IS_SELF_JOIN ? sig.mid.group_id : sig.upper.group_id;
-      std::vector<std::reference_wrapper<GroupSignatures>> sig_vector{
-        std::ref(sig.lower), std::ref(sig.mid), std::ref(sig.upper)};
-      auto sig_iter = sig_vector.begin();
+      auto last_group = IS_SELF_JOIN ? sig.own_group_id : sig.group_signatures.back().group_id;
+      auto sig_iter = sig.group_signatures.begin();
 
       // probe lower signatures
-      while (index_iter != index.map.end() && sig_iter != sig_vector.end()) {
+      while (index_iter != index.map.end() && sig_iter != sig.group_signatures.end()) {
         auto& size_index = *index_iter;
         auto group_id = size_index.first;
         if (group_id > last_group) {
           break;
         }
-        while (sig_iter->get().group_id != group_id) {
+        while (sig_iter->group_id != group_id) {
           ++sig_iter;
         }
 
         _probe_size_group<IS_SELF_JOIN>(probing_set,
-                                        (*sig_iter).get(),
-                                        size_groups[(*sig_iter).get().group_id],
+                                        *sig_iter,
+                                        size_groups[sig_iter->group_id],
                                         size_index.second,
                                         candidate_handler,
                                         statistics);
