@@ -2,11 +2,18 @@ cmake_minimum_required(VERSION 3.25)
 project(src)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(CheckIPOSupported)
 include(ExternalProject)
 include(find_os_cpp)
 include(GetGitRevisionDescription)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT error)
+if (LTO_SUPPORTED)
+    message("Using Link-Time Optimization for release-builds only")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 file(COPY cmdline/wrapper DESTINATION bin)
@@ -31,7 +38,11 @@ set(TREE_SIMILARITY_INCLUDE "${INSTALL_DIR}/include")
 
 set(SOURCES
         cmdline/cmdline.cc
-        util/git_sha.cc)
+        util/git_sha.cc
+        join/prefix_join.cc
+        join/t_join.cc
+        join/pass_join.cc
+        join/palloc_join.cc)
 
 set(LINK_LIBS
         absl::any
