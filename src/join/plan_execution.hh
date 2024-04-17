@@ -464,7 +464,7 @@ public:
         plan_statistics.incurred_loss += loss;
         plan_statistics.result_size.add(static_cast<int64_t>(result_pairs.size()));
 
-        types::print_result_pairs(std::cerr, result_pairs, dataset.data);
+        // types::print_result_pairs(std::cerr, result_pairs, dataset.data);
 
         /* somewhat useful for debugging the bandit
         std::cerr << "Algorithm " << plan.to_string() << "\n\tloss:" << loss << std::endl;

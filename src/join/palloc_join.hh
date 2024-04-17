@@ -51,8 +51,7 @@ public:
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
   bool has_independent_probing_signatures() override {
-    // todo update later
-    return false;
+    return true;
   }
 
   void prepare_indexing_batch(types::Batch& batch) override {
@@ -217,7 +216,7 @@ public:
         sig.group_signatures.front().group_id,
         [](auto& entry, auto value) { return entry.first < value; });
 
-      auto last_group = IS_SELF_JOIN ? sig.own_group_id : sig.group_signatures.back().group_id;
+      auto last_group = sig.group_signatures.back().group_id;
       auto sig_iter = sig.group_signatures.begin();
 
       // probe lower signatures
@@ -294,7 +293,7 @@ public:
 
     std::make_heap(costs.begin(), costs.end(), std::greater{});
 
-    int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;  // todo probably some change required for larger group (compare to size_group.lower)
+    int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;
 
     while (0 < hamming_distance) {
       std::pop_heap(costs.begin(), costs.end(), std::greater{});
@@ -352,6 +351,9 @@ public:
             }
           }
         }
+
+        // remove entry from heap
+        costs.pop_back();
       }
 
       --hamming_distance;
