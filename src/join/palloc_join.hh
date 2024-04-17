@@ -9,6 +9,14 @@
 
 namespace join {
 
+// Used to support add_small_results in PassJoin
+template <>
+struct SizeGetter<std::reference_wrapper<types::Set>> {
+  static int64_t get_size(std::reference_wrapper<types::Set>& set) {
+    return static_cast<int64_t>(set.get().tokens.size());
+  }
+};
+
 template <class Handler>
 class PallocJoin : public SignatureJoin<Handler> {
 public:

@@ -121,9 +121,9 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
 
 template <class Handler>
 void PallocJoin<Handler>::selfjoin_batch(types::Batch& batch,
-                    Handler handler,
-                    statistics::JoinStatistics& statistics,
-                    std::shared_ptr<std::any> probing_signatures) {
+                                         Handler handler,
+                                         statistics::JoinStatistics& statistics,
+                                         std::shared_ptr<std::any> probing_signatures) {
   if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<true>(batch, signatures, handler, statistics);
@@ -135,9 +135,9 @@ void PallocJoin<Handler>::selfjoin_batch(types::Batch& batch,
 
 template <class Handler>
 void PallocJoin<Handler>::join_batch(types::Batch& batch,
-                Handler handler,
-                statistics::JoinStatistics& statistics,
-                std::shared_ptr<std::any> probing_signatures) {
+                                     Handler handler,
+                                     statistics::JoinStatistics& statistics,
+                                     std::shared_ptr<std::any> probing_signatures) {
   if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<false>(batch, signatures, handler, statistics);
@@ -150,9 +150,9 @@ void PallocJoin<Handler>::join_batch(types::Batch& batch,
 template <class Handler>
 template <bool IS_SELF_JOIN>
 void PallocJoin<Handler>::_join_batch(types::Batch& batch,
-                 std::vector<CachedSignatures>& signatures,
-                 Handler& handler,
-                 statistics::JoinStatistics& statistics) {
+                                      std::vector<CachedSignatures>& signatures,
+                                      Handler& handler,
+                                      statistics::JoinStatistics& statistics) {
   auto sets = std::get<types::SetBatch>(batch);
 
   std::vector<bool> already_seen(indexed_sets.size());
@@ -162,6 +162,15 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
     auto& probing_set = sets.data[sig.probing_set_id];
     auto set_size = static_cast<int64_t>(probing_set.tokens.size());
 
+    // first find sets that might be similar due to size alone
+    add_small_results(probing_set,
+                      indexed_sets,
+                      similarity.minimum_length_bound(set_size),
+                      similarity.maximum_length_bound(set_size),
+                      similarity,
+                      candidates,
+                      already_seen);
+
     auto candidate_handler = [&](SetId set_id) {
       if (!already_seen[set_id]) {
         already_seen[set_id] = true;
@@ -170,10 +179,9 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
     };
 
     auto index_iter = std::lower_bound(
-      index.map.begin(),
-      index.map.end(),
-      sig.group_signatures.front().group_id,
-      [](auto& entry, auto value) { return entry.first < value; });
+      index.map.begin(), index.map.end(), sig.group_signatures.front().group_id, [](auto& entry, auto value) {
+        return entry.first < value;
+      });
 
     auto last_group = sig.group_signatures.back().group_id;
     auto sig_iter = sig.group_signatures.begin();
@@ -189,12 +197,8 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
         ++sig_iter;
       }
 
-      _probe_size_group<IS_SELF_JOIN>(probing_set,
-                                      *sig_iter,
-                                      size_groups[sig_iter->group_id],
-                                      size_index.second,
-                                      candidate_handler,
-                                      statistics);
+      _probe_size_group<IS_SELF_JOIN>(
+        probing_set, *sig_iter, size_groups[sig_iter->group_id], size_index.second, candidate_handler, statistics);
       ++index_iter;
       ++sig_iter;
     }
@@ -224,11 +228,11 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
 template <class Handler>
 template <bool IS_SELF_JOIN, class CandidateHandler>
 void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
-                       GroupSignatures& group_sigs,
-                       SizeGroup& size_group,
-                       indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
-                       CandidateHandler& handler,
-                       statistics::JoinStatistics& statistics) {
+                                            GroupSignatures& group_sigs,
+                                            SizeGroup& size_group,
+                                            indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
+                                            CandidateHandler& handler,
+                                            statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
   std::vector<std::experimental::observer_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count);
@@ -320,4 +324,4 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
   }
 }
 
-}
+}  // namespace join
