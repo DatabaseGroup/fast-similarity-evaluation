@@ -64,8 +64,8 @@ public:
     });
   }
 
-  boost::span<Signature>::const_iterator begin_indexing_signatures(
-    const types::Set& set) {  // NOLINT(*-convert-member-functions-to-static)
+  boost::span<Signature>::const_iterator begin_indexing_signatures( // NOLINT(*-convert-member-functions-to-static)
+    const types::Set& set) {
     return &(*set.tokens.begin());
   }
 
@@ -254,7 +254,7 @@ public:
     return signatures;
   }
 
-  Signature select_other_index(Signature s) { return s ^ deletion_hash; }
+  [[nodiscard]] Signature select_other_index(Signature s) const { return s ^ deletion_hash; }
 
 private:
   static uint64_t _pseudo_fmix64(types::Set::Token token, const uint64_t c1, const uint64_t c2) {

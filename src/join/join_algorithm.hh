@@ -46,7 +46,7 @@ public:
 
   virtual void prepare_indexing_batch(types::Batch& batch) = 0;
   virtual bool has_independent_probing_signatures() { return false; }
-  virtual std::any prepare_probing_batch(types::Batch& batch) {
+  virtual std::any prepare_probing_batch([[maybe_unused]] types::Batch& batch) {
     throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
   virtual void index_batch(types::Batch& batch) = 0;

@@ -112,6 +112,9 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
   } else if (sim_str == "jaccard") {
     sim = std::make_unique<similarity::JaccardSimilarity>(threshold);
     sim_id = similarity::SimilarityId::JACCARD;
+  } else if (sim_str == "jaro") {
+    sim = std::make_unique<similarity::JaroSimilarity>(threshold);
+    sim_id = similarity::SimilarityId::JARO_STRING;
   } else {
     throw std::invalid_argument("Similarity \"" + sim_str + "\" unknown.");
   }

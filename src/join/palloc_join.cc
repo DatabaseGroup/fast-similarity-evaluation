@@ -29,7 +29,7 @@ void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
 }
 
 template <class Handler>
-void PallocJoin<Handler>::index_batch(types::Batch& batch) {
+void PallocJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
   size_t group_idx = 0;
 
   size_t set_id = 0;
@@ -232,7 +232,7 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
                                             SizeGroup& size_group,
                                             indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
                                             CandidateHandler& handler,
-                                            statistics::JoinStatistics& statistics) {
+                                            [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
   std::vector<std::experimental::observer_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count);

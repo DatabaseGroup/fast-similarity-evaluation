@@ -101,12 +101,11 @@ public:
     return qgc_sim;
   }
 
-  std::string get_label() const override { return std::to_string(q) + "gram"; }
+  [[nodiscard]] std::string get_label() const override { return std::to_string(q) + "gram"; }
 
-private:
+protected:
   static int64_t mask_highest_bit(const uint64_t n) { return static_cast<int64_t>(n & ~(1uLL << 63)); }
 
-public:
   void generate_qgrams(types::String& string, types::Set& set) const {
     util::RabinFingerprint<types::String::str_t::value_type> rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
@@ -131,8 +130,10 @@ public:
 
       rf.remove(*(string.str.end() - i - 1));
     }
-    int64_t token = mask_highest_bit(rf.roll(PADDING));
-    set.tokens.push_back(token);
+    if (q > 1) {
+      int64_t token = mask_highest_bit(rf.roll(PADDING));
+      set.tokens.push_back(token);
+    }
   }
 
 private:
@@ -160,7 +161,7 @@ public:
       auto& string = *out_iter;
 
       string.id = tree.id;
-      generate_preorder(in_trees.meta.label_dict, tree, string);
+      generate_preorder(tree, string);
 
       ++in_iter;
       ++out_iter;
@@ -176,7 +177,7 @@ public:
     similarity::Similarity sed(std::make_unique<similarity::StringEditDistance>(ted.threshold));
     return sed;
   }
-  std::string get_label() const override { return "traversal_strings"; }
+  [[nodiscard]] std::string get_label() const override { return "traversal_strings"; }
 
   types::Dataset reduce_data(types::Dataset& dataset) override {
     return Reduction::forward_as_batch<types::Dataset, types::Strings>(dataset, *this);
@@ -187,7 +188,7 @@ public:
   }
 
 private:
-  void generate_preorder(types::Tree::LabelDictionary& ld, types::Tree& tree, types::String& string) {
+  static void generate_preorder(types::Tree& tree, types::String& string) {
     std::vector<std::reference_wrapper<const types::Tree::Node>> queue;
     queue.emplace_back(tree.root);
 
@@ -224,7 +225,7 @@ public:
       auto& set = *out_iter;
 
       set.id = tree.id;
-      generate_labelset(in_trees.meta.label_dict, tree, set);
+      generate_labelset(tree, set);
 
       ++in_iter;
       ++out_iter;
@@ -248,12 +249,10 @@ public:
     return Reduction::forward_as_batch<types::Batch, types::Sets>(input_batch, *this);
   }
 
-  std::string get_label() const override {
-    return "label_sets";
-  }
+  [[nodiscard]] std::string get_label() const override { return "label_sets"; }
 
 private:
-  void generate_labelset(types::Tree::LabelDictionary& ld, types::Tree& tree, types::Set& set) {
+  static void generate_labelset(types::Tree& tree, types::Set& set) {
     std::vector<std::reference_wrapper<const types::Tree::Node>> queue;
     queue.emplace_back(tree.root);
 
@@ -261,13 +260,52 @@ private:
       auto node = queue.back();
       queue.pop_back();
 
-      set.tokens.push_back(std::hash<std::string>{}(node.get().label().to_string()) & std::numeric_limits<types::Set::Token>::max());
+      set.tokens.push_back(static_cast<types::Set::Token>(std::hash<std::string>{}(node.get().label().to_string())) &
+                           std::numeric_limits<types::Set::Token>::max());
 
       for (auto& children = node.get().get_children(); const auto& it : children) {
         queue.emplace_back(it);
       }
     }
   }
+};
+
+class JaroSetReduction : public QGramReduction {
+public:
+  explicit JaroSetReduction(int32_t q) : QGramReduction(q) {}
+
+  void reduce_data(types::Batch& input_batch, types::Batch& output_batch) override {
+    // First, reduce like in a standard qgram reduction
+    QGramReduction::reduce_data(input_batch, output_batch);
+    // Then, resolve duplicates
+    auto& sets = std::get<types::SetBatch>(output_batch);
+    types::HashTable<types::Set::Id, int64_t> occurrences;
+
+    for (auto& set : sets.data) {
+      for (auto& token : set.tokens) {
+        token ^= static_cast<types::Set::Id>(occurrence_hash.get(occurrences[token]++));
+        token &= std::numeric_limits<types::Set::Id>::max();
+      }
+      occurrences.clear();
+      std::sort(set.tokens.begin(), set.tokens.end());
+    }
+  }
+
+  similarity::Similarity reduce_similarity(similarity::Similarity& similarity) override {
+    assert(std::holds_alternative<similarity::StringSimilarityPtr>(similarity));
+
+    // assert: Similarity is Jaro Similarity
+    auto& jaro =
+      dynamic_cast<similarity::JaroSimilarity&>(std::get<similarity::StringSimilarityPtr>(similarity).operator*());
+
+    similarity::Similarity ovlp(std::make_unique<similarity::JaroOverlapSimilarity>(jaro.threshold));
+    return ovlp;
+  }
+
+  [[nodiscard]] std::string get_label() const override { return "jaro_set"; }
+
+private:
+  util::TabulationHash occurrence_hash;
 };
 
 }  // namespace ontology

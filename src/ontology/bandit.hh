@@ -7,7 +7,8 @@ namespace ontology {
 
 class Exp3Light {
 public:
-  Exp3Light(int64_t arms, int64_t trials, long double lossBound) : arms(arms), trials(trials), loss_bound(lossBound) {
+  Exp3Light(int64_t arms, int64_t trials, long double lossBound)
+      : arms(arms), trials(trials), loss_bound(lossBound), eta(0), incurred_loss(0) {
     weight.resize(arms, 1);
     weight_sum = static_cast<long double>(arms);
     expected_total_loss.resize(arms, 0);
@@ -110,13 +111,7 @@ private:
 
 class Exp3LightA {
 public:
-  Exp3LightA(int64_t arms, int64_t trials)
-      : arms(arms),
-        trials(trials),
-        current_trial(1),
-        epoch(0),
-        loss_bound(1),
-        bandit_solver(arms, trials, loss_bound) {}
+  Exp3LightA(int64_t arms, int64_t trials) : loss_bound(1), bandit_solver(arms, trials, loss_bound) {}
 
   int64_t select_arm() { return bandit_solver.select_arm(); }
 
@@ -139,11 +134,6 @@ public:
   }
 
 private:
-  int64_t arms;
-  int64_t trials;
-  int64_t current_trial;
-
-  int64_t epoch;
   long double loss_bound;
   Exp3Light bandit_solver;
 };

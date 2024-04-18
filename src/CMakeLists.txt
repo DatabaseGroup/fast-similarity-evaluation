@@ -62,12 +62,12 @@ add_executable(fast
         ${SOURCES})
 add_dependencies(fast tree-similarity)
 target_link_libraries(fast PRIVATE ${LINK_LIBS})
-target_include_directories(fast PRIVATE SYSTEM ${INCLUDE_LIBS})
+target_include_directories(fast SYSTEM PRIVATE ${INCLUDE_LIBS})
 
 add_executable(fast_stats
         ${SOURCES})
 add_dependencies(fast_stats tree-similarity)
 target_link_libraries(fast_stats PRIVATE ${LINK_LIBS})
-target_include_directories(fast_stats PRIVATE SYSTEM ${INCLUDE_LIBS})
+target_include_directories(fast_stats SYSTEM PRIVATE ${INCLUDE_LIBS})
 
 target_compile_definitions(fast_stats PRIVATE STATISTICS TIMING)

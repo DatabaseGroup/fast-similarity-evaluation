@@ -14,7 +14,15 @@
 
 namespace similarity {
 
-enum SimilarityId { JACCARD, STRING_EDIT_DISTANCE, STRUCTUAL_SET_SIM, TREE_EDIT_DISTANCE, HAMMING_DISTANCE };
+enum SimilarityId {
+  JACCARD,
+  STRING_EDIT_DISTANCE,
+  STRUCTUAL_SET_SIM,
+  TREE_EDIT_DISTANCE,
+  HAMMING_DISTANCE,
+  JARO_OVERLAP,
+  JARO_STRING
+};
 
 template <class T>
 class AbstractSimilarity {
@@ -25,7 +33,7 @@ public:
   virtual double similarity(const T& o1, const T& o2) = 0;
   virtual bool is_in_threshold(const T& o1, const T& o2) = 0;
 
-  virtual int64_t always_similar_below_size(const T& o1) { return 0; }
+  virtual int64_t always_similar_below_size([[maybe_unused]] const T& o1) { return 0; }
 
 public:
   double threshold;
@@ -90,7 +98,9 @@ public:
     return std::ceil(equivalent_fractional_overlap(s1, s2));
   }
   virtual double equivalent_fractional_overlap(int64_t s1, int64_t s2) = 0;
-  virtual int64_t equivalent_hd(int64_t s1, int64_t s2) { return static_cast<int64_t>(static_cast<double>(s1 + s2) - 2 * equivalent_fractional_overlap(s1, s2)); }
+  virtual int64_t equivalent_hd(int64_t s1, int64_t s2) {
+    return static_cast<int64_t>(static_cast<double>(s1 + s2) - 2 * equivalent_fractional_overlap(s1, s2));
+  }
 
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
 
@@ -126,6 +136,8 @@ public:
   explicit TreeSimilarity(double threshold) : AbstractSimilarity(threshold) {}
 };
 using TreeSimilarityPtr = std::unique_ptr<TreeSimilarity>;
+
+using Similarity = std::variant<SetSimilarityPtr, StringSimilarityPtr, TreeSimilarityPtr>;
 
 class JaccardSimilarity : public SetSimilarity {
 public:
@@ -337,7 +349,111 @@ private:
   tsim::ted_ub::LGMTreeIndex<types::Tree::CostModel> lgm_algorithm;
 };
 
-using Similarity = std::variant<SetSimilarityPtr, StringSimilarityPtr, TreeSimilarityPtr>;
+class JaroOverlapSimilarity : public SetSimilarity {
+public:
+  explicit JaroOverlapSimilarity(double threshold) : SetSimilarity(threshold) {}
+
+public:
+  double similarity(const types::Set& o1, const types::Set& o2) override {
+    auto ovlp = static_cast<double>(overlap(o1, o2));
+    return 1. / 3. * (ovlp / static_cast<double>(o1.tokens.size()) + ovlp / static_cast<double>(o2.tokens.size()) + 1.);
+  }
+  double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
+    return (3 * threshold - 1) * static_cast<double>(s1 * s2) / static_cast<double>(s1 + s2);
+  }
+  int64_t minimum_length_bound(int64_t size) override {
+    return std::max(INT64_C(0), static_cast<int64_t>(std::ceil(static_cast<double>(size) * (3 * threshold - 2))));
+  }
+  int64_t maximum_length_bound(int64_t size) override {
+    return static_cast<int64_t>(std::ceil(static_cast<double>(size) / (3 * threshold - 2)));
+  }
+};
+
+class JaroSimilarity : public StringSimilarity {
+public:
+  explicit JaroSimilarity(double threshold) : StringSimilarity(threshold) {}
+
+public:
+  double similarity(const types::String& o1, const types::String& o2) override { return jaro(o1.str, o2.str, 0); }
+  bool is_in_threshold(const types::String& o1, const types::String& o2) override {
+    return jaro(o1.str, o2.str, threshold) >= threshold;
+  }
+
+private:
+  static int get_transpositions(const types::String::str_t& match_string,
+                         const std::vector<bool>& matched_in_query_string,
+                         const std::vector<types::String::str_t::value_type>& common_chars) {
+    int32_t curr_common_char_pos{};
+    int32_t transpositions{};
+
+    for (int32_t i = 0; i < static_cast<int32_t>(match_string.length()); i++) {
+      if (matched_in_query_string[i]) {
+        if (match_string[i] != common_chars[curr_common_char_pos]) {
+          transpositions++;
+        }
+        curr_common_char_pos++;
+
+        if (curr_common_char_pos >= static_cast<int32_t>(common_chars.size())) {
+          break;
+        }
+      }
+    }
+
+    return transpositions;
+  }
+
+  static double compute_jaro(int32_t matches, int32_t transpositions, int32_t string_length1, int32_t string_length2) {
+    if (matches == 0)
+      return 0.0;
+
+    return (static_cast<double>(matches) / static_cast<double>(string_length1) +
+            static_cast<double>(matches) / static_cast<double>(string_length2) +
+            (static_cast<double>(matches) - static_cast<double>(transpositions) / 2) / static_cast<double>(matches)) /
+           3;
+  }
+
+  static int jaro_lookup_matches(int query_length, int index_length, double threshold) {
+    return ceil(query_length * index_length * (3 * threshold - 1) / (query_length + index_length));
+  }
+
+  static double jaro(const types::String::str_t& query_string,
+              const types::String::str_t& match_string,
+              double jaro_threshold) {
+    const auto query_string_length = static_cast<int32_t>(query_string.length());
+    const auto match_string_length = static_cast<int32_t>(match_string.length());
+    const auto max_char_distance = std::max(std::max(query_string_length, match_string_length) / 2 - 1, 0);
+    std::vector<bool> matched_match(match_string.length(), false);
+    int max_query_matches;
+    std::vector<types::String::str_t::value_type> common_chars{};
+    common_chars.reserve(match_string_length);
+
+    int requiredMatches = jaro_lookup_matches(query_string_length, match_string_length, jaro_threshold);
+    int matches{};
+    types::String::str_t::value_type curr_char_query;
+
+    for (int queryPos = 0; queryPos < query_string_length; queryPos++)  // query string
+    {
+      max_query_matches = query_string_length - queryPos + matches;
+      if (max_query_matches < requiredMatches) {
+        return 0.0;
+      }
+
+      curr_char_query = query_string[queryPos];
+      int jaro_window_end = std::min(queryPos + max_char_distance, match_string_length - 1);
+      for (int match_pos = std::max(0, queryPos - max_char_distance); match_pos <= jaro_window_end;
+           match_pos++) {  // lookup string
+        if (curr_char_query == match_string[match_pos] && !matched_match[match_pos]) {
+          matched_match[match_pos] = true;
+          matches++;
+          common_chars.push_back(curr_char_query);
+          break;
+        }
+      }
+    }
+    int transpositions = get_transpositions(match_string, matched_match, common_chars);
+    return compute_jaro(matches, transpositions, query_string_length, match_string_length);
+  }
+};
 
 }  // namespace similarity
 

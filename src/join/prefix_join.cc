@@ -23,7 +23,7 @@ void PrefixSignatureJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
 }
 
 template <class Handler>
-void PrefixSignatureJoin<Handler>::index_batch(types::Batch& batch) {
+void PrefixSignatureJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
   // assert batch == indexed_Sets
 
   SetId set_id = 0;
