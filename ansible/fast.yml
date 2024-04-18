@@ -38,13 +38,7 @@
         dest: "{{ home_dir }}/.vcpkg"
         repo: "https://github.com/microsoft/vcpkg.git"
         version: master
-      register: clonevcpkg
-
-    - name: Bootstrap VCPKG
-      ansible.builtin.command:
-        chdir: "{{ home_dir }}/.vcpkg"
-        cmd: "./bootstrap-vcpkg.sh -disableMetrics"
-      when: clonevcpkg.changed
+      notify: bootstrap_vcpkg
 
     - name: Clone FAST
       ansible.builtin.git:
@@ -52,9 +46,26 @@
         dest: "{{ home_dir }}/fast"
         repo: "git@frosch.cosy.sbg.ac.at:dschmitt/fast.git"
         version: master
-      register: clonefast
+      notify: compile_fast
+
+    - name: Extract datasets
+      ansible.builtin.unarchive:
+        remote_src: true
+        src: "https://kitten.cosy.sbg.ac.at/index.php/s/rgXntJpscw8WMXK/download/Datasets.tar.zst"
+        dest: "{{ home_dir }}/datasets/"
+        creates: "{{ home_dir }}/datasets/trees"
+        extra_opts: ['--strip-components=1', '--show-stored-names']
+
+
+  handlers:
+    - name: Bootstrap VCPKG
+      listen: bootstrap_vcpkg
+      ansible.builtin.command:
+        chdir: "{{ home_dir }}/.vcpkg"
+        cmd: "./bootstrap-vcpkg.sh -disableMetrics"
 
     - name: Compile FAST
+      listen: compile_fast
       ansible.builtin.shell:
         chdir: "{{ home_dir }}/fast/src"
         cmd: "{{ item }}"
@@ -62,13 +73,3 @@
         - "rm -rf build && mkdir -p build"
         - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
-      # only recompile if git repo changed
-      when: clonefast.changed
-
-    - name: Extract datasets
-      ansible.builtin.unarchive:
-        remote_src: true
-        src: "https://kitten.cosy.sbg.ac.at/index.php/s/rgXntJpscw8WMXK/download/Datasets.tar.zst"
-        dest: "{{ home_dir }}/datasets/"
-        creates: "{{ home_dir }}/datasets/sets"
-        extra_opts: ['--strip-components=1', '--show-stored-names']
