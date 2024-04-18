@@ -8,9 +8,17 @@
 
 namespace data {
 
-class SetParser {
+class Parser {
 public:
-  Dataset parse(const std::string& filename) {
+  virtual Dataset parse(const std::string& filename) {
+    return parse_until(filename, std::numeric_limits<int64_t>::max());
+  }
+  virtual Dataset parse_until(const std::string& filename, int64_t line_number) = 0;
+};
+
+class SetParser : public Parser {
+public:
+  Dataset parse_until(const std::string& filename, int64_t line_number) override {
     Dataset dataset;
     dataset.data = types::Sets{};
 
@@ -20,7 +28,7 @@ public:
     std::ifstream file(filename);
 
     types::Data::Id data_id = 0;
-    for (std::string line; std::getline(file, line);) {
+    for (std::string line; std::getline(file, line) && line_number > 0;) {
       std::stringstream integers(line);
       auto& s = sets.data.emplace_back(data_id);
       while (integers.good() && !integers.eof()) {
@@ -29,6 +37,7 @@ public:
         s.tokens.push_back(token);
       }
       ++data_id;
+      --line_number;
     }
     statistics->count = data_id;
 
@@ -37,9 +46,9 @@ public:
   }
 };
 
-class StringParser {
+class StringParser : public Parser {
 public:
-  Dataset parse(const std::string& filename) {
+  Dataset parse_until(const std::string& filename, int64_t line_number) override {
     Dataset dataset;
     dataset.data = types::Strings{};
     auto statistics = std::make_unique<StringStatistics>();
@@ -48,9 +57,10 @@ public:
     std::ifstream file(filename);
 
     types::Data::Id data_id = 0;
-    for (std::string line; std::getline(file, line);) {
+    for (std::string line; std::getline(file, line) && line_number > 0;) {
       strings.data.emplace_back(data_id, std::u32string(line.begin(), line.end()));
       ++data_id;
+      --line_number;
     }
     statistics->count = data_id;
 
@@ -59,9 +69,9 @@ public:
   }
 };
 
-class TreeParser {
+class TreeParser : public Parser {
 public:
-  Dataset parse(const std::string& filename) {
+  Dataset parse_until(const std::string& filename, int64_t line_number) override {
     Dataset dataset;
     dataset.data.emplace<types::Trees>();
     auto statistics = std::make_unique<TreeStatistics>();
@@ -71,12 +81,13 @@ public:
     std::ifstream trees_file(filename);
 
     types::Data::Id data_id = 0;
-    for (std::string line; std::getline(trees_file, line);) {
+    for (std::string line; std::getline(trees_file, line) && line_number > 0;) {
       if (!parser.validate_input(line)) {
         continue;
       }
       trees.data.emplace_back(data_id, parser.parse_single(line));
       ++data_id;
+      --line_number;
     }
     statistics->count = data_id;
 

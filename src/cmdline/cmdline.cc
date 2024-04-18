@@ -10,6 +10,7 @@
 
 struct Config {
   std::string input_file;
+  int64_t read_file_until{};
   std::string datatype;
   std::string similarity;
   double threshold{};
@@ -36,7 +37,10 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "probe-cache-size,p",
     po::value(&config.probing_signatures_cache_size)->default_value(20),
     "Probing signatures cache size")(
-    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size");
+    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size")(
+    "read-until,u",
+    po::value(&config.read_file_until)->default_value(std::numeric_limits<int64_t>::max()),
+    "Read the first X lines of the input");
 
   const std::string exec_name(argv[0]);
 
@@ -121,22 +125,24 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
   return {sim_id, std::move(sim)};
 }
 
-std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data_str, const std::string& filepath) {
+std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data_str,
+                                                         const std::string& filepath,
+                                                         const int64_t until_line_number) {
   types::DatatypeId data_id;
 
   // this could be replaced by a hashtable, but who cares?
   if (data_str == "set") {
     data_id = types::DatatypeId::SET;
     data::SetParser set_parser;
-    return {data_id, set_parser.parse(filepath)};
+    return {data_id, set_parser.parse_until(filepath, until_line_number)};
   } else if (data_str == "string") {
     data_id = types::DatatypeId::STRING;
     data::StringParser string_parser;
-    return {data_id, string_parser.parse(filepath)};
+    return {data_id, string_parser.parse_until(filepath, until_line_number)};
   } else if (data_str == "tree") {
     data_id = types::DatatypeId::TREE;
     data::TreeParser tree_parser;
-    return {data_id, tree_parser.parse(filepath)};
+    return {data_id, tree_parser.parse_until(filepath, until_line_number)};
   }
 
   throw std::invalid_argument("Data type \"" + data_str + "\" unknown.");
@@ -183,7 +189,7 @@ int main(int argc, char** argv) {
     exit(-1);
   }
 
-  auto [data_id, dataset] = resolve_data(config.datatype, config.input_file);
+  auto [data_id, dataset] = resolve_data(config.datatype, config.input_file, config.read_file_until);
   auto [similarity_id, similarity] = resolve_similarity(config.similarity, config.threshold, dataset);
 
   ontology::StandardReductionGraph graph;
