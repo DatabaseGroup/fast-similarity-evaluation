@@ -55,7 +55,8 @@ set(LINK_LIBS
         nlohmann_json::nlohmann_json)
 
 set(INCLUDE_LIBS
-        ${TREE_SIMILARITY_INCLUDE})
+        ${TREE_SIMILARITY_INCLUDE}
+)
 message("Include paths: ${INCLUDE_LIBS}")
 
 add_executable(fast

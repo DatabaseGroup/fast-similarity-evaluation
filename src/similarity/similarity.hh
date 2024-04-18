@@ -365,7 +365,7 @@ public:
     return std::max(INT64_C(0), static_cast<int64_t>(std::ceil(static_cast<double>(size) * (3 * threshold - 2))));
   }
   int64_t maximum_length_bound(int64_t size) override {
-    return static_cast<int64_t>(std::ceil(static_cast<double>(size) / (3 * threshold - 2)));
+    return static_cast<int64_t>(std::floor(static_cast<double>(size) / (3 * threshold - 2)));
   }
 };
 

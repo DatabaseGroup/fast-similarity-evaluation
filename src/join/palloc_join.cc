@@ -22,7 +22,7 @@ void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
   int32_t current_size = min_size;
   while (current_size <= max_size) {
     int32_t upper_bound = similarity.maximum_length_bound(current_size);
-    int32_t partition_count = similarity.equivalent_hd(current_size, upper_bound) + 1;
+    int32_t partition_count = get_partition_count(upper_bound);
     size_groups.emplace_back(current_size, upper_bound, partition_count);
     current_size = upper_bound + 1;
   }
@@ -75,9 +75,9 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
   int32_t middle_low_bound = similarity.maximum_length_bound(lower_bound) + 1;
   int32_t middle_upper_bound = similarity.maximum_length_bound(middle_low_bound) + 1;
   int32_t upper_bound = similarity.maximum_length_bound(middle_upper_bound) + 1;
-  int32_t lower_partition_count = similarity.equivalent_hd(lower_bound, middle_low_bound - 1) + 1;
-  int32_t mid_partition_count = similarity.equivalent_hd(middle_low_bound, middle_upper_bound - 1) + 1;
-  int32_t upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1) + 1;
+  int32_t lower_partition_count = get_partition_count(middle_low_bound - 1);
+  int32_t mid_partition_count = get_partition_count(middle_upper_bound - 1);
+  int32_t upper_partition_count = get_partition_count(upper_bound - 1);
 
   for (auto& entry : probed_sets) {
     auto& set = entry.first.get();
@@ -95,7 +95,7 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
       upper_bound = similarity.maximum_length_bound(upper_bound) + 1;
       lower_partition_count = mid_partition_count;
       mid_partition_count = upper_partition_count;
-      upper_partition_count = similarity.equivalent_hd(middle_upper_bound, upper_bound - 1) + 1;
+      upper_partition_count = get_partition_count(upper_bound - 1);
     }
 
     if (min_set_size < middle_low_bound) {
@@ -235,9 +235,9 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
                                             [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
-  std::vector<std::experimental::observer_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count);
+  std::vector<std::experimental::observer_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count, nullptr);
   std::vector<std::experimental::observer_ptr<std::vector<SetId>>> deletion_ils(
-    group_sigs.signatures.deletion_signatures.size());
+    group_sigs.signatures.deletion_signatures.size(), nullptr);
 
   auto& nor_sig = group_sigs.signatures.normal_signatures;
   auto& del_sig = group_sigs.signatures.deletion_signatures;
@@ -257,9 +257,10 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
 
   std::make_heap(costs.begin(), costs.end(), std::greater{});
 
-  int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;
+  const int32_t hamming_distance = similarity.equivalent_hd(size_group.upper, probing_set.tokens.size()) + 1;
+  int32_t remaining = hamming_distance;
 
-  while (0 < hamming_distance) {
+  while (0 < remaining) {
     std::pop_heap(costs.begin(), costs.end(), std::greater{});
     auto& entry = costs.back();
     auto partition = entry.partition_id;
@@ -320,8 +321,13 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
       costs.pop_back();
     }
 
-    --hamming_distance;
+    --remaining;
   }
+}
+
+template<class Handler>
+int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_upper_bound) {
+  return (similarity.equivalent_hd(partition_upper_bound, similarity.maximum_length_bound(partition_upper_bound)) / 2) + 1;
 }
 
 }  // namespace join

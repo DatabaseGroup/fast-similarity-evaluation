@@ -87,6 +87,8 @@ private:
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
+  int32_t get_partition_count(int32_t partition_upper_bound);
+
 private:
   similarity::SetSimilarity& similarity;
   std::vector<RefSet> indexed_sets;
