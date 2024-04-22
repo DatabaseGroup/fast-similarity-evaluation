@@ -30,7 +30,6 @@ public:
 
     // only has local scope
     int32_t probing_set_id{};
-    int32_t own_group_id{};
   };
 
 private:
@@ -88,6 +87,11 @@ private:
                          statistics::JoinStatistics& statistics);
 
   int32_t get_partition_count(int32_t partition_upper_bound);
+  int32_t next_size_lb(int32_t current_size) {
+    auto step = similarity.maximum_length_bound(current_size) - current_size;
+    auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
+    return current_size + scaled_step + 1;
+  }
 
 private:
   similarity::SetSimilarity& similarity;

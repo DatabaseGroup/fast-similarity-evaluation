@@ -21,7 +21,7 @@ void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
 
   int32_t current_size = min_size;
   while (current_size <= max_size) {
-    int32_t upper_bound = similarity.maximum_length_bound(current_size);
+    int32_t upper_bound = next_size_lb(current_size) - 1;
     int32_t partition_count = get_partition_count(upper_bound);
     size_groups.emplace_back(current_size, upper_bound, partition_count);
     current_size = upper_bound + 1;
@@ -68,16 +68,11 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
   std::vector<CachedSignatures> signatures(sets.data.size());
 
   // this has to be independent of the indexed data
-  // group_idx = index of upper group (hence starts at 3)
-  size_t group_idx = 2;
+  // group_idx = index of lowest group in window
+  size_t group_idx = 0;
+  std::vector<SizeGroup> local_size_group;
   // bound of kind [..., ...) (upper is exclusive)
-  int32_t lower_bound = 1;
-  int32_t middle_low_bound = similarity.maximum_length_bound(lower_bound) + 1;
-  int32_t middle_upper_bound = similarity.maximum_length_bound(middle_low_bound) + 1;
-  int32_t upper_bound = similarity.maximum_length_bound(middle_upper_bound) + 1;
-  int32_t lower_partition_count = get_partition_count(middle_low_bound - 1);
-  int32_t mid_partition_count = get_partition_count(middle_upper_bound - 1);
-  int32_t upper_partition_count = get_partition_count(upper_bound - 1);
+  local_size_group.emplace_back(1, next_size_lb(1) - 1, get_partition_count(next_size_lb(1) - 1));
 
   for (auto& entry : probed_sets) {
     auto& set = entry.first.get();
@@ -87,32 +82,19 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
     auto min_set_size = similarity.minimum_length_bound(set_size);
     auto max_set_size = similarity.maximum_length_bound(set_size);
 
-    while (middle_upper_bound <= set_size) {
+    while (local_size_group.back().upper < max_set_size) {
+      auto lower_bound = local_size_group.back().upper + 1;
+      local_size_group.emplace_back(lower_bound, next_size_lb(lower_bound) - 1, get_partition_count(next_size_lb(lower_bound) - 1));
+    }
+
+    while (local_size_group[group_idx].upper < min_set_size) {
       ++group_idx;
-      lower_bound = middle_low_bound;
-      middle_low_bound = middle_upper_bound;
-      middle_upper_bound = upper_bound;
-      upper_bound = similarity.maximum_length_bound(upper_bound) + 1;
-      lower_partition_count = mid_partition_count;
-      mid_partition_count = upper_partition_count;
-      upper_partition_count = get_partition_count(upper_bound - 1);
     }
 
-    if (min_set_size < middle_low_bound) {
+    for (size_t i = group_idx; i < local_size_group.size(); ++i) {
       auto& e = sig_entry.group_signatures.emplace_back();
-      e.group_id = group_idx - 2;
-      e.signatures = signature.indexing_signatures(set, lower_partition_count);
-    }
-    {
-      auto& e = sig_entry.group_signatures.emplace_back();
-      e.group_id = sig_entry.own_group_id = group_idx - 1;
-      e.signatures = signature.indexing_signatures(set, mid_partition_count);
-    }
-
-    if (middle_upper_bound <= max_set_size) {
-      auto& e = sig_entry.group_signatures.emplace_back();
-      e.group_id = group_idx;
-      e.signatures = signature.indexing_signatures(set, upper_partition_count);
+      e.group_id = i;
+      e.signatures = signature.indexing_signatures(set, local_size_group[i].partition_count);
     }
   }
 
