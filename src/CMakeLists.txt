@@ -7,7 +7,7 @@ include(ExternalProject)
 include(find_os_cpp)
 include(GetGitRevisionDescription)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+add_compile_options(-Wall -Wextra)
 check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT error)
 if (LTO_SUPPORTED)
     message("Using Link-Time Optimization for release-builds only")
