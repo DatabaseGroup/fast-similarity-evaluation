@@ -1,9 +1,8 @@
 #ifndef SRC_PALLOC_JOIN_HH
 #define SRC_PALLOC_JOIN_HH
 
-#include <experimental/memory>
-
 #include "../similarity/similarity.hh"
+#include "../util/object_ptr.hh"
 #include "result_handler.hh"
 #include "signature_join.hh"
 

@@ -17,6 +17,7 @@ using cost_type = double;
 struct ExecutionCost {
   cost_time_point point;
 
+  ExecutionCost() = default;
   explicit ExecutionCost(cost_time_point point) : point(point) {}
 };
 #else

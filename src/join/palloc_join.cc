@@ -217,8 +217,8 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
                                             [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
-  std::vector<std::experimental::observer_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count, nullptr);
-  std::vector<std::experimental::observer_ptr<std::vector<SetId>>> deletion_ils(
+  std::vector<util::object_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count, nullptr);
+  std::vector<util::object_ptr<std::vector<SetId>>> deletion_ils(
     group_sigs.signatures.deletion_signatures.size(), nullptr);
 
   auto& nor_sig = group_sigs.signatures.normal_signatures;
@@ -232,7 +232,7 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
     if (it != size_index.map.end()) {
       auto& list = it->second;
       cost = static_cast<int64_t>(list.size());
-      normal_ils[partition] = std::experimental::make_observer(&list);
+      normal_ils[partition] = util::object_ptr(&list);
     }
     costs.emplace_back(partition, cost, true);
   }
@@ -263,7 +263,7 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
         if (it != size_index.map.end()) {
           auto& list = it->second;
           cost += static_cast<int64_t>(list.size());
-          normal_ils[partition] = std::experimental::make_observer(&list);
+          normal_ils[partition] = util::object_ptr(&list);
         }
       }
 
@@ -275,7 +275,7 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
         if (it != size_index.map.end()) {
           auto& list = it->second;
           cost += static_cast<int64_t>(list.size());
-          deletion_ils[i] = std::experimental::make_observer(&list);
+          deletion_ils[i] = util::object_ptr(&list);
         }
       }
 
