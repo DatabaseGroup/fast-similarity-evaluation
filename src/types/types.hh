@@ -182,18 +182,22 @@ inline Batch dataset_to_batch(Dataset& dataset) {
     dataset);
 }
 
-inline Batch get_batch(Dataset& dataset, const int64_t batch_idx, const int64_t batch_size) {
-  int64_t offset = batch_idx * batch_size;
+inline Batch get_batch_by_offset(Dataset& dataset, const int64_t start, const int64_t end) {
   return std::visit(
     [&](auto&& actual_dataset) {
       using DatasetType = std::decay_t<decltype(actual_dataset)>;
       return Batch(DataBatch<typename DatasetType::value_type>(
         span<typename DatasetType::value_type>(
-          actual_dataset.data.begin() + offset,
-          std::min(actual_dataset.data.begin() + offset + batch_size, actual_dataset.data.end())),
+          actual_dataset.data.begin() + start,
+          std::min(actual_dataset.data.begin() + end, actual_dataset.data.end())),
         actual_dataset.meta));
     },
     dataset);
+}
+
+inline Batch get_batch_by_id(Dataset& dataset, const int64_t batch_idx, const int64_t batch_size) {
+  int64_t offset = batch_idx * batch_size;
+  return get_batch_by_offset(dataset, offset, offset + batch_size);
 }
 
 inline void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {

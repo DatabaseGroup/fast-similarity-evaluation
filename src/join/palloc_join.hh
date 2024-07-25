@@ -85,7 +85,7 @@ private:
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
-  int32_t get_partition_count(int32_t partition_upper_bound);
+  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound);
   int32_t next_size_lb(int32_t current_size) {
     auto step = similarity.maximum_length_bound(current_size) - current_size;
     auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);

@@ -6,7 +6,6 @@
 #include <tsim/ted/touzet_kr_set_tree_index.h>
 #include <tsim/ted_ub/lgm_tree_index.h>
 
-#include <memory>
 #include <numeric>
 #include <variant>
 
@@ -100,6 +99,10 @@ public:
   virtual double equivalent_fractional_overlap(int64_t s1, int64_t s2) = 0;
   virtual int64_t equivalent_hd(int64_t s1, int64_t s2) {
     return static_cast<int64_t>(static_cast<double>(s1 + s2) - 2 * equivalent_fractional_overlap(s1, s2));
+  }
+  virtual int64_t max_hd_to(int64_t reference, [[maybe_unused]] int64_t lower, int64_t upper) {
+    // by default, this almost always defaults to inserting the upper bound in the equivalent hd due to monotonicity
+    return equivalent_hd(reference, upper);
   }
 
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
@@ -249,6 +252,11 @@ public:
 
   double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
     return static_cast<int32_t>(std::max(s1, s2)) - q * integer_threshold;
+  }
+
+  int64_t max_hd_to(int64_t reference, [[maybe_unused]] int64_t lower, [[maybe_unused]] int64_t upper) override {
+    // assume lower <= reference <= upper
+    return equivalent_hd(reference, reference);
   }
 
   double similarity(const types::Set& s1, const types::Set& s2) override { return overlap(s1, s2); }

@@ -36,7 +36,6 @@ struct NodeKey {
   friend H AbslHashValue(H h, const NodeKey& k) {
     return H::combine(std::move(h), k.type, k.similarity);
   }
-
   bool operator==(const NodeKey& rhs) const { return type == rhs.type && similarity == rhs.similarity; }
   bool operator!=(const NodeKey& rhs) const { return !(rhs == *this); }
 };
@@ -57,6 +56,17 @@ struct ReductionStep {
   size_t id;
   std::reference_wrapper<Reduction> reduction;
   ReductionStep(size_t id, Reduction& reduction) : id(id), reduction(reduction) {}
+
+  friend bool operator==(const ReductionStep& lhs, const ReductionStep& rhs) {
+    return lhs.id == rhs.id;
+  }
+  friend bool operator!=(const ReductionStep& lhs, const ReductionStep& rhs) { return !(lhs == rhs); }
+
+  friend std::size_t hash_value(const ReductionStep& obj) {
+    std::size_t seed = 0x482AFEFB;
+    boost::hash_combine(seed, obj.id);
+    return seed;
+  }
 };
 
 class QueryPlan {
@@ -73,6 +83,18 @@ public:
     res += join::algorithm_to_string(algorithm_id);
 
     return res;
+  }
+
+  friend bool operator==(const QueryPlan& lhs, const QueryPlan& rhs) {
+    return lhs.steps == rhs.steps && lhs.algorithm_id == rhs.algorithm_id;
+  }
+  friend bool operator!=(const QueryPlan& lhs, const QueryPlan& rhs) { return !(lhs == rhs); }
+
+  friend std::size_t hash_value(const QueryPlan& obj) {
+    std::size_t seed = 0x6565EE34;
+    boost::hash_combine(seed, obj.steps);
+    boost::hash_combine(seed, obj.algorithm_id);
+    return seed;
   }
 };
 }  // namespace ontology

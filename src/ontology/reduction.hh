@@ -177,7 +177,7 @@ public:
     similarity::Similarity sed(std::make_unique<similarity::StringEditDistance>(ted.threshold));
     return sed;
   }
-  [[nodiscard]] std::string get_label() const override { return "traversal_strings"; }
+  [[nodiscard]] std::string get_label() const override { return "traversal-strings"; }
 
   types::Dataset reduce_data(types::Dataset& dataset) override {
     return Reduction::forward_as_batch<types::Dataset, types::Strings>(dataset, *this);
@@ -249,7 +249,7 @@ public:
     return Reduction::forward_as_batch<types::Batch, types::Sets>(input_batch, *this);
   }
 
-  [[nodiscard]] std::string get_label() const override { return "label_sets"; }
+  [[nodiscard]] std::string get_label() const override { return "label-sets"; }
 
 private:
   static void generate_labelset(types::Tree& tree, types::Set& set) {
@@ -302,7 +302,7 @@ public:
     return ovlp;
   }
 
-  [[nodiscard]] std::string get_label() const override { return "jaro_set"; }
+  [[nodiscard]] std::string get_label() const override { return "jaro-set"; }
 
 private:
   util::TabulationHash occurrence_hash;

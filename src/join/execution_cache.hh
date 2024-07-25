@@ -1,0 +1,150 @@
+#ifndef SRC_EXECUTION_CACHE_HH
+#define SRC_EXECUTION_CACHE_HH
+
+#include <memory>
+
+#include "../types/types.hh"
+#include "../similarity/similarity.hh"
+#include "../ontology/planner.hh"
+#include "../util/lru_cache.hh"
+
+namespace join {
+
+struct AlgorithmInstance {
+  std::unique_ptr<join::JoinAlgorithm<MaterializeHandler>> algorithm{};
+  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> owned_data{};
+  bool initialized{false};
+};
+
+struct IndexedBatch {
+  const size_t id;
+  types::Batch batch;
+
+  IndexedBatch(size_t id, types::Batch batch) : id(id), batch(batch) {}
+};
+
+struct CacheHashKey {
+  size_t batch_id;
+  size_t reduction_id;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CacheHashKey& k) {
+    return H::combine(std::move(h), k.batch_id, k.reduction_id);
+  }
+
+  bool operator==(const CacheHashKey& rhs) const {
+    return batch_id == rhs.batch_id && reduction_id == rhs.reduction_id;
+  }
+
+  CacheHashKey(size_t batchId, size_t reductionId) : batch_id(batchId), reduction_id(reductionId) {}
+};
+
+class ReductionCache {
+public:
+  explicit ReductionCache(size_t cache_size) : cache(cache_size) {}
+
+public:
+  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_level(
+    IndexedBatch& batch,
+    similarity::Similarity& similarity,
+    ontology::QueryPlan& plan,
+    int32_t level,
+    statistics::LocalJoinStatistics& statistics) {
+    assert(!plan.steps.empty());
+    // find lowest, processed step
+    auto batch_id = batch.id;
+    auto rit = plan.steps.rbegin() + level;
+
+    std::optional<std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache_result;
+    for (; rit != plan.steps.rend(); ++rit) {
+      auto step_id = rit->id;
+      cache_result = cache.get({batch_id, step_id});
+
+      if (cache_result.has_value()) {
+        break;
+      }
+    }
+
+    std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> result_pair;
+    if (cache_result.has_value()) {
+      statistics.reduction_cache_hits.inc();
+      result_pair = *cache_result;
+    } else {
+      statistics.reduction_cache_misses.inc();
+      // we have to start at the top at batch, do the first step manually (due to annoying problems with dataset vs
+      // batch) this is why we assume !plan.steps.empty()
+      rit = plan.steps.rend();
+      --rit;
+
+      auto& reduction_step = *rit;
+      auto& reduction = reduction_step.reduction.get();
+      auto step_id = reduction_step.id;
+      result_pair = cache.emplace({batch_id, step_id},
+                                  std::make_shared<std::pair<types::Dataset, similarity::Similarity>>(
+                                    reduction.reduce_data(batch.batch), reduction.reduce_similarity(similarity)));
+    }
+
+    // go a step back to highest, unprocessed node
+    --rit;
+
+    // we also have to access the first reduction at position 0; hence plan.steps.rbegin() - 1 is the first position to
+    // stop
+    for (; rit != plan.steps.rbegin() - 1 + level; --rit) {
+      auto& reduction_step = *rit;
+      auto& reduction = reduction_step.reduction.get();
+      auto step_id = reduction_step.id;
+
+      result_pair =
+        cache.emplace({batch_id, step_id},
+                      std::make_shared<std::pair<types::Dataset, similarity::Similarity>>(
+                        reduction.reduce_data(result_pair->first), reduction.reduce_similarity(result_pair->second)));
+    }
+
+    return result_pair;
+  }
+
+  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_end(
+    IndexedBatch& batch,
+    similarity::Similarity& similarity,
+    ontology::QueryPlan& plan,
+    statistics::LocalJoinStatistics& statistics) {
+    return reduce_to_level(batch, similarity, plan, 0, statistics);
+  }
+
+private:
+  // use shared_ptr for pointer stability
+  util::LRUCache<CacheHashKey, std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache;
+};
+
+class ProbingSignaturesCache {
+public:
+  using AlgBatchPair = std::pair<int64_t, size_t>;
+
+  explicit ProbingSignaturesCache(size_t size) : cache(size) {}
+
+  std::shared_ptr<std::any> get_cached_probing_signatures(int64_t plan_id,
+                                                          size_t batch_id,
+                                                          types::Batch& probe_batch,
+                                                          join::JoinAlgorithm<MaterializeHandler>& join_algorithm,
+                                                          statistics::LocalJoinStatistics& statistics) {
+    auto cache_key = AlgBatchPair(plan_id, batch_id);
+
+    auto cache_result = cache.get(cache_key);
+    if (cache_result.has_value()) {
+      statistics.probing_signature_cache_hits.inc();
+      return cache_result.value();
+    } else {
+      statistics.probing_signature_cache_misses.inc();
+      auto result =
+        cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.prepare_probing_batch(probe_batch)));
+      return result;
+    }
+  }
+
+private:
+  util::LRUCache<AlgBatchPair, std::shared_ptr<std::any>> cache;
+};
+
+}
+
+#endif  // SRC_EXECUTION_CACHE_HH

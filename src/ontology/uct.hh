@@ -1,0 +1,166 @@
+#ifndef SRC_UCT_HH
+#define SRC_UCT_HH
+
+#include <vector>
+
+#include "../util/object_ptr.hh"
+
+namespace ontology {
+
+namespace detail {
+
+class UCTNode {
+public:
+  [[nodiscard]] double action_quality(const UCTNode& child) const {
+    double mean_reward = child.total_reward / child.nr_of_selections;
+    double bias = exploration_weight * std::sqrt(std::log(nr_of_selections) / child.nr_of_selections);
+
+    return mean_reward + bias;
+  }
+
+  std::vector<util::object_ptr<UCTNode>> select_path() {
+    std::vector<util::object_ptr<UCTNode>> path;
+    path.emplace_back(this);
+    select_path(path);
+    return path;
+  }
+
+  void update_path(const std::vector<util::object_ptr<UCTNode>>& path, double reward) {
+    for (auto node : path) {
+      node->total_reward += reward;
+      ++node->nr_of_selections;
+    }
+  }
+
+  [[nodiscard]] int64_t get_action() const {
+    return action;
+  }
+
+  void set_action(int64_t action) {
+    this->action = action;
+  }
+
+  util::object_ptr<UCTNode> add_child() {
+    untried_action_ids.push_back(actions.size());
+    return &actions.emplace_back();
+  }
+
+  void for_each_action(const std::function<void(UCTNode&)>& fun) { // NOLINT(*-no-recursion)
+    if (actions.empty()) {
+      fun(*this);
+    } else {
+      for (auto& child : actions) {
+        child.for_each_action(fun);
+      }
+    }
+  }
+
+  [[nodiscard]] double get_mean() const {
+    return total_reward / nr_of_selections;
+  }
+
+private:
+  void select_path(std::vector<util::object_ptr<UCTNode>>& path) { // NOLINT(*-no-recursion)
+    if (actions.empty()) {
+      return;
+    }
+
+    if (!untried_action_ids.empty()) {
+      auto id = untried_action_ids.back();
+      untried_action_ids.pop_back();
+      path.emplace_back(&actions[id]);
+    } else {
+      // find best action to take
+      double best_quality = -1;
+      util::object_ptr<UCTNode> best_action = &actions.front();
+
+      for (auto& child : actions) {
+        double quality = action_quality(child);
+
+        if (quality > best_quality) {
+          best_quality = quality;
+          best_action = &child;
+        }
+      }
+
+      path.push_back(best_action);
+    }
+
+    path.back()->select_path(path);
+  }
+
+private:
+  int64_t action{-1}; // only available if leaf
+  double total_reward{};
+  double nr_of_selections{};
+  double exploration_weight = 1e-2;
+
+  std::vector<UCTNode> actions;
+  std::vector<size_t> untried_action_ids;
+};
+
+}  // namespace detail
+
+class UCT {
+public:
+  using UCTNode = detail::UCTNode;
+
+  class Selection {
+  public:
+    Selection(int64_t action, const std::vector<util::object_ptr<UCTNode>>& path) : action(action), path(path) {}
+    int64_t action;
+    std::vector<util::object_ptr<UCTNode>> path;
+  };
+
+public:
+  // arguably hacky
+  static UCT from_query_plans(std::vector<QueryPlan>& plans) {
+    // maps from reduction step ids to uct nodes
+    std::unordered_map<size_t, util::object_ptr<UCTNode>> nodes;
+
+    UCT uct;
+    int64_t plan_id = 0;
+    for (auto& plan : plans) {
+      util::object_ptr<UCTNode> parent(&uct.root);
+      for (auto& step : plan.steps) {
+        auto it = nodes.find(step.id);
+
+        util::object_ptr<UCTNode> node;
+        if (it == nodes.end()) {
+          node = parent->add_child();
+          nodes.emplace(std::pair(step.id, node));
+        } else {
+          node = it->second;
+        }
+
+        parent = node;
+      }
+      parent->add_child()->set_action(plan_id);
+      ++plan_id;
+    }
+
+    return uct;
+  }
+
+public:
+  Selection select_action() {
+    auto path = root.select_path();
+    auto action = path.back()->get_action();
+    return {action, path};
+  }
+
+  void update(const Selection& selection, double reward) {
+    root.update_path(selection.path, reward);
+  }
+
+  void for_each_action(const std::function<void(UCTNode&)>& fun) {
+    root.for_each_action(fun);
+  }
+
+private:
+  UCTNode root;
+};
+
+}  // namespace ontology
+
+#endif  // SRC_UCT_HH

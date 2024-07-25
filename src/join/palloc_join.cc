@@ -22,7 +22,7 @@ void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
   int32_t current_size = min_size;
   while (current_size <= max_size) {
     int32_t upper_bound = next_size_lb(current_size) - 1;
-    int32_t partition_count = get_partition_count(upper_bound);
+    int32_t partition_count = get_partition_count(current_size, upper_bound);
     size_groups.emplace_back(current_size, upper_bound, partition_count);
     current_size = upper_bound + 1;
   }
@@ -72,7 +72,7 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
   size_t group_idx = 0;
   std::vector<SizeGroup> local_size_group;
   // bound of kind [..., ...) (upper is exclusive)
-  local_size_group.emplace_back(1, next_size_lb(1) - 1, get_partition_count(next_size_lb(1) - 1));
+  local_size_group.emplace_back(1, next_size_lb(1) - 1, get_partition_count(1, next_size_lb(1) - 1));
 
   for (auto& entry : probed_sets) {
     auto& set = entry.first.get();
@@ -84,7 +84,9 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
 
     while (local_size_group.back().upper < max_set_size) {
       auto lower_bound = local_size_group.back().upper + 1;
-      local_size_group.emplace_back(lower_bound, next_size_lb(lower_bound) - 1, get_partition_count(next_size_lb(lower_bound) - 1));
+      auto upper_bound = next_size_lb(lower_bound) - 1;
+      auto partition_count = get_partition_count(lower_bound, upper_bound);
+      local_size_group.emplace_back(lower_bound, upper_bound, partition_count);
     }
 
     while (local_size_group[group_idx].upper < min_set_size) {
@@ -143,20 +145,25 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
   for (CachedSignatures& sig : signatures) {
     auto& probing_set = sets.data[sig.probing_set_id];
     auto set_size = static_cast<int64_t>(probing_set.tokens.size());
+    auto minimum_size = similarity.minimum_length_bound(set_size);
+    auto maximum_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
     add_small_results(probing_set,
                       indexed_sets,
-                      similarity.minimum_length_bound(set_size),
-                      similarity.maximum_length_bound(set_size),
+                      minimum_size,
+                      maximum_size,
                       similarity,
                       candidates,
                       already_seen);
 
     auto candidate_handler = [&](SetId set_id) {
       if (!already_seen[set_id]) {
-        already_seen[set_id] = true;
-        candidates.push_back(set_id);
+        auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
+        if (minimum_size <= index_size && index_size <= maximum_size) {
+          already_seen[set_id] = true;
+          candidates.push_back(set_id);
+        }
       }
     };
 
@@ -308,8 +315,8 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
 }
 
 template<class Handler>
-int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_upper_bound) {
-  return (similarity.equivalent_hd(partition_upper_bound, similarity.maximum_length_bound(partition_upper_bound)) / 2) + 1;
+int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) {
+  return (similarity.max_hd_to(partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) / 2) + 1;
 }
 
 }  // namespace join
