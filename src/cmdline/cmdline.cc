@@ -85,20 +85,20 @@ nlohmann::json getISOCurrentTimestamp() {
 nlohmann::json get_metadata(Config& config) {
   nlohmann::json json;
 
-  json["date"] = getISOCurrentTimestamp();
   json["build"] = get_build_info();
+  json["datatype"] = config.datatype;
+  json["date"] = getISOCurrentTimestamp();
   json["dataset"] = std::filesystem::path(config.input_file).filename();
   json["similarity"] = config.similarity;
   json["threshold"] = config.threshold;
 
+  json["label"] = config.label;
+  json["mode"] = config.mode;
   if (config.mode == "block") {
     json["batch_count"] = config.batch_count;
     json["reduction_cache_size"] = config.reduction_cache_size;
     json["probing_signatures_cache_size"] = config.probing_signatures_cache_size;
   }
-
-  json["datatype"] = config.datatype;
-  json["label"] = config.label;
 
   return json;
 }

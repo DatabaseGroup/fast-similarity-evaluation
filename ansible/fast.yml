@@ -11,6 +11,7 @@
           - "cmake"
           - "curl"
           - "git"
+          - "lsb-release"
           - "python3"
           - "python3.11-venv"
           - "tar"
