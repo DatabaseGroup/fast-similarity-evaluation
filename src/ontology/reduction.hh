@@ -77,6 +77,8 @@ public:
       set.id = string.id;
       generate_qgrams(string, set);
 
+      std::sort(set.tokens.begin(), set.tokens.end());
+
       ++in_iter;
       ++out_iter;
     }
@@ -226,6 +228,8 @@ public:
 
       set.id = tree.id;
       generate_labelset(tree, set);
+
+      std::sort(set.tokens.begin(), set.tokens.end());
 
       ++in_iter;
       ++out_iter;

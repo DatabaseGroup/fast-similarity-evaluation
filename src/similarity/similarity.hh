@@ -68,6 +68,9 @@ protected:
   }
 
   static bool overlap_at_least(const types::Set& r, const types::Set& s, int64_t required_ovlp) {
+    assert(std::is_sorted(r.tokens.begin(), r.tokens.end()));
+    assert(std::is_sorted(s.tokens.begin(), s.tokens.end()));
+
     auto max_r = static_cast<int64_t>(r.tokens.size());
     auto max_s = static_cast<int64_t>(s.tokens.size());
 
@@ -255,8 +258,13 @@ public:
   }
 
   int64_t max_hd_to(int64_t reference, [[maybe_unused]] int64_t lower, [[maybe_unused]] int64_t upper) override {
-    // assume lower <= reference <= upper
-    return equivalent_hd(reference, reference);
+    if (reference < lower) {
+      return equivalent_hd(reference, lower);
+    } else if (upper < reference) {
+      return equivalent_hd(reference, upper);
+    } else {
+      return equivalent_hd(reference, reference);
+    }
   }
 
   double similarity(const types::Set& s1, const types::Set& s2) override { return overlap(s1, s2); }
