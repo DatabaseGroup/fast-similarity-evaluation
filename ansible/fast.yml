@@ -12,6 +12,7 @@
           - "curl"
           - "git"
           - "lsb-release"
+          - "parallel"
           - "python3"
           - "python3.11-venv"
           - "tar"
@@ -49,13 +50,11 @@
         version: master
       notify: compile_fast
 
-    - name: Extract datasets
-      ansible.builtin.unarchive:
+    - name: Copy datasets
+      ansible.builtin.copy:
         remote_src: true
-        src: "https://kitten.cosy.sbg.ac.at/index.php/s/rgXntJpscw8WMXK/download/Datasets.tar.zst"
+        src: "/mnt/dbgroup-share/dschmitt/datasets"
         dest: "{{ home_dir }}/datasets/"
-        creates: "{{ home_dir }}/datasets/trees"
-        extra_opts: ['--strip-components=1', '--show-stored-names']
 
 
   handlers:
