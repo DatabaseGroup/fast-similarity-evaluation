@@ -2,13 +2,13 @@
 
 namespace join {
 
-template <class Handler>
-bool PallocJoin<Handler>::has_independent_probing_signatures() {
+template <class Handler, class Filter>
+bool PallocJoin<Handler, Filter>::has_independent_probing_signatures() {
   return true;
 }
 
-template <class Handler>
-void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+void PallocJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   indexed_sets.reserve(sets.data.size());
@@ -28,8 +28,8 @@ void PallocJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
   }
 }
 
-template <class Handler>
-void PallocJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler, class Filter>
+void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   size_t group_idx = 0;
 
   size_t set_id = 0;
@@ -53,8 +53,8 @@ void PallocJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
   }
 }
 
-template <class Handler>
-std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+std::any PallocJoin<Handler, Filter>::prepare_probing_batch(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<std::pair<std::reference_wrapper<types::Set>, size_t>> probed_sets;
@@ -103,8 +103,8 @@ std::any PallocJoin<Handler>::prepare_probing_batch(types::Batch& batch) {
   return signatures;
 }
 
-template <class Handler>
-void PallocJoin<Handler>::selfjoin_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PallocJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
                                          Handler handler,
                                          statistics::JoinStatistics& statistics,
                                          std::shared_ptr<std::any> probing_signatures) {
@@ -117,8 +117,8 @@ void PallocJoin<Handler>::selfjoin_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
-void PallocJoin<Handler>::join_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PallocJoin<Handler, Filter>::join_batch(types::Batch& batch,
                                      Handler handler,
                                      statistics::JoinStatistics& statistics,
                                      std::shared_ptr<std::any> probing_signatures) {
@@ -131,9 +131,9 @@ void PallocJoin<Handler>::join_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
+template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
-void PallocJoin<Handler>::_join_batch(types::Batch& batch,
+void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                                       std::vector<CachedSignatures>& signatures,
                                       Handler& handler,
                                       statistics::JoinStatistics& statistics) {
@@ -158,11 +158,13 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
                       already_seen);
 
     auto candidate_handler = [&](SetId set_id) {
-      if (!already_seen[set_id]) {
-        auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
-        if (minimum_size <= index_size && index_size <= maximum_size) {
-          already_seen[set_id] = true;
-          candidates.push_back(set_id);
+      if (Filter::set_pred(probing_set, indexed_sets[set_id])) {
+        if (!already_seen[set_id]) {
+          auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
+          if (minimum_size <= index_size && index_size <= maximum_size) {
+            already_seen[set_id] = true;
+            candidates.push_back(set_id);
+          }
         }
       }
     };
@@ -214,9 +216,9 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
+template <class Handler, class Filter>
 template <bool IS_SELF_JOIN, class CandidateHandler>
-void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
+void PallocJoin<Handler, Filter>::_probe_size_group(types::Set& probing_set,
                                             GroupSignatures& group_sigs,
                                             SizeGroup& size_group,
                                             indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
@@ -315,8 +317,8 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
   }
 }
 
-template<class Handler>
-int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) {
+template <class Handler, class Filter>
+int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) {
   return (similarity.max_hd_to(partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) / 2) + 1;
 }
 

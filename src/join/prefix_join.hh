@@ -13,8 +13,8 @@ struct SizeGetter<types::Set> {
   static int64_t get_size(types::Set& set) { return static_cast<int64_t>(set.tokens.size()); }
 };
 
-template <class Handler>
-class PrefixSignatureJoin : public SignatureJoin<Handler> {
+template <class Handler, class Filter = NopFilter>
+class PrefixSignatureJoin : public SignatureJoin<Handler, Filter> {
 public:
   explicit PrefixSignatureJoin(similarity::Similarity& similarity)
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
@@ -41,7 +41,8 @@ private:
   std::vector<types::Set> indexed_sets;
 };
 
-template class PrefixSignatureJoin<MaterializeHandler>;
+template class PrefixSignatureJoin<MaterializeHandler, NopFilter>;
+template class PrefixSignatureJoin<MaterializeHandler, SymmetricPairFilter>;
 
 }
 

@@ -231,7 +231,7 @@ private:
   IndexedBatch& index_batch;
   ReductionCache& reduction_cache;
   ProbingSignaturesCache& probing_signatures_cache;
-  std::vector<AlgorithmInstance> algorithms;
+  std::vector<AlgorithmInstance<>> algorithms;
 };
 
 class PlanExecutor {

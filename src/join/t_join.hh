@@ -21,8 +21,8 @@ struct TreeGetter<types::Tree> {
 namespace join {
 
 // TJoin has its reduction somewhat hidden inside its implementation, so this implements both reducing and joining
-template <class Handler>
-class TJoinLite : public JoinAlgorithm<Handler> {
+template <class Handler, class Filter = NopFilter>
+class TJoinLite : public JoinAlgorithm<Handler, Filter> {
 private:
   using Label = types::Tree::Label;
   using CandidateIndex = tsim::candidate_index::CandidateIndex;
@@ -67,7 +67,8 @@ private:
   TokenFrequencyMap token_map_list;
 };
 
-template class TJoinLite<MaterializeHandler>;
+template class TJoinLite<MaterializeHandler, NopFilter>;
+template class TJoinLite<MaterializeHandler, SymmetricPairFilter>;
 
 }  // namespace join
 

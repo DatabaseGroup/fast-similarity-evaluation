@@ -2,20 +2,20 @@
 #define SRC_TIMESLICE_HH
 
 #include "../ontology/uct.hh"
+#include "../timing/join_timing.hh"
 #include "algorithm_resolution.hh"
 #include "execution_cache.hh"
-#include "../timing/join_timing.hh"
 
 namespace join {
 
 inline void execute_timeslice_prebuilt(data::Dataset& dataset,
-                                similarity::Similarity& similarity,
-                                std::vector<ontology::QueryPlan>& plans,
-                                timing::TimeStaticJoinTiming& timing,
-                                std::vector<statistics::LocalJoinStatistics>& all_statistics) {
+                                       similarity::Similarity& similarity,
+                                       std::vector<ontology::QueryPlan>& plans,
+                                       timing::TimeStaticJoinTiming& timing,
+                                       std::vector<statistics::LocalJoinStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
 
-  std::vector<AlgorithmInstance> algorithms;
+  std::vector<AlgorithmInstance<MaterializeHandler, SymmetricPairFilter>> algorithms;
 
   // should be large enough to fit all index data of plans + one microbatch
   // a plan has at most 3 steps and we have ~plans.size + 1 different "batches" at the same time
@@ -33,10 +33,11 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
-      alg_instance.owned_data = reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i]);
+      alg_instance.owned_data =
+        reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i]);
     }
     alg_instance.algorithm =
-      resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
+      resolve_algorithmid<SymmetricPairFilter>(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
     auto index_batch = types::dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
     alg_instance.algorithm->prepare_indexing_batch(index_batch);
     alg_instance.algorithm->index_batch(index_batch);
@@ -81,9 +82,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       }
 
       // todo: remove this once the algorithms themself can filter those pairs out
-      std::erase_if(result_pairs, [](const auto& o) {
-        return o.first >= o.second;
-      });
+      std::erase_if(result_pairs, [](const auto& o) { return o.first >= o.second; });
 
       for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
         auto reduced_index = reduction_cache.reduce_to_level(
@@ -121,9 +120,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   }
   timing.join_time.stop();
 
-  uct.for_each_action([&](ontology::detail::UCTNode& n) {
-    all_statistics[n.get_action()].bandit_weights.emplace_back(n.get_mean());
-  });
+  uct.for_each_action(
+    [&](ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weights.emplace_back(n.get_mean()); });
 }
 
 }  // namespace join

@@ -40,8 +40,8 @@ inline void add_small_results(typename DataType::value_type data,
   }
 }
 
-template <class Handler>
-class SignatureJoin : public JoinAlgorithm<Handler> {
+template <class Handler, class Filter = NopFilter>
+class SignatureJoin : public JoinAlgorithm<Handler, Filter> {
 public:
   void prepare_indexing_batch(types::Batch& batch) = 0;
   void index_batch(types::Batch& batch) = 0;

@@ -3,15 +3,16 @@
 
 #include <memory>
 
-#include "../types/types.hh"
-#include "../similarity/similarity.hh"
 #include "../ontology/planner.hh"
+#include "../similarity/similarity.hh"
+#include "../types/types.hh"
 #include "../util/lru_cache.hh"
 
 namespace join {
 
+template <class Handler = MaterializeHandler, class Filter = NopFilter>
 struct AlgorithmInstance {
-  std::unique_ptr<join::JoinAlgorithm<MaterializeHandler>> algorithm{};
+  std::unique_ptr<JoinAlgorithm<Handler, Filter>> algorithm{};
   std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> owned_data{};
   bool initialized{false};
 };
@@ -145,6 +146,6 @@ private:
   util::LRUCache<AlgBatchPair, std::shared_ptr<std::any>> cache;
 };
 
-}
+}  // namespace join
 
 #endif  // SRC_EXECUTION_CACHE_HH

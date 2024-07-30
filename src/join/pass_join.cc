@@ -2,8 +2,8 @@
 
 namespace join {
 
-template <class Handler>
-void PassJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+void PassJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
   auto& strings = std::get<types::StringBatch>(batch);
 
   indexed_strings.clear();
@@ -15,8 +15,8 @@ void PassJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
   });
 }
 
-template <class Handler>
-void PassJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler, class Filter>
+void PassJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   // strings (or their references) already in indexed_strings
   // assert indexed_strings == batch (up to the order)
 
@@ -34,11 +34,11 @@ void PassJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
   }
 }
 
-template <class Handler>
-bool PassJoin<Handler>::has_independent_probing_signatures() { return true; }
+template <class Handler, class Filter>
+bool PassJoin<Handler, Filter>::has_independent_probing_signatures() { return true; }
 
-template <class Handler>
-std::any PassJoin<Handler>::prepare_probing_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler, class Filter>
+std::any PassJoin<Handler, Filter>::prepare_probing_batch([[maybe_unused]] types::Batch& batch) {
   auto strings = std::get<types::StringBatch>(batch);
 
   std::vector<CachedSignatures> signatures;
@@ -51,8 +51,8 @@ std::any PassJoin<Handler>::prepare_probing_batch([[maybe_unused]] types::Batch&
   return signatures;
 }
 
-template <class Handler>
-void PassJoin<Handler>::join_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PassJoin<Handler, Filter>::join_batch(types::Batch& batch,
                 Handler handler,
                 statistics::JoinStatistics& statistics,
                 std::shared_ptr<std::any> probing_signatures) {
@@ -65,8 +65,8 @@ void PassJoin<Handler>::join_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
-void PassJoin<Handler>::selfjoin_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PassJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
                     Handler handler,
                     statistics::JoinStatistics& statistics,
                     std::shared_ptr<std::any> probing_signatures) {
@@ -79,9 +79,9 @@ void PassJoin<Handler>::selfjoin_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
+template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
-void PassJoin<Handler>::_join_batch(types::Batch& batch,
+void PassJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                  std::vector<CachedSignatures>& cached_probing_signatures,
                  Handler handler,
                  statistics::JoinStatistics& statistics) {
@@ -102,9 +102,11 @@ void PassJoin<Handler>::_join_batch(types::Batch& batch,
     index.query(
       indexing::KeyRange(minimum_candidate_size, maximum_candidate_size),
       [&](StringId set_id) {
-        if (!already_seen[set_id]) {
+        if (Filter::string_pred(string, strings.data[set_id])) {
+          if (!already_seen[set_id]) {
           already_seen[set_id] = true;
           candidates.push_back(set_id);
+        }
         }
       },
       key_iterator);

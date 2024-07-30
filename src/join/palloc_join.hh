@@ -16,8 +16,8 @@ struct SizeGetter<std::reference_wrapper<types::Set>> {
   }
 };
 
-template <class Handler>
-class PallocJoin : public SignatureJoin<Handler> {
+template <class Handler, class Filter = NopFilter>
+class PallocJoin : public SignatureJoin<Handler, Filter> {
 public:
   using RefSet = std::reference_wrapper<types::Set>;
   struct GroupSignatures {
@@ -100,7 +100,8 @@ private:
   std::vector<SizeGroup> size_groups;
 };
 
-template class PallocJoin<MaterializeHandler>;
+template class PallocJoin<MaterializeHandler, NopFilter>;
+template class PallocJoin<MaterializeHandler, SymmetricPairFilter>;
 
 }  // namespace join
 

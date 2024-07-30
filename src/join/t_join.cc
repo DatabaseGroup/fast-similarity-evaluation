@@ -2,8 +2,8 @@
 
 namespace join {
 
-template <class Handler>
-void TJoinLite<Handler>::prepare_indexing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+void TJoinLite<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map_list);
@@ -15,8 +15,8 @@ void TJoinLite<Handler>::prepare_indexing_batch(types::Batch& batch) {
   util::apply_permutation_in_place(indexed_trees, permutation);
 }
 
-template <class Handler>
-void TJoinLite<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler, class Filter>
+void TJoinLite<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   index.prepare(token_map_list.size() + 1);
 
   for (int set_id = 0; set_id < static_cast<int>(indexed_sets.size()); ++set_id) {
@@ -25,11 +25,11 @@ void TJoinLite<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
   }
 }
 
-template <class Handler>
-bool TJoinLite<Handler>::has_independent_probing_signatures() { return true; }
+template <class Handler, class Filter>
+bool TJoinLite<Handler, Filter>::has_independent_probing_signatures() { return true; }
 
-template <class Handler>
-std::any TJoinLite<Handler>::prepare_probing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+std::any TJoinLite<Handler, Filter>::prepare_probing_batch(types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   SetsCollection probing_sets;
@@ -37,8 +37,8 @@ std::any TJoinLite<Handler>::prepare_probing_batch(types::Batch& batch) {
   return probing_sets;
 }
 
-template <class Handler>
-void TJoinLite<Handler>::selfjoin_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void TJoinLite<Handler, Filter>::selfjoin_batch(types::Batch& batch,
                     Handler handler,
                     statistics::JoinStatistics& statistics,
                     std::shared_ptr<std::any> probing_signatures) {
@@ -53,8 +53,8 @@ void TJoinLite<Handler>::selfjoin_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
-void TJoinLite<Handler>::join_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void TJoinLite<Handler, Filter>::join_batch(types::Batch& batch,
                 Handler handler,
                 statistics::JoinStatistics& statistics,
                 std::shared_ptr<std::any> probing_signatures) {
@@ -69,9 +69,9 @@ void TJoinLite<Handler>::join_batch(types::Batch& batch,
   }
 }
 
-template <class Handler>
+template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
-void TJoinLite<Handler>::_join_batch(types::TreeBatch& trees,
+void TJoinLite<Handler, Filter>::_join_batch(types::TreeBatch& trees,
                  bool probing_signatures_from_cache,
                  SetsCollection& possibly_cached_probing_sets,
                  Handler handler,
@@ -101,14 +101,16 @@ void TJoinLite<Handler>::_join_batch(types::TreeBatch& trees,
     auto& index_tree = indexed_trees[pair.second];
     auto& probe_tree = trees.data[pair.first];
 
-    // self-joins skip symmetric ids
-    if constexpr (IS_SELF_JOIN) {
-      if (index_tree.get().id >= probe_tree.id) {
-        continue;
+    if (Filter::tree_pred(index_tree.get(), probe_tree)) {
+      // self-joins skip symmetric ids
+      if constexpr (IS_SELF_JOIN) {
+        if (index_tree.get().id >= probe_tree.id) {
+          continue;
+        }
       }
-    }
-    if (ted.is_in_threshold(index_tree.get(), probe_tree)) {
-      handler(index_tree.get().id, probe_tree.id);
+      if (ted.is_in_threshold(index_tree.get(), probe_tree)) {
+        handler(index_tree.get().id, probe_tree.id);
+      }
     }
   }
   statistics.join_verifications.add(static_cast<int64_t>(join_candidates.size()));

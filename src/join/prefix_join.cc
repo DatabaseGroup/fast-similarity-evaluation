@@ -2,8 +2,8 @@
 
 namespace join {
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
+template <class Handler, class Filter>
+void PrefixSignatureJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
   // this "consumes" the data, take copy
   auto& sets = std::get<types::SetBatch>(batch);
   indexed_sets.reserve(sets.data.size());
@@ -22,8 +22,8 @@ void PrefixSignatureJoin<Handler>::prepare_indexing_batch(types::Batch& batch) {
   index = std::move(new_index);
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::index_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler, class Filter>
+void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   // assert batch == indexed_Sets
 
   SetId set_id = 0;
@@ -43,16 +43,16 @@ void PrefixSignatureJoin<Handler>::index_batch([[maybe_unused]] types::Batch& ba
   }
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::join_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PrefixSignatureJoin<Handler, Filter>::join_batch(types::Batch& batch,
                 Handler handler,
                 statistics::JoinStatistics& statistics,
                 [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
   return _join_batch<false>(batch, handler, statistics);
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::selfjoin_batch(types::Batch& batch,
+template <class Handler, class Filter>
+void PrefixSignatureJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
                     Handler handler,
                     statistics::JoinStatistics& statistics,
                     [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
@@ -60,9 +60,9 @@ void PrefixSignatureJoin<Handler>::selfjoin_batch(types::Batch& batch,
 }
 
 
-template <class Handler>
+template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
-void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
+void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
   auto& set_batch = std::get<types::SetBatch>(batch);
 
   std::vector<types::Set> prepared_probing_sets;
@@ -95,9 +95,11 @@ void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch, Handler hand
       index.query(
         signature,
         [&](SetId set_id) {
-          if (!already_seen[set_id]) {
+          if (Filter::set_pred(set, indexed_sets[set_id])) {
+            if (!already_seen[set_id]) {
             already_seen[set_id] = true;
             candidates.push_back(set_id);
+          }
           }
         },
         length_iter);

@@ -15,8 +15,8 @@ struct SizeGetter<std::reference_wrapper<types::String>> {
   }
 };
 
-template <class Handler>
-class PassJoin : public SignatureJoin<Handler> {
+template <class Handler, class Filter = NopFilter>
+class PassJoin : public SignatureJoin<Handler, Filter> {
 private:
   using StringId = int64_t;
   using RefString = std::reference_wrapper<types::String>;
@@ -114,7 +114,8 @@ private:
   std::vector<RefString> indexed_strings;
 };
 
-template class PassJoin<MaterializeHandler>;
+template class PassJoin<MaterializeHandler, NopFilter>;
+template class PassJoin<MaterializeHandler, SymmetricPairFilter>;
 
 }  // namespace join
 

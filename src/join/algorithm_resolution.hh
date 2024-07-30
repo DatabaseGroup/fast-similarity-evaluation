@@ -10,21 +10,22 @@
 
 namespace join {
 
-std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(AlgorithmId id, similarity::Similarity& similarity) {
+template<class Filter = NopFilter>
+std::unique_ptr<JoinAlgorithm<MaterializeHandler, Filter>> resolve_algorithmid(AlgorithmId id, similarity::Similarity& similarity) {
   switch (id) {
   case PREFIX_SIGNATURE_JOIN:
-    return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity);
+    return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity);
   case FALLBACK:
     // todo implement comparing all pairs as obvious fallback
       break;
   case PASS_JOIN:
-    return std::make_unique<PassJoin<MaterializeHandler>>(similarity);
+    return std::make_unique<PassJoin<MaterializeHandler, Filter>>(similarity);
   case TJOIN:
-    return std::make_unique<TJoinLite<MaterializeHandler>>(similarity);
+    return std::make_unique<TJoinLite<MaterializeHandler, Filter>>(similarity);
   case PALLOC:
-    return std::make_unique<PallocJoin<MaterializeHandler>>(similarity);
+    return std::make_unique<PallocJoin<MaterializeHandler, Filter>>(similarity);
   }
-  return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity);
+  return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity);
 }
 
 }
