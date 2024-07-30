@@ -53,7 +53,7 @@
     - name: Copy datasets
       ansible.builtin.copy:
         remote_src: true
-        src: "/mnt/dbgroup-share/dschmitt/datasets"
+        src: "/mnt/dbgroup-share/dschmitt/datasets/"
         dest: "{{ home_dir }}/datasets/"
 
 
