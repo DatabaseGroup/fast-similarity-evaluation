@@ -80,6 +80,11 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         alg.algorithm->join_batch(reduced_batch, handler, plan_statistics, null);
       }
 
+      // todo: remove this once the algorithms themself can filter those pairs out
+      std::erase_if(result_pairs, [](const auto& o) {
+        return o.first >= o.second;
+      });
+
       for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
         auto reduced_index = reduction_cache.reduce_to_level(
           all_dataset_batches[action.action], similarity, selected_plan, level, plan_statistics);
