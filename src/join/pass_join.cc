@@ -102,7 +102,7 @@ void PassJoin<Handler, Filter>::_join_batch(types::Batch& batch,
     index.query(
       indexing::KeyRange(minimum_candidate_size, maximum_candidate_size),
       [&](StringId set_id) {
-        if (Filter::string_pred(string, strings.data[set_id])) {
+        if (Filter::string_pred(indexed_strings[set_id], string)) {
           if (!already_seen[set_id]) {
           already_seen[set_id] = true;
           candidates.push_back(set_id);

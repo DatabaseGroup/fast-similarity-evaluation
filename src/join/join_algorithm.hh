@@ -40,15 +40,23 @@ inline AlgorithmId string_to_algorithm(const std::string& algorithm) {
 }
 
 struct NopFilter {
-  static bool set_pred([[maybe_unused]] types::Set& s1, [[maybe_unused]] types::Set& s2) { return true; }
-  static bool string_pred([[maybe_unused]] types::String& s1, [[maybe_unused]] types::String& s2) { return true; }
-  static bool tree_pred([[maybe_unused]] types::Tree& t1, [[maybe_unused]] types::Tree& t2) { return true; }
+  static bool set_pred([[maybe_unused]] types::Set& index_set, [[maybe_unused]] types::Set& probe_set) { return true; }
+  static bool string_pred([[maybe_unused]] types::String& index_string, [[maybe_unused]] types::String& probe_string) {
+    return true;
+  }
+  static bool tree_pred([[maybe_unused]] types::Tree& index_tree, [[maybe_unused]] types::Tree& probe_tree) {
+    return true;
+  }
 };
 
 struct SymmetricPairFilter {
-  static bool set_pred(types::Set& s1, types::Set& s2) { return s1.id < s2.id; }
-  static bool string_pred(types::String& s1, types::String& s2) { return s1.id < s2.id; }
-  static bool tree_pred(types::Tree& t1, types::Tree& t2) { return t1.id < t2.id; }
+  static bool set_pred(const types::Set& index_set, const types::Set& probe_set) { return index_set.id < probe_set.id; }
+  static bool string_pred(const types::String& index_string, const types::String& probe_string) {
+    return index_string.id < probe_string.id;
+  }
+  static bool tree_pred(const types::Tree& index_tree, const types::Tree& probe_tree) {
+    return index_tree.id < probe_tree.id;
+  }
 };
 
 template <class Handler, class Filter = NopFilter>

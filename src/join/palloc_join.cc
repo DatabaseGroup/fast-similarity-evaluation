@@ -158,7 +158,7 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                       already_seen);
 
     auto candidate_handler = [&](SetId set_id) {
-      if (Filter::set_pred(probing_set, indexed_sets[set_id])) {
+      if (Filter::set_pred(indexed_sets[set_id], probing_set)) {
         if (!already_seen[set_id]) {
           auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
           if (minimum_size <= index_size && index_size <= maximum_size) {

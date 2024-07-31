@@ -95,7 +95,7 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch, Hand
       index.query(
         signature,
         [&](SetId set_id) {
-          if (Filter::set_pred(set, indexed_sets[set_id])) {
+          if (Filter::set_pred(indexed_sets[set_id], set)) {
             if (!already_seen[set_id]) {
             already_seen[set_id] = true;
             candidates.push_back(set_id);
