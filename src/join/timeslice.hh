@@ -50,6 +50,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   std::vector<types::ResultPair> result_pairs;
   MaterializeHandler handler(result_pairs);
 
+  double total_reward = 0;
+  int64_t iterations = 0;
+  auto next_weight_update = static_cast<int64_t>(plans.size());
+
   timing.join_time.start();
   while (probing_id < dataset.statistics->count) {
     auto action = uct.select_action();
@@ -115,7 +119,16 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     int64_t processed_ids = probing_id - start_probing_id;
     double reward =
       static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (TIMESLICE / time_required);
-    // std::cout << "Update reward: Action " << action.action << " has reward " << reward << std::endl;
+    total_reward += reward;
+    iterations += 1;
+
+    if (iterations == next_weight_update) {
+      double avg_reward = total_reward / static_cast<double>(iterations);
+      double next_weight = std::exp2(std::floor(std::log2(avg_reward)));
+      uct.update_exp_weight(next_weight);
+      next_weight_update *= 2;
+    }
+
     uct.update(action, reward);
   }
   timing.join_time.stop();

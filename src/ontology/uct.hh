@@ -9,11 +9,17 @@ namespace ontology {
 
 namespace detail {
 
+struct UCTConfig {
+  double exploration_weight = 1e-2;
+};
+
 class UCTNode {
 public:
+  explicit UCTNode(UCTConfig& config) : config(config) {}
+
   [[nodiscard]] double action_quality(const UCTNode& child) const {
     double mean_reward = child.total_reward / child.nr_of_selections;
-    double bias = exploration_weight * std::sqrt(std::log(nr_of_selections) / child.nr_of_selections);
+    double bias = config.exploration_weight * std::sqrt(std::log(nr_of_selections) / child.nr_of_selections);
 
     return mean_reward + bias;
   }
@@ -42,7 +48,7 @@ public:
 
   util::object_ptr<UCTNode> add_child() {
     untried_action_ids.push_back(actions.size());
-    return &actions.emplace_back();
+    return &actions.emplace_back(config);
   }
 
   void for_each_action(const std::function<void(UCTNode&)>& fun) { // NOLINT(*-no-recursion)
@@ -93,7 +99,7 @@ private:
   int64_t action{-1}; // only available if leaf
   double total_reward{};
   double nr_of_selections{};
-  double exploration_weight = 1e-2;
+  UCTConfig& config;
 
   std::vector<UCTNode> actions;
   std::vector<size_t> untried_action_ids;
@@ -104,6 +110,7 @@ private:
 class UCT {
 public:
   using UCTNode = detail::UCTNode;
+  using UCTConfig = detail::UCTConfig;
 
   class Selection {
   public:
@@ -157,8 +164,13 @@ public:
     root.for_each_action(fun);
   }
 
+  void update_exp_weight(double weight) {
+    config.exploration_weight = weight;
+  }
+
 private:
-  UCTNode root;
+  UCTConfig config;
+  UCTNode root{config};
 };
 
 }  // namespace ontology
