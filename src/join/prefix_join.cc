@@ -45,24 +45,26 @@ void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::B
 
 template <class Handler, class Filter>
 void PrefixSignatureJoin<Handler, Filter>::join_batch(types::Batch& batch,
-                Handler handler,
-                statistics::JoinStatistics& statistics,
-                [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
+                                                      Handler handler,
+                                                      statistics::JoinStatistics& statistics,
+                                                      [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
   return _join_batch<false>(batch, handler, statistics);
 }
 
 template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
-                    Handler handler,
-                    statistics::JoinStatistics& statistics,
-                    [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
+void PrefixSignatureJoin<Handler, Filter>::selfjoin_batch(
+  types::Batch& batch,
+  Handler handler,
+  statistics::JoinStatistics& statistics,
+  [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
   return _join_batch<true>(batch, handler, statistics);
 }
 
-
 template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
-void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics) {
+void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
+                                                       Handler handler,
+                                                       statistics::JoinStatistics& statistics) {
   auto& set_batch = std::get<types::SetBatch>(batch);
 
   std::vector<types::Set> prepared_probing_sets;
@@ -129,4 +131,4 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch, Hand
   }
 }
 
-}
+}  // namespace join

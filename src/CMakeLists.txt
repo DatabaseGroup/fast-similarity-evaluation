@@ -70,5 +70,11 @@ add_executable(fast_stats
 add_dependencies(fast_stats tree-similarity)
 target_link_libraries(fast_stats PRIVATE ${LINK_LIBS})
 target_include_directories(fast_stats SYSTEM PRIVATE ${INCLUDE_LIBS})
-
 target_compile_definitions(fast_stats PRIVATE STATISTICS TIMING)
+
+add_executable(fast_dbg
+        ${SOURCES})
+add_dependencies(fast_dbg tree-similarity)
+target_link_libraries(fast_dbg PRIVATE ${LINK_LIBS})
+target_include_directories(fast_dbg SYSTEM PRIVATE ${INCLUDE_LIBS})
+target_compile_definitions(fast_dbg PRIVATE STATISTICS TIMING FAST_DEBUG)
