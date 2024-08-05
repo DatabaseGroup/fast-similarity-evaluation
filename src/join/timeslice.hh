@@ -95,12 +95,14 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   int64_t rp_id = dataset.statistics->count;
   constexpr int64_t HALFBATCH = 8;
   constexpr double TIMESLICE = 0.15;
+  double scaled_timeslice = TIMESLICE;
 
   std::vector<types::ResultPair> result_pairs;
   MaterializeHandler handler(result_pairs);
 
   double total_reward = 0;
   int64_t iterations = 0;
+  int64_t non_punctual = 0;
   auto next_weight_update = static_cast<int64_t>(plans.size());
 
   timing.join_time.start();
@@ -167,13 +169,17 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       processed_ids += 2 * HALFBATCH;
       end_time = timing::end_cost_measurement();
       time_required = timing::get_cost(start_time, end_time);
-      if (time_required > TIMESLICE) {
+      if (time_required > scaled_timeslice) {
+        if (time_required / scaled_timeslice > 1.25) {
+          non_punctual++;
+        }
+
         break;
       }
     }
 
     double reward =
-      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (TIMESLICE / time_required);
+      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (time_required / TIMESLICE);
     total_reward += reward;
     iterations += 1;
 
@@ -184,6 +190,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       double next_weight = std::exp2(std::floor(std::log2(avg_reward)));
       uct.update_exp_weight(next_weight);
       next_weight_update *= 2;
+
+      if (static_cast<double>(non_punctual) / static_cast<double>(iterations) > 0.25) {
+        scaled_timeslice *= 2;
+      }
     }
 
     uct.update(action, reward);
