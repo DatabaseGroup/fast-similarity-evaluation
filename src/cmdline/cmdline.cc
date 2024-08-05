@@ -3,7 +3,7 @@
 
 #include "../data/parser.hh"
 #include "../indexing/index.hh"
-#include "../join/plan_execution.hh"
+#include "../join/blockslice.hh"
 #include "../join/timeslice.hh"
 #include "../statistics/join_statistics.hh"
 #include "../timing/join_timing.hh"

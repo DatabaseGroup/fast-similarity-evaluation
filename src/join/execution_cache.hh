@@ -148,4 +148,15 @@ private:
 
 }  // namespace join
 
+// make CacheHashKey also hashable with std::unordered_map (used for debugging, because absl::flat_hash_map is ugly)
+template <>
+struct std::hash<join::CacheHashKey> {
+  std::size_t operator()(join::CacheHashKey const& n) const noexcept {
+    size_t hash = 0;
+    boost::hash_combine(hash, n.batch_id);
+    boost::hash_combine(hash, n.reduction_id);
+    return hash;
+  }
+};
+
 #endif  // SRC_EXECUTION_CACHE_HH

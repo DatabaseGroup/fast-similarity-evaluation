@@ -2,9 +2,10 @@
 #define SRC_TIMESLICE_HH
 
 #include "../ontology/uct.hh"
+#include "../timing/cost_measurement.hh"
 #include "../timing/join_timing.hh"
 #include "../util/debug.hh"
-#include "algorithm_resolution.hh"
+#include "algorithm_building_blocks.hh"
 #include "execution_cache.hh"
 
 namespace join {
@@ -21,13 +22,12 @@ inline void evaluate_microbatch(types::Dataset& data,
                                 MaterializeHandler& handler,
                                 std::vector<IndexedBatch>& all_dataset_batches,
                                 statistics::LocalJoinStatistics& plan_statistics) {
-  // todo: clean this up; verification is duplicated from plan_execution.hh
   std::shared_ptr<std::any> null;
   if (selected_plan.steps.empty()) {
     alg.algorithm->join_batch(probing_batch, handler, plan_statistics, null);
   } else {
     auto reduced = reduction_cache.reduce_to_end(ipbatch, similarity, selected_plan, plan_statistics);
-    auto reduced_batch = types::dataset_to_batch(reduced->first);
+    auto reduced_batch = dataset_to_batch(reduced->first);
 
     alg.algorithm->join_batch(reduced_batch, handler, plan_statistics, null);
   }
@@ -35,22 +35,16 @@ inline void evaluate_microbatch(types::Dataset& data,
   // this should not be necessary in general, but due to a "bug" in add_small_results, we currently need this
   std::erase_if(handler.results, [](const auto& o) { return o.first >= o.second; });
 
-  for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
-    auto reduced_index = reduction_cache.reduce_to_level(
-      all_dataset_batches[action.action], similarity, selected_plan, level, plan_statistics);
-    auto reduced_index_batch = types::dataset_to_batch(reduced_index->first);
-    auto reduced_probe = reduction_cache.reduce_to_level(ipbatch, similarity, selected_plan, level, plan_statistics);
-    auto reduced_probe_batch = types::dataset_to_batch(reduced_probe->first);
-
-    offset_verify_with_similarity(
-      reduced_index_batch, 0, reduced_probe_batch, probing_offset, reduced_index->second, handler.results);
-  }
-
-  // if data was actually reduced, we still have to verify with the "outermost" similarity
-  if (!selected_plan.steps.empty()) {
-    plan_statistics.last_level_verifications.add(static_cast<int64_t>(handler.results.size()));
-    verify_with_similarity(data, similarity, handler.results);
-  }
+  verify_pairs_for_plan(data,
+                        similarity,
+                        selected_plan,
+                        handler.results,
+                        0,
+                        probing_offset,
+                        all_dataset_batches[action.action],
+                        ipbatch,
+                        reduction_cache,
+                        plan_statistics);
   plan_statistics.result_size.add(static_cast<int64_t>(handler.results.size()));
   handler.results.clear();
 }
@@ -70,7 +64,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   std::vector<IndexedBatch> all_dataset_batches;
   all_dataset_batches.reserve(plans.size());
   for (size_t i = 0; i < plans.size(); ++i) {
-    all_dataset_batches.emplace_back(i, types::dataset_to_batch(dataset.data));
+    all_dataset_batches.emplace_back(i, dataset_to_batch(dataset.data));
   }
 
   timing.build_time.start();
@@ -85,7 +79,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     }
     alg_instance.algorithm = resolve_algorithmid<SymmetricPairFilter>(
       plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
-    auto index_batch = types::dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
+    auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
     alg_instance.algorithm->prepare_indexing_batch(index_batch);
     alg_instance.algorithm->index_batch(index_batch);
   }
@@ -122,7 +116,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       // do left batch
       {
         size_t probing_batch_id = plans.size() + lp_id;
-        auto probing_batch = types::get_batch_by_offset(dataset.data, lp_id, lp_id + HALFBATCH);
+        auto probing_batch = get_batch_by_offset(dataset.data, lp_id, lp_id + HALFBATCH);
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
 
@@ -148,7 +142,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         int64_t real_batch = tmp - rp_id;
 
         size_t probing_batch_id = plans.size() + rp_id;
-        auto probing_batch = types::get_batch_by_offset(dataset.data, rp_id, rp_id + real_batch);
+        auto probing_batch = get_batch_by_offset(dataset.data, rp_id, rp_id + real_batch);
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
 
@@ -183,7 +177,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     total_reward += reward;
     iterations += 1;
 
-    util::print_dbg(absl::StrFormat("Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
+    util::print_dbg(absl::StrFormat(
+      "Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
 
     if (iterations == next_weight_update) {
       double avg_reward = total_reward / static_cast<double>(iterations);

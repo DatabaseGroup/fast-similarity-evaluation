@@ -10,109 +10,8 @@
 #include "../statistics/join_statistics.hh"
 #include "../timing/cost_measurement.hh"
 #include "../types/types.hh"
-#include "../util/visit_overload.hh"
+#include "algorithm_building_blocks.hh"
 #include "execution_cache.hh"
-#include "algorithm_resolution.hh"
-
-namespace join {
-
-template <class DataType, class SimilarityPtr>
-void _verify(DataType& dataset, SimilarityPtr& similarity, std::vector<types::ResultPair>& pairs) {
-  pairs.erase(std::remove_if(pairs.begin(),
-                             pairs.end(),
-                             [&](auto& pair) {
-                               auto l_id = pair.first;
-                               auto r_id = pair.second;
-                               auto& l = dataset.data[l_id];
-                               auto& r = dataset.data[r_id];
-                               return !similarity->is_in_threshold(l, r);
-                             }),
-              pairs.end());
-}
-
-template <class DataType, class SimilarityPtr>
-void _offset_verify(DataType& left_dataset,
-                    int64_t left_offset,
-                    DataType& right_dataset,
-                    int64_t right_offset,
-                    SimilarityPtr& similarity,
-                    std::vector<types::ResultPair>& pairs) {
-  pairs.erase(std::remove_if(pairs.begin(),
-                             pairs.end(),
-                             [&](auto& pair) {
-                               auto l_id = pair.first;
-                               auto r_id = pair.second;
-                               auto& l = left_dataset.data[l_id - left_offset];
-                               auto& r = right_dataset.data[r_id - right_offset];
-                               return !similarity->is_in_threshold(l, r);
-                             }),
-              pairs.end());
-}
-
-void verify_with_similarity(types::Dataset& dataset,
-                            similarity::Similarity& similarity,
-                            std::vector<types::ResultPair>& pairs) {
-  auto set_verify = [&](types::Sets& sets) {
-    _verify(sets, std::get<similarity::SetSimilarityPtr>(similarity), pairs);
-  };
-  auto string_verify = [&](types::Strings& strings) {
-    _verify(strings, std::get<similarity::StringSimilarityPtr>(similarity), pairs);
-  };
-  auto tree_verify = [&](types::Trees& trees) {
-    _verify(trees, std::get<similarity::TreeSimilarityPtr>(similarity), pairs);
-  };
-
-  std::visit(util::overloaded{set_verify, string_verify, tree_verify}, dataset);
-}
-
-void offset_verify_with_similarity(types::Batch& left_dataset,
-                                   int64_t left_offset,
-                                   types::Batch& right_dataset,
-                                   int64_t right_offset,
-                                   similarity::Similarity& similarity,
-                                   std::vector<types::ResultPair>& pairs) {
-  auto set_verify = [&](types::SetBatch& left_sets) {
-    _offset_verify(left_sets,
-                   left_offset,
-                   std::get<types::SetBatch>(right_dataset),
-                   right_offset,
-                   std::get<similarity::SetSimilarityPtr>(similarity),
-                   pairs);
-  };
-  auto string_verify = [&](types::StringBatch& left_strings) {
-    _offset_verify(left_strings,
-                   left_offset,
-                   std::get<types::StringBatch>(right_dataset),
-                   right_offset,
-                   std::get<similarity::StringSimilarityPtr>(similarity),
-                   pairs);
-  };
-  auto tree_verify = [&](types::TreeBatch& left_trees) {
-    _offset_verify(left_trees,
-                   left_offset,
-                   std::get<types::TreeBatch>(right_dataset),
-                   right_offset,
-                   std::get<similarity::TreeSimilarityPtr>(similarity),
-                   pairs);
-  };
-
-  std::visit(util::overloaded{set_verify, string_verify, tree_verify}, left_dataset);
-}
-
-int64_t get_offset_into_batch(int64_t batch_idx, int64_t batch_size) { return batch_idx * batch_size; }
-
-}  // namespace join
-
-// make CacheHashKey also hashable with std::unordered_map (used for debugging, because absl::flat_hash_map is ugly)
-template <>
-struct std::hash<join::CacheHashKey> {
-  std::size_t operator()(join::CacheHashKey const& n) const noexcept {
-    size_t hash = 0;
-    boost::hash_combine(hash, n.batch_id);
-    boost::hash_combine(hash, n.reduction_id);
-    return hash;
-  }
-};
 
 namespace join {
 
@@ -175,10 +74,9 @@ public:
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics);
         alg_instance.owned_data = reduced;
-        alg_instance.algorithm =
-          resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
 
-        auto batch = types::dataset_to_batch(alg_instance.owned_data->first);
+        auto batch = dataset_to_batch(alg_instance.owned_data->first);
         alg_instance.algorithm->prepare_indexing_batch(batch);
         alg_instance.algorithm->index_batch(batch);
       }
@@ -209,7 +107,7 @@ public:
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
       auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics);
-      auto batch = types::dataset_to_batch(reduced_probe->first);
+      auto batch = dataset_to_batch(reduced_probe->first);
 
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
@@ -251,7 +149,7 @@ public:
     ontology::Exp3LightA bandit(static_cast<int64_t>(plans.size()), all_batch_pairs);
 
     for (int64_t index_batch_idx = 0; index_batch_idx < batch_count; ++index_batch_idx) {
-      auto index_batch = IndexedBatch(index_batch_idx, types::get_batch_by_id(dataset.data, index_batch_idx, batch_size));
+      auto index_batch = IndexedBatch(index_batch_idx, get_batch_by_id(dataset.data, index_batch_idx, batch_size));
       auto index_offset = get_offset_into_batch(index_batch_idx, batch_size);
 
       AlgorithmCache algorithm_cache(index_batch, reduction_cache, probing_signatures_cache, plans.size());
@@ -267,7 +165,7 @@ public:
           probe_batch_idx = batch_count + index_batch_idx - i - 1;
         }
 
-        auto probe_batch = IndexedBatch(probe_batch_idx, types::get_batch_by_id(dataset.data, probe_batch_idx, batch_size));
+        auto probe_batch = IndexedBatch(probe_batch_idx, get_batch_by_id(dataset.data, probe_batch_idx, batch_size));
         auto probe_offset = get_offset_into_batch(probe_batch_idx, batch_size);
 
         int64_t plan_id = bandit.select_arm();
@@ -283,22 +181,16 @@ public:
         algorithm_cache.probe_using_plan(probe_batch, similarity, plan_id, plans, handler, batch_cost, plan_statistics);
 
         batch_cost.verification.start = timing::start_cost_measurement();
-        for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
-          auto reduced_index = reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
-          auto reduced_index_batch = types::dataset_to_batch(reduced_index->first);
-          auto reduced_probe = reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics);
-          auto reduced_probe_batch = types::dataset_to_batch(reduced_probe->first);
-
-          plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
-          offset_verify_with_similarity(
-            reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, reduced_index->second, result_pairs);
-        }
-
-        // if data was actually reduced, we still have to verify with the "outermost" similarity
-        if (!plan.steps.empty()) {
-          plan_statistics.last_level_verifications.add(static_cast<int64_t>(result_pairs.size()));
-          verify_with_similarity(dataset.data, similarity, result_pairs);
-        }
+        verify_pairs_for_plan(dataset.data,
+                              similarity,
+                              plan,
+                              result_pairs,
+                              index_offset,
+                              probe_offset,
+                              index_batch,
+                              probe_batch,
+                              reduction_cache,
+                              plan_statistics);
         batch_cost.verification.end = timing::end_cost_measurement();
 
         auto loss = static_cast<long double>(batch_cost.get_cost());
