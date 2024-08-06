@@ -26,7 +26,7 @@ inline void evaluate_microbatch(types::Dataset& data,
   if (selected_plan.steps.empty()) {
     alg.algorithm->join_batch(probing_batch, handler, plan_statistics, null);
   } else {
-    auto reduced = reduction_cache.reduce_to_end(ipbatch, similarity, selected_plan, plan_statistics);
+    auto reduced = reduction_cache.reduce_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
     auto reduced_batch = dataset_to_batch(reduced->first);
 
     alg.algorithm->join_batch(reduced_batch, handler, plan_statistics, null);
@@ -53,7 +53,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        similarity::Similarity& similarity,
                                        std::vector<ontology::QueryPlan>& plans,
                                        timing::TimeStaticJoinTiming& timing,
-                                       std::vector<statistics::LocalJoinStatistics>& all_statistics) {
+                                       std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
 
   std::vector<AlgorithmInstance<MaterializeHandler, SymmetricPairFilter>> algorithms;
@@ -75,7 +75,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
       alg_instance.owned_data =
-        reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i]);
+        reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
     }
     alg_instance.algorithm = resolve_algorithmid<SymmetricPairFilter>(
       plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
@@ -196,7 +196,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   timing.join_time.stop();
 
   uct.for_each_action(
-    [&](ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weights.emplace_back(n.get_mean()); });
+    [&](ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weight.record(n.get_mean()); });
 }
 
 }  // namespace join

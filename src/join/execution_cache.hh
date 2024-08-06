@@ -50,7 +50,7 @@ public:
     similarity::Similarity& similarity,
     ontology::QueryPlan& plan,
     int32_t level,
-    statistics::LocalJoinStatistics& statistics) {
+    statistics::ReductionCacheStatistics& statistics) {
     assert(!plan.steps.empty());
     // find lowest, processed step
     auto batch_id = batch.id;
@@ -108,7 +108,7 @@ public:
     IndexedBatch& batch,
     similarity::Similarity& similarity,
     ontology::QueryPlan& plan,
-    statistics::LocalJoinStatistics& statistics) {
+    statistics::ReductionCacheStatistics& statistics) {
     return reduce_to_level(batch, similarity, plan, 0, statistics);
   }
 
@@ -127,7 +127,7 @@ public:
                                                           size_t batch_id,
                                                           types::Batch& probe_batch,
                                                           join::JoinAlgorithm<MaterializeHandler>& join_algorithm,
-                                                          statistics::LocalJoinStatistics& statistics) {
+                                                          statistics::ReductionCacheStatistics& statistics) {
     auto cache_key = AlgBatchPair(plan_id, batch_id);
 
     auto cache_result = cache.get(cache_key);

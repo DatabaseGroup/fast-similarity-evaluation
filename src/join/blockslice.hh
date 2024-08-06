@@ -72,7 +72,7 @@ public:
         alg_instance.algorithm->index_batch(index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
-        auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics);
+        auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics.rc_statistics);
         alg_instance.owned_data = reduced;
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
 
@@ -92,7 +92,7 @@ public:
       // the dataset and similarity are owned by the caller
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
-          plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics);
+          plan_idx, probe_batch.id, probe_batch.batch, *alg_instance.algorithm, statistics.rc_statistics);
       }
       batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
@@ -106,12 +106,12 @@ public:
     } else {
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
-      auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics);
+      auto reduced_probe = reduction_cache.reduce_to_end(probe_batch, similarity, plan, statistics.rc_statistics);
       auto batch = dataset_to_batch(reduced_probe->first);
 
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
-          plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics);
+          plan_idx, probe_batch.id, batch, *alg_instance.algorithm, statistics.rc_statistics);
       }
       batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
@@ -141,7 +141,7 @@ public:
   void execute_plans(data::Dataset& dataset,
                      similarity::Similarity& similarity,
                      std::vector<ontology::QueryPlan>& plans,
-                     std::vector<statistics::LocalJoinStatistics>& all_statistics) {
+                     std::vector<statistics::LocalBlockSliceStatistics>& all_statistics) {
     const int64_t all_batch_pairs = get_allpairs_batches(batch_count);
     const int64_t batch_size = get_batch_size(batch_count, dataset.statistics->count);
     int64_t remaining_all_batch_pairs = all_batch_pairs;
@@ -211,7 +211,7 @@ public:
         --remaining_all_batch_pairs;
         if (all_batch_pairs > 10 && remaining_all_batch_pairs % (all_batch_pairs / 10) == 0) {
           for (int32_t j = 0; j < static_cast<int32_t>(plans.size()); ++j) {
-            all_statistics[j].bandit_weights.push_back(bandit.get_normalized_weight(j));
+            all_statistics[j].bandit_weight.record(bandit.get_normalized_weight(j));
           }
         }
       }

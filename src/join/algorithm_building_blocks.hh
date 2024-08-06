@@ -127,8 +127,8 @@ inline types::Batch get_batch_by_offset(types::Dataset& dataset, const int64_t s
     [&](auto&& actual_dataset) {
       using DatasetType = std::decay_t<decltype(actual_dataset)>;
       return types::Batch(types::DataBatch<typename DatasetType::value_type>(
-        types::span<typename DatasetType::value_type>(actual_dataset.data.begin() + start,
-                                               std::min(actual_dataset.data.begin() + end, actual_dataset.data.end())),
+        types::span<typename DatasetType::value_type>(
+          actual_dataset.data.begin() + start, std::min(actual_dataset.data.begin() + end, actual_dataset.data.end())),
         actual_dataset.meta));
     },
     dataset);
@@ -151,12 +151,14 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
                                   ReductionCache reduction_cache,
                                   statistics::LocalJoinStatistics& plan_statistics) {
   for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
-    auto reduced_index = reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics);
+    auto reduced_index =
+      reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics.rc_statistics);
     auto reduced_index_batch = dataset_to_batch(reduced_index->first);
-    auto reduced_probe = reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics);
+    auto reduced_probe =
+      reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics.rc_statistics);
     auto reduced_probe_batch = dataset_to_batch(reduced_probe->first);
 
-    plan_statistics.filter_verifications.add(static_cast<int64_t>(result_pairs.size()));
+    plan_statistics.step_verifications[level].add(static_cast<int64_t>(result_pairs.size()));
     offset_verify_with_similarity(
       reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, reduced_index->second, result_pairs);
   }
@@ -164,7 +166,7 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
   // if data was actually reduced, we still have to verify with the "outermost" similarity
   // otherwise, the algorithm instance has already verified this part
   if (!plan.steps.empty()) {
-    plan_statistics.last_level_verifications.add(static_cast<int64_t>(result_pairs.size()));
+    plan_statistics.step_verifications[0].add(static_cast<int64_t>(result_pairs.size()));
     verify_with_similarity(dataset, similarity, result_pairs);
   }
 }

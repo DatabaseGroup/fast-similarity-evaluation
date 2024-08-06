@@ -3,74 +3,20 @@
 
 #include <utility>
 
+#include "join_statistics.hh"
 #include "statistics.hh"
 
 namespace statistics {
 
-struct JoinStatistics {
-  CountItem<> result_size;
-  // this includes last level verifications
-  CountItem<> filter_verifications;
-  CountItem<> join_verifications;
-  CountItem<> last_level_verifications;
-  long double incurred_loss{};
-  long double expected_total_loss{std::numeric_limits<long double>::infinity()};
-
-  virtual ~JoinStatistics() = default;
-
-  [[nodiscard]] virtual nlohmann::json to_json() const {
-    nlohmann::json json;
-
-    result_size.add_to_json("result_size", json);
-    filter_verifications.add_to_json("filter_verifications", json);
-    join_verifications.add_to_json("join_verifications", json);
-    last_level_verifications.add_to_json("last_level_verifications", json);
-    json["incurred_loss"] = incurred_loss;
-    json["expected_total_loss"] = expected_total_loss;
-
-    return json;
-  }
-
-  JoinStatistics& operator+=(const JoinStatistics& rhs) {
-    result_size.value += rhs.result_size.value;
-    filter_verifications.value += rhs.filter_verifications.value;
-    join_verifications.value += rhs.join_verifications.value;
-    last_level_verifications.value += rhs.last_level_verifications.value;
-    incurred_loss += rhs.incurred_loss;
-    expected_total_loss = std::min(expected_total_loss, rhs.expected_total_loss);
-
-    return *this;
-  }
-
-  // lhs should be copied
-  friend JoinStatistics operator+(const JoinStatistics& lhs, const JoinStatistics& rhs) {
-    JoinStatistics res;
-    res += lhs;
-    res += rhs;
-    return res;
-  }
-};
-
-struct LocalJoinStatistics : public JoinStatistics {
-  std::vector<long double> bandit_weights;
-
-  CountItem<> selection_count;
+struct ReductionCacheStatistics {
   CountItem<> reduction_cache_hits;
   CountItem<> reduction_cache_misses;
 
   CountItem<> probing_signature_cache_hits;
   CountItem<> probing_signature_cache_misses;
 
-  nlohmann::json description;
-
-  explicit LocalJoinStatistics(nlohmann::json description) : description(std::move(description)) {}
-
-  [[nodiscard]] nlohmann::json to_json() const override {
-    auto json = JoinStatistics::to_json();
-    json["bandit_weights"] = bandit_weights;
-    json["expected_total_loss"] = expected_total_loss;
-
-    selection_count.add_to_json("selection_count", json);
+  [[nodiscard]] nlohmann::json to_json() const {
+    nlohmann::json json;
     reduction_cache_hits.add_to_json("reduction_cache_hits", json);
     reduction_cache_misses.add_to_json("reduction_cache_misses", json);
     json["reduction_cache_hitrate"] = static_cast<double>(reduction_cache_hits.value) /
@@ -81,20 +27,110 @@ struct LocalJoinStatistics : public JoinStatistics {
       static_cast<double>(probing_signature_cache_hits.value) /
       static_cast<double>(probing_signature_cache_hits.value + probing_signature_cache_misses.value);
 
+    return json;
+  }
+
+};
+
+struct JoinStatistics {
+  CountItem<> result_size;
+  CountItem<> join_verifications;
+
+  virtual ~JoinStatistics() = default;
+
+  [[nodiscard]] virtual nlohmann::json to_json() const {
+    nlohmann::json json;
+
+    result_size.add_to_json("result_size", json);
+    join_verifications.add_to_json("join_verifications", json);
+
+    return json;
+  }
+};
+
+struct LocalJoinStatistics : JoinStatistics {
+  ReductionCacheStatistics rc_statistics;
+  AvgFloatItem<> bandit_weight;
+  std::vector<CountItem<>> step_verifications;
+  CountItem<> selection_count;
+  nlohmann::json description;
+
+  explicit LocalJoinStatistics(nlohmann::json description) : description(std::move(description)) {}
+
+  [[nodiscard]] nlohmann::json to_json() const override {
+    auto json = JoinStatistics::to_json();
+    json["reduction_cache"] = rc_statistics.to_json();
+    json["bandit_weights"] = bandit_weight.avg();
+
+    std::vector verifications{join_verifications.value};
+    std::for_each(step_verifications.begin(), step_verifications.end(), [&](auto& cnt) {
+      verifications.push_back(cnt.value);
+    });
+    verifications.push_back(result_size.value);
+    json["intermediary_sizes"] = verifications;
+
+    selection_count.add_to_json("selection_count", json);
+
     json["description"] = description;
     return json;
   }
-  LocalJoinStatistics& operator+=(const LocalJoinStatistics& rhs) {
-    JoinStatistics::operator+=(rhs);
-    selection_count.value += rhs.selection_count.value;
-    return *this;
-  }
-  // lhs should be copied
-  friend LocalJoinStatistics operator+(LocalJoinStatistics lhs, const LocalJoinStatistics& rhs) {
-    lhs += rhs;
-    return lhs;
+};
+
+struct LocalBlockSliceStatistics : LocalJoinStatistics {
+  long double incurred_loss{};
+  long double expected_total_loss{std::numeric_limits<long double>::infinity()};
+
+  explicit LocalBlockSliceStatistics(const nlohmann::json& description) : LocalJoinStatistics(description) {}
+
+  [[nodiscard]] nlohmann::json to_json() const override {
+    auto json = LocalJoinStatistics::to_json();
+    json["incurred_loss"] = incurred_loss;
+    json["expected_total_loss"] = expected_total_loss;
+
+    json["description"] = description;
+    return json;
   }
 };
+
+struct LocalTimeSliceStatistics : LocalJoinStatistics {
+  explicit LocalTimeSliceStatistics(const nlohmann::json& description) : LocalJoinStatistics(description) {}
+};
+
+struct GlobalJoinStatistics : JoinStatistics {
+  virtual void merge(LocalJoinStatistics& local_stat) {
+    this->result_size.value += local_stat.result_size.value;
+    this->join_verifications.value += local_stat.join_verifications.value;
+  }
+};
+
+struct GlobalBlockSliceStatistics : GlobalJoinStatistics {
+  long double incurred_loss{};
+
+  void merge(LocalJoinStatistics& foreign_stat) override {
+    GlobalJoinStatistics::merge(foreign_stat);
+
+    auto& local_stat = dynamic_cast<LocalBlockSliceStatistics&>(foreign_stat);
+    this->incurred_loss += local_stat.incurred_loss;
+  }
+
+  [[nodiscard]] nlohmann::json to_json() const override {
+    auto json = GlobalJoinStatistics::to_json();
+    json["incurred_loss"] = incurred_loss;
+    return json;
+  }
+};
+
+struct GlobalTimeSliceStatistics : GlobalJoinStatistics {
+
+};
+
+using LocalStatistics = std::vector<std::unique_ptr<LocalJoinStatistics>>;
+
+inline void merge_local_statistics(LocalStatistics& statistics, std::unique_ptr<GlobalJoinStatistics>& global_statistics) {
+  std::for_each(statistics.begin(), statistics.end(), [&](auto& stat) {
+    global_statistics->merge(*stat.get());
+  });
+}
 
 }  // namespace statistics
 

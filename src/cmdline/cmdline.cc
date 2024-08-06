@@ -170,17 +170,15 @@ nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
   return plan_json;
 }
 
-std::vector<statistics::LocalJoinStatistics> setup_statistics(std::vector<ontology::QueryPlan>& plans) {
-  std::vector<statistics::LocalJoinStatistics> statistics;
+template <class Statistics>
+std::vector<Statistics> setup_statistics(std::vector<ontology::QueryPlan>& plans) {
+  std::vector<Statistics> statistics;
   for (auto& plan : plans) {
     statistics.emplace_back(plan_to_json(plan));
+    statistics.back().step_verifications.resize(plan.steps.size());
   }
 
   return statistics;
-}
-
-statistics::JoinStatistics sum_statistics(std::vector<statistics::LocalJoinStatistics>& statistics) {
-  return std::reduce(statistics.begin(), statistics.end(), statistics::JoinStatistics());
 }
 
 std::vector<join::AlgorithmId> find_excluded_algorithms(std::vector<std::string>& alg_list) {
@@ -205,8 +203,9 @@ int main(int argc, char** argv) {
   plan_config.excluded_reductions = config.excluded_reductions;
   auto plans = graph.enumerate_plans(data_id, similarity_id, plan_config);
 
-  std::vector<statistics::LocalJoinStatistics> statistics = setup_statistics(plans);
   std::unique_ptr<timing::JoinTiming> timing;
+  std::unique_ptr<statistics::GlobalJoinStatistics> global_statistics;
+  statistics::LocalStatistics local_statistics;
 
   nlohmann::json result;
   result["meta"] = get_metadata(config);
@@ -220,24 +219,36 @@ int main(int argc, char** argv) {
     config.batch_count = std::min(dataset.statistics->count, config.batch_count);
 
     join::PlanExecutor executor(config.batch_count, config.reduction_cache_size, config.probing_signatures_cache_size);
+
+    using StatClass = statistics::LocalBlockSliceStatistics;
+    auto lls = setup_statistics<StatClass>(plans);
+    global_statistics = std::make_unique<statistics::GlobalBlockSliceStatistics>();
     timing = std::make_unique<timing::JoinTiming>();
     timing->join_time.start();
-    executor.execute_plans(dataset, similarity, plans, statistics);
+    executor.execute_plans(dataset, similarity, plans, lls);
     timing->join_time.stop();
+    std::for_each(
+      lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
   } else {
-    timing::TimeStaticJoinTiming tsj_timing;;
-    join::execute_timeslice_prebuilt(dataset, similarity, plans, tsj_timing, statistics);
+    using StatClass = statistics::LocalTimeSliceStatistics;
+    timing::TimeStaticJoinTiming tsj_timing;
+
+    auto lls = setup_statistics<StatClass>(plans);
+    global_statistics = std::make_unique<statistics::GlobalTimeSliceStatistics>();
+    join::execute_timeslice_prebuilt(dataset, similarity, plans, tsj_timing, lls);
     timing = std::make_unique<timing::TimeStaticJoinTiming>(std::move(tsj_timing));
+    std::for_each(
+      lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
   }
 
-  nlohmann::json local_statistics;
+  nlohmann::json lsjson;
   for (size_t i = 0; i < plans.size(); ++i) {
-    local_statistics[plans[i].to_string()] = statistics[i].to_json();
+    lsjson[plans[i].to_string()] = local_statistics[i]->to_json();
   }
-  statistics::JoinStatistics global_statistics = sum_statistics(statistics);
+  statistics::merge_local_statistics(local_statistics, global_statistics);
 
-  result["local_statistics"] = local_statistics;
-  result["global_statistics"] = global_statistics.to_json();
+  result["local_statistics"] = lsjson;
+  result["global_statistics"] = global_statistics->to_json();
   result["timing"] = timing->to_json();
 
   std::cout << result.dump(4) << std::endl;
