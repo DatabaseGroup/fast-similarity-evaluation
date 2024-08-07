@@ -10,16 +10,6 @@ void PrefixSignatureJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& 
   indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
 
   prefix_signature.prepare_index(indexed_sets);
-
-  int64_t universe_size = 0;
-  for (auto& set : indexed_sets) {
-    universe_size = std::max(universe_size, set.tokens.back());
-  }
-  ++universe_size;
-
-  indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> new_index{universe_size};
-
-  index = std::move(new_index);
 }
 
 template <class Handler, class Filter>

@@ -10,61 +10,101 @@
 
 namespace similarity {
 
+class SetQuasiSuffix {
+public:
+  void update_occurences(const types::SetBatch& batch) {
+    update_occurences(batch.data.begin(), batch.data.end());
+  }
+
+  template<class It1, class It2>
+  void update_occurences(It1 begin, It2 end) {
+    for (; begin != end; ++begin) {
+      auto set = *begin;
+      for (auto token : set.tokens) {
+        ++occurences[token];
+      }
+    }
+  }
+
+  void build_token_mapping(int64_t budget = std::numeric_limits<int64_t>::max()) {
+    std::vector<std::pair<types::Set::Token, int64_t>> sorted_pairs;
+    sorted_pairs.reserve(occurences.size());
+    for (auto& entry : occurences) {
+      sorted_pairs.emplace_back(entry);
+    }
+    std::ranges::sort(sorted_pairs, [](const auto& p1, const auto& p2) { return p1.second > p2.second; });
+    auto it = sorted_pairs.begin();
+    while (it != sorted_pairs.end() && budget > 0) {
+      auto& [token, occ] = *it;
+      heavy_tokens.emplace(token, next_token);
+      --next_token;
+      --budget;
+      ++it;
+    }
+  }
+
+  std::vector<types::Set> convert_tokens(const types::SetBatch& batch) {
+    return convert_tokens(batch.data.begin(), batch.data.end());
+  }
+
+  template<class It1, class It2>
+  std::vector<types::Set> convert_tokens(It1 begin, It2 end) {
+    std::vector<types::Set> sets;
+    sets.reserve(std::distance(begin, end));
+
+    for (; begin != end; ++begin) {
+      auto& set = *begin;
+      auto& new_set = sets.emplace_back(set.id);
+
+      for (auto token : set.tokens) {
+        // assert: no "real-world" dataset (i.e., not converted by reduction) has tokens with values between 2^62 and 2^63
+        auto it = heavy_tokens.find(token);
+
+        if (it != heavy_tokens.end()) {
+          new_set.tokens.push_back(it->second);
+        } else {
+          // if real world dataset: this AND does not change anything
+          // if reduced dataset: might add some false positives, but those are filtered on the other datatypes anyway
+          new_set.tokens.push_back(static_cast<int64_t>(static_cast<uint64_t>(token) & (~(UINT64_C(11) << 62))));
+        }
+      }
+
+      std::ranges::sort(new_set.tokens);
+    }
+
+    return sets;
+  }
+
+private:
+  types::HashTable<types::Set::Token, int64_t> occurences;
+  types::HashTable<types::Set::Token, types::Set::Token> heavy_tokens;
+  int64_t next_token = std::numeric_limits<int64_t>::max();
+};
+
 class SetPrefixSignature {
 public:
   using Signature = int64_t;
 
 public:
-  explicit SetPrefixSignature(similarity::SetSimilarity& similarity) : similarity(similarity) {}
+  explicit SetPrefixSignature(SetSimilarity& similarity) : similarity(similarity) {}
 
 public:
   void prepare_index(std::vector<types::Set>& sets) {
-    for (auto& set : sets) {
-      for (auto token : set.tokens) {
-        ++token_map[token].count;
-      }
-    }
-
-    using TokenCountPair = std::pair<types::Set::Token, uint64_t>;
-    std::vector<TokenCountPair> entries;
-    entries.reserve(token_map.size());
-
-    for (auto& entry : token_map) {
-      entries.emplace_back(entry.first, entry.second.count);
-    }
-
-    std::ranges::sort(entries,
-                      [](const TokenCountPair& o1, const TokenCountPair& o2) { return o1.second < o2.second; });
-
-    int64_t current_token = 1;
-    for (auto& key : entries | std::views::keys) {
-      token_map[key].token = current_token;
-      ++current_token;
-    }
+    sqs.update_occurences(sets.begin(), sets.end());
+    sqs.build_token_mapping(42000);
 
     prepare_probe(sets);
   }
 
   void prepare_probe(std::vector<types::Set>& sets) {
-    for (auto& set : sets) {
-      // take reference on token to modify it directly
-      for (auto& token : set.tokens) {
-        if (auto it = token_map.find(token); it != token_map.end()) {
-          token = it->second.token;
-        } else {
-          // token 0 symbolizes non-existence (minimum "real" token value is 1)
-          token = 0;
-        }
-      }
-      std::ranges::sort(set.tokens);
-    }
+    sets = sqs.convert_tokens(sets.begin(), sets.end());
 
     std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2) {
       return s1.tokens.size() < s2.tokens.size();
     });
   }
 
-  boost::span<Signature>::const_iterator begin_indexing_signatures( // NOLINT(*-convert-member-functions-to-static)
+  boost::span<Signature>::const_iterator begin_indexing_signatures(  // NOLINT(*-convert-member-functions-to-static)
     const types::Set& set) {
     return &(*set.tokens.begin());
   }
@@ -91,7 +131,8 @@ private:
     types::Set::Token token;
   };
   absl::flat_hash_map<types::Set::Token, CountOrToken> token_map;
-  similarity::SetSimilarity& similarity;
+  SetSimilarity& similarity;
+  SetQuasiSuffix sqs;
 };
 
 class PassJoinSignature {

@@ -37,7 +37,7 @@ public:
 private:
   similarity::SetSimilarity& similarity;
   similarity::SetPrefixSignature prefix_signature;
-  indexing::ComplexIndex<SetId, indexing::IndexType::DISCRETE, indexing::IndexType::ORDERED> index{0};
+  indexing::ComplexIndex<SetId, indexing::IndexType::HASH, indexing::IndexType::ORDERED> index{};
   std::vector<types::Set> indexed_sets;
 };
 
