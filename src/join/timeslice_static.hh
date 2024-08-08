@@ -1,5 +1,5 @@
-#ifndef SRC_TIMESLICE_HH
-#define SRC_TIMESLICE_HH
+#ifndef SRC_TIMESLICE_STATIC_HH
+#define SRC_TIMESLICE_STATIC_HH
 
 #include "../ontology/uct.hh"
 #include "../timing/cost_measurement.hh"
@@ -201,4 +201,4 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
 }  // namespace join
 
-#endif  // SRC_TIMESLICE_HH
+#endif  // SRC_TIMESLICE_STATIC_HH

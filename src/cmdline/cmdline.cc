@@ -4,7 +4,8 @@
 #include "../data/parser.hh"
 #include "../indexing/index.hh"
 #include "../join/blockslice.hh"
-#include "../join/timeslice.hh"
+#include "../join/timeslice_dynamic.hh"
+#include "../join/timeslice_static.hh"
 #include "../statistics/join_statistics.hh"
 #include "../timing/join_timing.hh"
 #include "../util/git_sha.hh"
@@ -229,7 +230,7 @@ int main(int argc, char** argv) {
     timing->join_time.stop();
     std::for_each(
       lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
-  } else {
+  } else if (config.mode == "time-static") {
     using StatClass = statistics::LocalTimeSliceStatistics;
     timing::TimeStaticJoinTiming tsj_timing;
 
@@ -239,6 +240,9 @@ int main(int argc, char** argv) {
     timing = std::make_unique<timing::TimeStaticJoinTiming>(std::move(tsj_timing));
     std::for_each(
       lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
+  } else {
+    join::timeslice::do_the_thing(dataset, similarity, plans);
+    return 0;
   }
 
   nlohmann::json lsjson;
