@@ -26,6 +26,14 @@ struct Block {
 
 struct ProcessBlock : Block {
   ProcessBlock(const Corner& start, const Corner& end) : Block(start, end) {}
+
+  // creates ""unique"" ids assuming start and end can be stored in 32 bit
+  [[nodiscard]] int64_t get_id_for_offset(int64_t x_offset, int64_t y_offset) const {
+    assert(end.x <= std::numeric_limits<uint32_t>::max() && end.y <= std::numeric_limits<uint32_t>::max());
+
+    return static_cast<int64_t>(static_cast<uint64_t>(start.x + x_offset) << 32 |
+                                static_cast<uint64_t>(start.y + y_offset));
+  }
 };
 
 class BlockScheduler {
@@ -93,9 +101,7 @@ private:
       return {inner_start, inner_end};
     }
 
-    [[nodiscard]] bool is_finished() const {
-      return next_block == DONE;
-    }
+    [[nodiscard]] bool is_finished() const { return next_block == DONE; }
   };
 
 public:
@@ -134,11 +140,20 @@ public:
 
   [[nodiscard]] bool is_finished() const { return nested_blocks.empty(); }
 
+  double approx_compute_ratio(int64_t last_x, int64_t last_y) {
+    auto lb = get_block();
+    double ratio_x = static_cast<double>(last_x - lb.start.x) / static_cast<double>(lb.end.x - lb.start.x);
+    double larger_x = std::exp2(std::ceil(std::log2(ratio_x)));
+    return std::pow(ratio_x / larger_x, 2);
+  }
+
 private:
   std::vector<PlanBlock> nested_blocks;
 };
 
-void do_the_thing(data::Dataset& dataset, similarity::Similarity& similarity, std::vector<ontology::QueryPlan>& plans) {
+inline void do_the_thing(data::Dataset& dataset,
+                         similarity::Similarity& similarity,
+                         std::vector<ontology::QueryPlan>& plans) {
   BlockScheduler scheduler(dataset.statistics->count);
 
   std::mt19937 prng(std::random_device{}.operator()());
@@ -157,14 +172,17 @@ void do_the_thing(data::Dataset& dataset, similarity::Similarity& similarity, st
       progress_y = progress_x;
     }
 
-    util::print_dbg(absl::StrFormat("Iteration %i: processed block (%i, %i)--(%i, %i) until (%i, %i)",
+    double ratio = scheduler.approx_compute_ratio(block.start.x + progress_x, block.start.y + progress_y);
+
+    util::print_dbg(absl::StrFormat("Iteration %i: processed block (%i, %i)--(%i, %i) until (%i, %i) (Progress = %f)",
                                     ++iterations,
                                     block.start.x,
                                     block.start.y,
                                     block.end.x,
                                     block.end.y,
                                     block.start.x + progress_x,
-                                    block.start.y + progress_y));
+                                    block.start.y + progress_y,
+                                    ratio));
 
     scheduler.advance_block(block.start.x + progress_x, block.start.y + progress_y);
   }

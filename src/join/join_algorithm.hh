@@ -74,11 +74,11 @@ public:
   virtual void selfjoin_batch(types::Batch& batch,
                               Handler handler,
                               statistics::JoinStatistics& statistics,
-                              std::shared_ptr<std::any> probing_signatures = nullptr) = 0;
+                              std::shared_ptr<std::any> probing_signatures) = 0;
   virtual void join_batch(types::Batch& batch,
                           Handler handler,
                           statistics::JoinStatistics& statistics,
-                          std::shared_ptr<std::any> probing_signatures = nullptr) = 0;
+                          std::shared_ptr<std::any> probing_signatures) = 0;
 };
 
 }  // namespace join

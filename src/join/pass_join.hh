@@ -110,7 +110,7 @@ private:
 private:
   similarity::StringEditDistance& similarity;
   similarity::PassJoinSignature passjoin_signature;
-  indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED, indexing::IndexType::HASH> index;
+  indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
   std::vector<RefString> indexed_strings;
 };
 

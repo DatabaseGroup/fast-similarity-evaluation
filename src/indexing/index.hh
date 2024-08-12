@@ -2,13 +2,14 @@
 #define SRC_INDEX_HH
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 
 namespace indexing {
 
 enum IndexType {
   HASH,  // only direct access is allowed, universe of keys unknown
-  DISCRETE,  // only direct access is allowed, universe of keys known, bounded, and small
-  ORDERED  // range queries for one dimension are allowed
+  ORDERED,  // range queries for one dimension are allowed
+  ORDERED_RANDOM  // range queries for one dimension are allowed, random order of inserts supported
 };
 
 using KeyType = int64_t;
@@ -162,81 +163,6 @@ public:
   types::HashTable<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
 };
 
-// fast floor(log_2(x)) using bit-representation
-// log_2(x) is (0-indexed) position of highest bit set to 1 in x
-inline int32_t log2(uint32_t x) { return (31 - __builtin_clz(x)); }
-
-template <class ValueType>
-class ComplexIndex<ValueType, DISCRETE> {
-public:
-  explicit ComplexIndex(size_t max_key) : map(max_key + 1) {}
-  ComplexIndex() = default;
-
-public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
-  void query(KeyType key, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
-    if (key < map.size() && 0 <= key) {
-      auto& vec = map[key];
-      for (auto entry : vec) {
-        callback(entry);
-      }
-    }
-  }
-
-  void insert(ValueType value, KeyType key) {
-    // todo make this toggleable
-    if (map.size() <= key) {
-      auto new_size = 1ul << (log2(key + 1) + 1);
-      map.resize(new_size);
-    }
-    map[key].emplace_back(value);
-  }
-
-  static constexpr int32_t LEVEL() { return 0; }
-
-public:
-  std::vector<std::vector<ValueType>> map;
-};
-
-template <class ValueType, IndexType... TailIndexes>
-class ComplexIndex<ValueType, DISCRETE, TailIndexes...> {
-public:
-  explicit ComplexIndex(int64_t max_key) : map(max_key + 1) {}
-  ComplexIndex() = default;
-
-public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
-  void query(KeyType key, CallbackFun callback, KeyFun& key_function) {
-    if (key < static_cast<int64_t>(map.size()) && 0 <= key) {
-      auto& inner_index = map[key];
-
-      key_function.template set_level_key<LEVEL>(key);
-      for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
-           next_key_iter != key_function.template get_level_end<LEVEL>();
-           ++next_key_iter) {
-        auto next_key = *next_key_iter;
-        inner_index.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
-      }
-    }
-  }
-
-  template <class... Keys>
-  void insert(ValueType value, KeyType key, Keys... keys) {
-    // todo make this toggleable
-    // in any case faster than hashing
-    if (static_cast<int64_t>(map.size()) <= key) {
-      auto new_size = 1ul << (log2(key + 1) + 1);
-      map.resize(new_size);
-    }
-    map[key].insert(value, keys...);
-  }
-
-  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
-
-public:
-  std::vector<ComplexIndex<ValueType, TailIndexes...>> map;
-};
-
 template <class ValueType>
 class ComplexIndex<ValueType, ORDERED> {
 private:
@@ -260,7 +186,10 @@ public:
     }
   }
 
-  void insert(ValueType value, KeyType key) { map.emplace_back(key, value); }
+  void insert(ValueType value, KeyType key) {
+    // assume insertions are in order
+    map.emplace_back(key, value);
+  }
 
   static constexpr int32_t LEVEL() { return 0; }
 
@@ -313,6 +242,76 @@ public:
 
 public:
   std::vector<KeyIndexPair> map;
+};
+
+template <class ValueType>
+class ComplexIndex<ValueType, ORDERED_RANDOM> {
+
+public:
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
+  void query(KeyRange key_range, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
+    auto key_begin = key_range.first;
+    auto key_end = key_range.second;
+
+    auto iter = map.lower_bound(key_begin);
+
+    for (; iter != map.end(); ++iter) {
+      if (iter->first > key_end) {
+        break;
+      } else {
+        callback(iter->second);
+      }
+    }
+  }
+
+  void insert(ValueType value, KeyType key) {
+    map.emplace(key, value);
+  }
+
+  static constexpr int32_t LEVEL() { return 0; }
+
+public:
+  absl::btree_multimap<KeyType, ValueType> map;
+};
+
+template <class ValueType, IndexType... TailIndexes>
+class ComplexIndex<ValueType, ORDERED_RANDOM, TailIndexes...> {
+private:
+  using KeyIndexPair = std::pair<KeyType, ComplexIndex<ValueType, TailIndexes...>>;
+
+public:
+  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
+  void query(KeyRange key_range, CallbackFun callback, KeyFun& key_function) {
+    auto key_begin = key_range.first;
+    auto key_end = key_range.second;
+
+    auto iter = map.lower_bound(key_begin);
+
+    for (; iter != map.end(); ++iter) {
+      if (iter->first > key_end) {
+        break;
+      } else {
+        auto key = iter->first;
+        key_function.template set_level_key<LEVEL>(key);
+        for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
+             next_key_iter != key_function.template get_level_end<LEVEL>();
+             ++next_key_iter) {
+          auto next_key = *next_key_iter;
+          iter->second.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
+             }
+      }
+    }
+  }
+
+  template <class... Keys>
+  void insert(ValueType value, KeyType key, Keys... keys) {
+    map[key].insert(value, keys...);
+  }
+
+  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
+
+public:
+  absl::btree_map<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
 };
 
 template <class ValueType, IndexType HeadIndex, IndexType... TailIndexes>
