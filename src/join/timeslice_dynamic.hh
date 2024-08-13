@@ -15,8 +15,10 @@ struct Corner {
 };
 
 struct Block {
+  // ReSharper disable CppDFANotInitializedField
   Corner start;
   Corner end;
+  // ReSharper restore CppDFANotInitializedField
 
   Block(int64_t start_x, int64_t start_y, int64_t end_x, int64_t end_y) : start(start_x, start_y), end(end_x, end_y) {}
   Block(const Corner& start, const Corner& end) : start(start), end(end) {}
@@ -36,6 +38,7 @@ struct ProcessBlock : Block {
   }
 };
 
+// ReSharper disable CppDFANotInitializedField
 class BlockScheduler {
 private:
   struct PlanBlock : Block {
@@ -113,6 +116,7 @@ public:
   }
 
   void advance_block(int64_t last_x, int64_t last_y) {
+
     if (get_block().end == Corner(last_x, last_y)) {
       do {
         // block was fully processed
@@ -187,6 +191,7 @@ inline void do_the_thing(data::Dataset& dataset,
     scheduler.advance_block(block.start.x + progress_x, block.start.y + progress_y);
   }
 }
+// ReSharper restore CppDFANotInitializedField
 
 }  // namespace join::timeslice
 

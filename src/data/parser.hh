@@ -10,6 +10,9 @@ namespace data {
 
 class Parser {
 public:
+  virtual ~Parser() = default;
+
+public:
   virtual Dataset parse(const std::string& filename) {
     return parse_until(filename, std::numeric_limits<int64_t>::max());
   }

@@ -29,6 +29,15 @@ class Dataset {
 public:
   std::unique_ptr<Statistics> statistics;
   types::Dataset data;
+
+  Dataset() = default;
+
+  Dataset(Dataset&& other) noexcept = default;
+  Dataset& operator=(Dataset&& other) noexcept {
+    statistics = std::move(other.statistics);
+    data = std::move(other.data);
+    return *this;
+  };
 };
 
 }  // namespace data

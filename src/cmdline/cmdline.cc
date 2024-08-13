@@ -12,6 +12,7 @@
 
 struct Config {
   std::string input_file;
+  bool shuffle;
   int64_t read_file_until{};
   std::string datatype;
   std::string similarity;
@@ -30,6 +31,7 @@ bool process_program_options(int argc, char** argv, Config& config) {
 
   po::options_description optdesc{"DESCRIPTION"};
   optdesc.add_options()("input-file,f", po::value(&config.input_file)->required(), "Specify input file")(
+    "shuffe,h", po::bool_switch(&config.shuffle)->default_value(false), "Shuffle the dataset after parsing")(
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
@@ -90,6 +92,8 @@ nlohmann::json get_metadata(Config& config) {
   json["datatype"] = config.datatype;
   json["date"] = getISOCurrentTimestamp();
   json["dataset"] = std::filesystem::path(config.input_file).filename();
+  json["dataset_shuffled"] = config.shuffle;
+  json["dataset_truncated"] = config.read_file_until;
   json["similarity"] = config.similarity;
   json["threshold"] = config.threshold;
 
@@ -135,25 +139,36 @@ std::pair<similarity::SimilarityId, similarity::Similarity> resolve_similarity(c
 
 std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data_str,
                                                          const std::string& filepath,
-                                                         const int64_t until_line_number) {
+                                                         const int64_t until_line_number,
+                                                         bool shuffle) {
   types::DatatypeId data_id;
+  data::Dataset dataset;
 
   // this could be replaced by a hashtable, but who cares?
   if (data_str == "set") {
     data_id = types::DatatypeId::SET;
     data::SetParser set_parser;
-    return {data_id, set_parser.parse_until(filepath, until_line_number)};
+    dataset = std::move(set_parser.parse_until(filepath, until_line_number));
   } else if (data_str == "string") {
     data_id = types::DatatypeId::STRING;
     data::StringParser string_parser;
-    return {data_id, string_parser.parse_until(filepath, until_line_number)};
+    dataset = std::move(string_parser.parse_until(filepath, until_line_number));
   } else if (data_str == "tree") {
     data_id = types::DatatypeId::TREE;
     data::TreeParser tree_parser;
-    return {data_id, tree_parser.parse_until(filepath, until_line_number)};
+    dataset = std::move(tree_parser.parse_until(filepath, until_line_number));
+  } else {
+    throw std::invalid_argument("Data type \"" + data_str + "\" unknown.");
   }
 
-  throw std::invalid_argument("Data type \"" + data_str + "\" unknown.");
+  if (shuffle) {
+    std::visit([](auto& datameta) {
+      std::mt19937 prng(std::random_device{}());
+      std::shuffle(datameta.data.begin(), datameta.data.end(), prng);
+    },dataset.data);
+  }
+
+  return {data_id, std::move(dataset)};
 }
 
 nlohmann::json plan_to_json(ontology::QueryPlan& plan) {
@@ -195,7 +210,7 @@ int main(int argc, char** argv) {
     exit(-1);
   }
 
-  auto [data_id, dataset] = resolve_data(config.datatype, config.input_file, config.read_file_until);
+  auto [data_id, dataset] = resolve_data(config.datatype, config.input_file, config.read_file_until, config.shuffle);
   auto [similarity_id, similarity] = resolve_similarity(config.similarity, config.threshold, dataset);
 
   ontology::StandardReductionGraph graph;
