@@ -89,7 +89,6 @@ public:
 public:
   bool has_independent_probing_signatures() override;
   std::any prepare_probing_batch(types::Batch& batch) override;
-  void prepare_indexing_batch(types::Batch& batch) override;
   void index_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,

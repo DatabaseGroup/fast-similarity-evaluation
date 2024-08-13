@@ -148,15 +148,15 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
   if (data_str == "set") {
     data_id = types::DatatypeId::SET;
     data::SetParser set_parser;
-    dataset = std::move(set_parser.parse_until(filepath, until_line_number));
+    dataset = set_parser.parse_until(filepath, until_line_number);
   } else if (data_str == "string") {
     data_id = types::DatatypeId::STRING;
     data::StringParser string_parser;
-    dataset = std::move(string_parser.parse_until(filepath, until_line_number));
+    dataset = string_parser.parse_until(filepath, until_line_number);
   } else if (data_str == "tree") {
     data_id = types::DatatypeId::TREE;
     data::TreeParser tree_parser;
-    dataset = std::move(tree_parser.parse_until(filepath, until_line_number));
+    dataset = tree_parser.parse_until(filepath, until_line_number);
   } else {
     throw std::invalid_argument("Data type \"" + data_str + "\" unknown.");
   }

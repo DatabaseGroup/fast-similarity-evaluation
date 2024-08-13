@@ -20,7 +20,6 @@ public:
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
-  void prepare_indexing_batch(types::Batch& batch) override;
   void index_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,

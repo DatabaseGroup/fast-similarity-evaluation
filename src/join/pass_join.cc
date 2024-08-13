@@ -3,24 +3,12 @@
 namespace join {
 
 template <class Handler, class Filter>
-void PassJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
+void PassJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   auto& strings = std::get<types::StringBatch>(batch);
 
   indexed_strings.clear();
   indexed_strings.reserve(strings.data.size());
   indexed_strings.insert(indexed_strings.begin(), strings.data.begin(), strings.data.end());
-
-  std::sort(indexed_strings.begin(), indexed_strings.end(), [](RefString& s1, RefString& s2) {
-    return s1.get() < s2.get();
-  });
-}
-
-template <class Handler, class Filter>
-void PassJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
-  // strings (or their references) already in indexed_strings
-  // assert indexed_strings == batch (up to the order)
-
-  // this is a wrapped reference == pointer, do not take reference
 
   int64_t id = 0;
   for (auto string_ref : indexed_strings) {

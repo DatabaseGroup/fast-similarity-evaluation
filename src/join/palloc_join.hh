@@ -59,7 +59,6 @@ public:
 
   bool has_independent_probing_signatures() override;
   std::any prepare_probing_batch(types::Batch& batch) override;
-  void prepare_indexing_batch(types::Batch& batch) override;
   void index_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,
@@ -86,7 +85,7 @@ private:
                          statistics::JoinStatistics& statistics);
 
   int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound);
-  int32_t next_size_lb(int32_t current_size) {
+  [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
     auto step = similarity.maximum_length_bound(current_size) - current_size;
     auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
     return current_size + scaled_step + 1;

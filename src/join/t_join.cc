@@ -3,7 +3,7 @@
 namespace join {
 
 template <class Handler, class Filter>
-void TJoinLite<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
+void TJoinLite<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map_list);
@@ -13,10 +13,7 @@ void TJoinLite<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
   auto permutation = util::sort_permutation(indexed_sets, [](auto& s1, auto& s2) { return s1.first < s2.first; });
   indexed_sets = util::apply_permutation(indexed_sets, permutation);
   util::apply_permutation_in_place(indexed_trees, permutation);
-}
 
-template <class Handler, class Filter>
-void TJoinLite<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   index.prepare(token_map_list.size() + 1);
 
   for (int set_id = 0; set_id < static_cast<int>(indexed_sets.size()); ++set_id) {

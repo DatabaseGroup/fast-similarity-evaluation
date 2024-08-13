@@ -37,7 +37,6 @@ public:
       : ted(dynamic_cast<similarity::TreeEditDistance&>(*std::get<similarity::TreeSimilarityPtr>(similarity))) {}
 
 public:
-  void prepare_indexing_batch(types::Batch& batch) override;
   bool has_independent_probing_signatures() override;
   std::any prepare_probing_batch(types::Batch& batch) override;
   void index_batch(types::Batch& batch) override;

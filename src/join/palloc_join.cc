@@ -8,7 +8,7 @@ bool PallocJoin<Handler, Filter>::has_independent_probing_signatures() {
 }
 
 template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
+void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   indexed_sets.reserve(sets.data.size());
@@ -26,10 +26,7 @@ void PallocJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
     size_groups.emplace_back(current_size, upper_bound, partition_count);
     current_size = upper_bound + 1;
   }
-}
 
-template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   size_t group_idx = 0;
 
   size_t set_id = 0;

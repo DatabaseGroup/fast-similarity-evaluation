@@ -3,18 +3,12 @@
 namespace join {
 
 template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::prepare_indexing_batch(types::Batch& batch) {
+void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
   // this "consumes" the data, take copy
   auto& sets = std::get<types::SetBatch>(batch);
   indexed_sets.reserve(sets.data.size());
   indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
-
   prefix_signature.prepare_index(indexed_sets);
-}
-
-template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
-  // assert batch == indexed_Sets
 
   SetId set_id = 0;
   for (auto& set : indexed_sets) {

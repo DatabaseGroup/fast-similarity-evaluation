@@ -98,12 +98,9 @@ public:
 
   void prepare_probe(std::vector<types::Set>& sets) {
     sets = sqs.convert_tokens(sets.begin(), sets.end());
-
-    std::sort(sets.begin(), sets.end(), [](const types::Set& s1, const types::Set& s2) {
-      return s1.tokens.size() < s2.tokens.size();
-    });
   }
 
+  // ReSharper disable once CppMemberFunctionMayBeStatic
   boost::span<Signature>::const_iterator begin_indexing_signatures(  // NOLINT(*-convert-member-functions-to-static)
     const types::Set& set) {
     return &(*set.tokens.begin());
