@@ -26,9 +26,6 @@ public:
   };
   struct CachedSignatures {
     std::vector<GroupSignatures> group_signatures;
-
-    // only has local scope
-    int32_t probing_set_id{};
   };
 
 private:
@@ -84,18 +81,25 @@ private:
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
-  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound);
+  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const;
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
     auto step = similarity.maximum_length_bound(current_size) - current_size;
     auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
     return current_size + scaled_step + 1;
   }
 
+  void append_next_size_group() {
+    auto lower_bound = size_groups.back().upper + 1;
+    auto upper_bound = next_size_lb(lower_bound) - 1;
+    int32_t partition_count = get_partition_count(lower_bound, upper_bound);
+    size_groups.emplace_back(lower_bound, upper_bound, partition_count);
+  }
+
 private:
   similarity::SetSimilarity& similarity;
   std::vector<RefSet> indexed_sets;
   similarity::PallocSignature signature;
-  indexing::ComplexIndex<SetId, indexing::IndexType::ORDERED, indexing::IndexType::HASH> index;
+  indexing::ComplexIndex<SetId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
   std::vector<SizeGroup> size_groups;
 };
 

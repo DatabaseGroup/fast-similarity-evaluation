@@ -14,28 +14,26 @@ void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& bat
   indexed_sets.reserve(sets.data.size());
   indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
 
-  std::sort(indexed_sets.begin(), indexed_sets.end(), [](auto& s1, auto& s2) { return s1.get() < s2.get(); });
-
-  int32_t const min_size = 1;
-  auto const max_size = static_cast<int32_t>(indexed_sets.back().get().tokens.size());
-
-  int32_t current_size = min_size;
-  while (current_size <= max_size) {
-    int32_t upper_bound = next_size_lb(current_size) - 1;
-    int32_t partition_count = get_partition_count(current_size, upper_bound);
-    size_groups.emplace_back(current_size, upper_bound, partition_count);
-    current_size = upper_bound + 1;
+  // initial size group
+  if (size_groups.empty()) {
+    int32_t lower_bound = 1;
+    int32_t upper_bound = next_size_lb(lower_bound) - 1;
+    int32_t partition_count = get_partition_count(lower_bound, upper_bound);
+    size_groups.emplace_back(lower_bound, upper_bound, partition_count);
   }
-
-  size_t group_idx = 0;
 
   size_t set_id = 0;
   for (auto& set : indexed_sets) {
     auto set_size = static_cast<int32_t>(set.get().tokens.size());
-    while (size_groups[group_idx].upper < set_size) {
-      ++group_idx;
+    while (size_groups.back().upper < set_size) {
+      append_next_size_group();
     }
+    auto it = std::lower_bound(
+      size_groups.begin(), size_groups.end(), set_size, [](auto& group, auto size) {
+        return group.upper < size;
+      });
 
+    size_t group_idx = std::distance(size_groups.begin(), it);
     auto& group = size_groups[group_idx];
     auto signatures = signature.indexing_signatures(set, group.partition_count);
 
@@ -54,46 +52,30 @@ template <class Handler, class Filter>
 std::any PallocJoin<Handler, Filter>::prepare_probing_batch(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
-  std::vector<std::pair<std::reference_wrapper<types::Set>, size_t>> probed_sets;
-  for (size_t i = 0; i < sets.data.size(); ++i) {
-    probed_sets.emplace_back(sets.data[i], i);
-  }
-  std::sort(probed_sets.begin(), probed_sets.end(), [](const auto& s1, const auto& s2) {
-    return s1.first.get() < s2.first.get();
-  });
-
   std::vector<CachedSignatures> signatures(sets.data.size());
 
-  // this has to be independent of the indexed data
-  // group_idx = index of lowest group in window
-  size_t group_idx = 0;
-  std::vector<SizeGroup> local_size_group;
-  // bound of kind [..., ...) (upper is exclusive)
-  local_size_group.emplace_back(1, next_size_lb(1) - 1, get_partition_count(1, next_size_lb(1) - 1));
+  for (size_t i = 0; i < sets.data.size(); ++i) {
+    auto& set = sets.data[i];
+    auto& sig_entry = signatures[i];
 
-  for (auto& entry : probed_sets) {
-    auto& set = entry.first.get();
-    auto& sig_entry = signatures[entry.second];
-    sig_entry.probing_set_id = entry.second;
     auto set_size = static_cast<int32_t>(set.tokens.size());
     auto min_set_size = similarity.minimum_length_bound(set_size);
     auto max_set_size = similarity.maximum_length_bound(set_size);
 
-    while (local_size_group.back().upper < max_set_size) {
-      auto lower_bound = local_size_group.back().upper + 1;
-      auto upper_bound = next_size_lb(lower_bound) - 1;
-      auto partition_count = get_partition_count(lower_bound, upper_bound);
-      local_size_group.emplace_back(lower_bound, upper_bound, partition_count);
+    while (size_groups.back().lower < max_set_size) {
+      append_next_size_group();
     }
 
-    while (local_size_group[group_idx].upper < min_set_size) {
-      ++group_idx;
-    }
+    auto it = std::lower_bound(
+      size_groups.begin(), size_groups.end(), min_set_size, [](auto& group, auto size) {
+        return group.upper < size;
+      });
+    size_t group_idx = std::distance(size_groups.begin(), it);
 
-    for (size_t i = group_idx; i < local_size_group.size(); ++i) {
+    for (size_t grp = group_idx; grp < size_groups.size() && size_groups[grp].lower <= max_set_size; ++grp) {
       auto& e = sig_entry.group_signatures.emplace_back();
-      e.group_id = i;
-      e.signatures = signature.indexing_signatures(set, local_size_group[i].partition_count);
+      e.group_id = grp;
+      e.signatures = signature.indexing_signatures(set, size_groups[grp].partition_count);
     }
   }
 
@@ -102,9 +84,9 @@ std::any PallocJoin<Handler, Filter>::prepare_probing_batch(types::Batch& batch)
 
 template <class Handler, class Filter>
 void PallocJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
-                                         Handler handler,
-                                         statistics::JoinStatistics& statistics,
-                                         std::shared_ptr<std::any> probing_signatures) {
+                                                 Handler handler,
+                                                 statistics::JoinStatistics& statistics,
+                                                 std::shared_ptr<std::any> probing_signatures) {
   if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<true>(batch, signatures, handler, statistics);
@@ -116,9 +98,9 @@ void PallocJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
 
 template <class Handler, class Filter>
 void PallocJoin<Handler, Filter>::join_batch(types::Batch& batch,
-                                     Handler handler,
-                                     statistics::JoinStatistics& statistics,
-                                     std::shared_ptr<std::any> probing_signatures) {
+                                             Handler handler,
+                                             statistics::JoinStatistics& statistics,
+                                             std::shared_ptr<std::any> probing_signatures) {
   if (probing_signatures) {
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<false>(batch, signatures, handler, statistics);
@@ -131,28 +113,23 @@ void PallocJoin<Handler, Filter>::join_batch(types::Batch& batch,
 template <class Handler, class Filter>
 template <bool IS_SELF_JOIN>
 void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
-                                      std::vector<CachedSignatures>& signatures,
-                                      Handler& handler,
-                                      statistics::JoinStatistics& statistics) {
+                                              std::vector<CachedSignatures>& signatures,
+                                              Handler& handler,
+                                              statistics::JoinStatistics& statistics) {
   auto sets = std::get<types::SetBatch>(batch);
 
   std::vector<bool> already_seen(indexed_sets.size());
   std::vector<SetId> candidates;
 
-  for (CachedSignatures& sig : signatures) {
-    auto& probing_set = sets.data[sig.probing_set_id];
+  for (size_t i = 0; i < sets.data.size(); ++i) {
+    auto& probing_set = sets.data[i];
+    auto& sig = signatures[i];
     auto set_size = static_cast<int64_t>(probing_set.tokens.size());
     auto minimum_size = similarity.minimum_length_bound(set_size);
     auto maximum_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
-    add_small_results(probing_set,
-                      indexed_sets,
-                      minimum_size,
-                      maximum_size,
-                      similarity,
-                      candidates,
-                      already_seen);
+    add_small_results(probing_set, indexed_sets, minimum_size, maximum_size, similarity, candidates, already_seen);
 
     auto candidate_handler = [&](SetId set_id) {
       if (Filter::set_pred(indexed_sets[set_id], probing_set)) {
@@ -215,17 +192,18 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
 
 template <class Handler, class Filter>
 template <bool IS_SELF_JOIN, class CandidateHandler>
-void PallocJoin<Handler, Filter>::_probe_size_group(types::Set& probing_set,
-                                            GroupSignatures& group_sigs,
-                                            SizeGroup& size_group,
-                                            indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
-                                            CandidateHandler& handler,
-                                            [[maybe_unused]] statistics::JoinStatistics& statistics) {
+void PallocJoin<Handler, Filter>::_probe_size_group(
+  types::Set& probing_set,
+  GroupSignatures& group_sigs,
+  SizeGroup& size_group,
+  indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
+  CandidateHandler& handler,
+  [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
   std::vector<util::object_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count, nullptr);
-  std::vector<util::object_ptr<std::vector<SetId>>> deletion_ils(
-    group_sigs.signatures.deletion_signatures.size(), nullptr);
+  std::vector<util::object_ptr<std::vector<SetId>>> deletion_ils(group_sigs.signatures.deletion_signatures.size(),
+                                                                 nullptr);
 
   auto& nor_sig = group_sigs.signatures.normal_signatures;
   auto& del_sig = group_sigs.signatures.deletion_signatures;
@@ -315,8 +293,11 @@ void PallocJoin<Handler, Filter>::_probe_size_group(types::Set& probing_set,
 }
 
 template <class Handler, class Filter>
-int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) {
-  return (similarity.max_hd_to(partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) / 2) + 1;
+int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
+  return (similarity.max_hd_to(
+            partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
+          2) +
+         1;
 }
 
 }  // namespace join
