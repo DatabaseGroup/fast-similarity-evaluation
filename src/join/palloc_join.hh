@@ -55,8 +55,8 @@ public:
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
   bool has_independent_probing_signatures() override;
-  std::any prepare_probing_batch(types::Batch& batch) override;
-  void index_batch(types::Batch& batch) override;
+  std::any get_probing_signatures(types::Batch& batch) override;
+  void insert_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,
                       statistics::JoinStatistics& statistics,
@@ -77,7 +77,7 @@ private:
   void _probe_size_group(types::Set& probing_set,
                          GroupSignatures& group_sigs,
                          SizeGroup& size_group,
-                         indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
+                         indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
@@ -99,7 +99,7 @@ private:
   similarity::SetSimilarity& similarity;
   std::vector<RefSet> indexed_sets;
   similarity::PallocSignature signature;
-  indexing::ComplexIndex<SetId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
+  indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
   std::vector<SizeGroup> size_groups;
 };
 

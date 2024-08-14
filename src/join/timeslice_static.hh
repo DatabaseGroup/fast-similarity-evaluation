@@ -80,7 +80,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.algorithm = resolve_algorithmid<SymmetricPairFilter>(
       plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
-    alg_instance.algorithm->index_batch(index_batch);
+    alg_instance.algorithm->insert_batch(index_batch);
   }
   timing.build_time.stop();
 

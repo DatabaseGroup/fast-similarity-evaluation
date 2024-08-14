@@ -9,7 +9,7 @@
 
 namespace join {
 
-using SetId = int64_t;
+using RecordId = int64_t;
 
 template <class DataType>
 struct SizeGetter {};
@@ -20,7 +20,7 @@ inline void add_small_results(typename DataType::value_type data,
                               int64_t minimum_candidate_size,
                               int64_t maximum_candidate_size,
                               SimilarityType& similarity,
-                              std::vector<SetId>& candidates,
+                              std::vector<RecordId>& candidates,
                               std::vector<bool>& already_seen) {
   auto always_similar_bound = similarity.always_similar_below_size(data);
   for (int64_t i = 0; i < static_cast<int64_t>(indexed_data.size()); ++i) {
@@ -43,7 +43,7 @@ inline void add_small_results(typename DataType::value_type data,
 template <class Handler, class Filter = NopFilter>
 class SignatureJoin : public JoinAlgorithm<Handler, Filter> {
 public:
-  void index_batch(types::Batch& batch) = 0;
+  void insert_batch(types::Batch& batch) = 0;
 
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,
@@ -53,6 +53,17 @@ public:
                   Handler handler,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) = 0;
+
+protected:
+  void resize_bitmap(uint64_t new_size) {
+    if (indexed_bitmap.size() < new_size) {
+      indexed_bitmap.resize(static_cast<uint64_t>(std::exp2(std::ceil(std::log2(new_size)))));
+    }
+  }
+
+protected:
+  RecordId next_id = 0;
+  std::vector<bool> indexed_bitmap;
 };
 
 }  // namespace join

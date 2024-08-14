@@ -68,7 +68,7 @@ public:
       if (plan.steps.empty()) {
         // the dataset and similarity are owned by the caller
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity);
-        alg_instance.algorithm->index_batch(index_batch.batch);
+        alg_instance.algorithm->insert_batch(index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics.rc_statistics);
@@ -76,7 +76,7 @@ public:
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
 
         auto batch = dataset_to_batch(alg_instance.owned_data->first);
-        alg_instance.algorithm->index_batch(batch);
+        alg_instance.algorithm->insert_batch(batch);
       }
 
       alg_instance.initialized = true;

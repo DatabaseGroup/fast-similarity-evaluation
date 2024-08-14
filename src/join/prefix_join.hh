@@ -20,7 +20,7 @@ public:
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
 
-  void index_batch(types::Batch& batch) override;
+  void insert_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
                       Handler handler,
                       statistics::JoinStatistics& statistics,
@@ -36,7 +36,7 @@ public:
 private:
   similarity::SetSimilarity& similarity;
   similarity::SetPrefixSignature prefix_signature;
-  indexing::ComplexIndex<SetId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
+  indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
   std::vector<types::Set> indexed_sets;
 };
 

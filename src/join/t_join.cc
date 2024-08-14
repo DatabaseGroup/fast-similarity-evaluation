@@ -3,7 +3,7 @@
 namespace join {
 
 template <class Handler, class Filter>
-void TJoinLite<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
+void TJoinLite<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map_list);
@@ -26,7 +26,7 @@ template <class Handler, class Filter>
 bool TJoinLite<Handler, Filter>::has_independent_probing_signatures() { return true; }
 
 template <class Handler, class Filter>
-std::any TJoinLite<Handler, Filter>::prepare_probing_batch(types::Batch& batch) {
+std::any TJoinLite<Handler, Filter>::get_probing_signatures(types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   SetsCollection probing_sets;
@@ -45,7 +45,7 @@ void TJoinLite<Handler, Filter>::selfjoin_batch(types::Batch& batch,
     auto& probing_sets = std::any_cast<std::vector<SetEntry>&>(*probing_signatures);
     _join_batch<true>(tree_batch, true, probing_sets, handler, statistics);
   } else {
-    auto probing_sets = std::any_cast<std::vector<SetEntry>>(prepare_probing_batch(batch));
+    auto probing_sets = std::any_cast<std::vector<SetEntry>>(get_probing_signatures(batch));
     _join_batch<true>(tree_batch, false, probing_sets, handler, statistics);
   }
 }
@@ -61,7 +61,7 @@ void TJoinLite<Handler, Filter>::join_batch(types::Batch& batch,
     auto& probing_sets = std::any_cast<std::vector<SetEntry>&>(*probing_signatures);
     _join_batch<false>(tree_batch, true, probing_sets, handler, statistics);
   } else {
-    auto probing_sets = std::any_cast<std::vector<SetEntry>>(prepare_probing_batch(batch));
+    auto probing_sets = std::any_cast<std::vector<SetEntry>>(get_probing_signatures(batch));
     _join_batch<false>(tree_batch, false, probing_sets, handler, statistics);
   }
 }

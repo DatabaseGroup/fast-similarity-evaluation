@@ -137,7 +137,7 @@ public:
     } else {
       statistics.probing_signature_cache_misses.inc();
       auto result =
-        cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.prepare_probing_batch(probe_batch)));
+        cache.emplace(cache_key, std::make_shared<std::any>(join_algorithm.get_probing_signatures(probe_batch)));
       return result;
     }
   }

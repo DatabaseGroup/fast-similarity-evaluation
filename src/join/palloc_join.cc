@@ -8,11 +8,12 @@ bool PallocJoin<Handler, Filter>::has_independent_probing_signatures() {
 }
 
 template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
+void PallocJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
-  indexed_sets.reserve(sets.data.size());
-  indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
+  indexed_sets.reserve(indexed_sets.size() + sets.data.size());
+  indexed_sets.insert(indexed_sets.end(), sets.data.begin(), sets.data.end());
+  this->resize_bitmap(indexed_sets.size());
 
   // initial size group
   if (size_groups.empty()) {
@@ -22,7 +23,6 @@ void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& bat
     size_groups.emplace_back(lower_bound, upper_bound, partition_count);
   }
 
-  size_t set_id = 0;
   for (auto& set : indexed_sets) {
     auto set_size = static_cast<int32_t>(set.get().tokens.size());
     while (size_groups.back().upper < set_size) {
@@ -38,18 +38,18 @@ void PallocJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& bat
     auto signatures = signature.indexing_signatures(set, group.partition_count);
 
     for (auto sig : signatures.normal_signatures) {
-      index.insert(set_id, group_idx, sig);
+      index.insert(this->next_id, group_idx, sig);
     }
     for (auto del_sig : signatures.deletion_signatures) {
-      index.insert(set_id, group_idx, del_sig);
+      index.insert(this->next_id, group_idx, del_sig);
     }
 
-    ++set_id;
+    ++this->next_id;
   }
 }
 
 template <class Handler, class Filter>
-std::any PallocJoin<Handler, Filter>::prepare_probing_batch(types::Batch& batch) {
+std::any PallocJoin<Handler, Filter>::get_probing_signatures(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<CachedSignatures> signatures(sets.data.size());
@@ -91,7 +91,7 @@ void PallocJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<true>(batch, signatures, handler, statistics);
   } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
     _join_batch<true>(batch, signatures, handler, statistics);
   }
 }
@@ -105,7 +105,7 @@ void PallocJoin<Handler, Filter>::join_batch(types::Batch& batch,
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<false>(batch, signatures, handler, statistics);
   } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
     _join_batch<false>(batch, signatures, handler, statistics);
   }
 }
@@ -118,8 +118,8 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                                               statistics::JoinStatistics& statistics) {
   auto sets = std::get<types::SetBatch>(batch);
 
-  std::vector<bool> already_seen(indexed_sets.size());
-  std::vector<SetId> candidates;
+  std::vector<bool>& already_seen = this->indexed_bitmap;
+  std::vector<RecordId> candidates;
 
   for (size_t i = 0; i < sets.data.size(); ++i) {
     auto& probing_set = sets.data[i];
@@ -131,7 +131,7 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
     // first find sets that might be similar due to size alone
     add_small_results(probing_set, indexed_sets, minimum_size, maximum_size, similarity, candidates, already_seen);
 
-    auto candidate_handler = [&](SetId set_id) {
+    auto candidate_handler = [&](RecordId set_id) {
       if (Filter::set_pred(indexed_sets[set_id], probing_set)) {
         if (!already_seen[set_id]) {
           auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
@@ -196,13 +196,13 @@ void PallocJoin<Handler, Filter>::_probe_size_group(
   types::Set& probing_set,
   GroupSignatures& group_sigs,
   SizeGroup& size_group,
-  indexing::ComplexIndex<SetId, indexing::IndexType::HASH>& size_index,
+  indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
   CandidateHandler& handler,
   [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
-  std::vector<util::object_ptr<std::vector<SetId>>> normal_ils(size_group.partition_count, nullptr);
-  std::vector<util::object_ptr<std::vector<SetId>>> deletion_ils(group_sigs.signatures.deletion_signatures.size(),
+  std::vector<util::object_ptr<std::vector<RecordId>>> normal_ils(size_group.partition_count, nullptr);
+  std::vector<util::object_ptr<std::vector<RecordId>>> deletion_ils(group_sigs.signatures.deletion_signatures.size(),
                                                                  nullptr);
 
   auto& nor_sig = group_sigs.signatures.normal_signatures;

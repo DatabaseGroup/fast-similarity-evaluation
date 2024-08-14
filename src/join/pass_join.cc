@@ -3,22 +3,21 @@
 namespace join {
 
 template <class Handler, class Filter>
-void PassJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
+void PassJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
   auto& strings = std::get<types::StringBatch>(batch);
 
-  indexed_strings.clear();
-  indexed_strings.reserve(strings.data.size());
-  indexed_strings.insert(indexed_strings.begin(), strings.data.begin(), strings.data.end());
+  indexed_strings.reserve(indexed_strings.size() + strings.data.size());
+  indexed_strings.insert(indexed_strings.end(), strings.data.begin(), strings.data.end());
+  this->resize_bitmap(indexed_strings.size());
 
-  int64_t id = 0;
   for (auto string_ref : indexed_strings) {
     auto& string = string_ref.get().str;
 
     for (auto signatures = passjoin_signature.indexing_signatures(string); const auto sig : signatures) {
-      index.insert(id, static_cast<int64_t>(string.size()), sig);
+      index.insert(this->next_id, static_cast<int64_t>(string.size()), sig);
     }
 
-    ++id;
+    ++this->next_id;
   }
 }
 
@@ -26,7 +25,7 @@ template <class Handler, class Filter>
 bool PassJoin<Handler, Filter>::has_independent_probing_signatures() { return true; }
 
 template <class Handler, class Filter>
-std::any PassJoin<Handler, Filter>::prepare_probing_batch([[maybe_unused]] types::Batch& batch) {
+std::any PassJoin<Handler, Filter>::get_probing_signatures([[maybe_unused]] types::Batch& batch) {
   auto strings = std::get<types::StringBatch>(batch);
 
   std::vector<CachedSignatures> signatures;
@@ -48,7 +47,7 @@ void PassJoin<Handler, Filter>::join_batch(types::Batch& batch,
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<false>(batch, signatures, handler, statistics);
   } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
     _join_batch<false>(batch, signatures, handler, statistics);
   }
 }
@@ -62,7 +61,7 @@ void PassJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
     auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
     _join_batch<true>(batch, signatures, handler, statistics);
   } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(prepare_probing_batch(batch));
+    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
     _join_batch<true>(batch, signatures, handler, statistics);
   }
 }
@@ -75,7 +74,7 @@ void PassJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                  statistics::JoinStatistics& statistics) {
   auto strings = std::get<types::StringBatch>(batch);
 
-  std::vector<bool> already_seen(indexed_strings.size());
+  std::vector<bool>& already_seen = this->indexed_bitmap;
   std::vector<StringId> candidates;
 
   for (size_t i = 0; i < strings.data.size(); ++i) {

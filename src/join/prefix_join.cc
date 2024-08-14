@@ -3,14 +3,14 @@
 namespace join {
 
 template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::Batch& batch) {
+void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
   // this "consumes" the data, take copy
   auto& sets = std::get<types::SetBatch>(batch);
   indexed_sets.reserve(sets.data.size());
-  indexed_sets.insert(indexed_sets.begin(), sets.data.begin(), sets.data.end());
+  indexed_sets.insert(indexed_sets.end(), sets.data.begin(), sets.data.end());
+  this->resize_bitmap(indexed_sets.size());
   prefix_signature.prepare_index(indexed_sets);
 
-  SetId set_id = 0;
   for (auto& set : indexed_sets) {
     auto it = prefix_signature.begin_indexing_signatures(set);
     auto it_end = prefix_signature.end_indexing_signatures(set);
@@ -20,10 +20,10 @@ void PrefixSignatureJoin<Handler, Filter>::index_batch([[maybe_unused]] types::B
     for (; it != it_end; ++it) {
       auto signature = *it;
 
-      index.insert(set_id, signature, set_size);
+      index.insert(this->next_id, signature, set_size);
     }
 
-    ++set_id;
+    ++this->next_id;
   }
 }
 
@@ -59,8 +59,8 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
   }
   auto& probing_sets = IS_SELF_JOIN ? indexed_sets : prepared_probing_sets;
 
-  std::vector<bool> already_seen(indexed_sets.size());
-  std::vector<SetId> candidates;
+  std::vector<bool>& already_seen = this->indexed_bitmap;
+  std::vector<RecordId> candidates;
 
   for (auto& set : probing_sets) {
     auto set_size = static_cast<int64_t>(set.tokens.size());
@@ -80,7 +80,7 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
       indexing::StaticRangeIterator length_iter{std::make_pair(minimum_candidate_size, maximum_candidate_size)};
       index.query(
         signature,
-        [&](SetId set_id) {
+        [&](RecordId set_id) {
           if (Filter::set_pred(indexed_sets[set_id], set)) {
             if (!already_seen[set_id]) {
             already_seen[set_id] = true;
