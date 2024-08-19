@@ -51,6 +51,7 @@ private:
   int64_t local_sqs_version = 0;
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
+  types::TreeMTable<int32_t, int32_t> small_index;
   std::vector<std::reference_wrapper<types::Set>> indexed_sets;
   std::vector<types::Set> preprocessed_sets;
 };

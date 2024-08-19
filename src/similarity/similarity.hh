@@ -33,6 +33,7 @@ public:
   virtual bool is_in_threshold(const T& o1, const T& o2) = 0;
 
   virtual int64_t always_similar_below_size([[maybe_unused]] const T& o1) { return 0; }
+  virtual int64_t max_asbs() { return 0; }
 
 public:
   double threshold;
@@ -238,10 +239,14 @@ public:
 
   int64_t always_similar_below_size(const types::String& o1) override {
     if (static_cast<int32_t>(o1.str.size()) < _thresh) {
-      return std::max(static_cast<int64_t>(o1.str.size()) - _thresh, INT64_C(0));
+      return std::max(_thresh - static_cast<int64_t>(o1.str.size()), INT64_C(0));
     }
     return 0;
   }
+
+  int64_t max_asbs() override {
+    return _thresh;
+  };
 
 private:
   const int32_t _thresh;
@@ -279,6 +284,10 @@ public:
     return 0;
   }
 
+  int64_t max_asbs() override {
+    return q * integer_threshold;
+  };
+
 private:
   int32_t q;
   int32_t integer_threshold;
@@ -299,6 +308,10 @@ public:
     }
     return 0;
   }
+
+  int64_t max_asbs() override {
+    return integer_threshold;
+  };
 
   double similarity(const types::Set& s1, const types::Set& s2) override {
     return static_cast<double>(s1.tokens.size() + s2.tokens.size() - 2 * overlap(s1, s2));

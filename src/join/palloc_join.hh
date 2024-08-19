@@ -104,6 +104,7 @@ private:
   std::vector<RefSet> indexed_sets;
   similarity::PallocSignature signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
+  types::TreeMTable<int32_t, int32_t> small_index;
   std::vector<SizeGroup>& size_groups;
 };
 

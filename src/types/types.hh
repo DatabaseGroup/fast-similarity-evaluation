@@ -13,6 +13,8 @@
 #include <boost/core/span.hpp>
 #endif
 
+#include <absl/container/btree_map.h>
+
 #include <string>
 #include <utility>
 #include <variant>
@@ -23,6 +25,8 @@ namespace types {
 template <class K, class V>
 using HashTable = absl::flat_hash_map<K, V>;
 // using HashTable = std::unordered_map<K,V>;
+template <class K, class V>
+using TreeMTable = absl::btree_multimap<K, V>;
 
 #if __cplusplus > 201703L
 template <class K>

@@ -17,6 +17,7 @@ void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::
     renew_required = true;
     index.clear();
     preprocessed_sets.clear();
+    this->next_id = 0;
 
     preprocessed_sets.insert(preprocessed_sets.begin(), indexed_sets.begin(), indexed_sets.end());
     prefix_signature.convert_tokens(preprocessed_sets);
@@ -28,7 +29,8 @@ void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::
   indexed_sets.reserve(indexed_sets.size() + sets.data.size());
   indexed_sets.insert(indexed_sets.end(), sets.data.begin(), sets.data.end());
 
-  types::span<types::Set> new_sets = types::span<types::Set>(preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
+  types::span<types::Set> new_sets =
+    types::span<types::Set>(preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
   prefix_signature.convert_tokens(new_sets);
   types::span<types::Set> to_index_sets = renew_required ? preprocessed_sets : new_sets;
   insert_into_index(to_index_sets);
@@ -38,6 +40,8 @@ void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::
 
 template <class Handler, class Filter>
 void PrefixSignatureJoin<Handler, Filter>::insert_into_index(types::span<types::Set> sets) {
+  int64_t max_asbs = similarity.max_asbs();
+
   for (auto& set : sets) {
     auto it = prefix_signature.begin_indexing_signatures(set);
     auto it_end = prefix_signature.end_indexing_signatures(set);
@@ -48,6 +52,10 @@ void PrefixSignatureJoin<Handler, Filter>::insert_into_index(types::span<types::
       auto signature = *it;
 
       index.insert(this->next_id, signature, set_size);
+    }
+
+    if (static_cast<int64_t>(set_size) <= max_asbs) {
+      small_index.emplace(static_cast<int32_t>(this->next_id), static_cast<int32_t>(set_size));
     }
 
     ++this->next_id;
@@ -95,8 +103,15 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
     auto maximum_candidate_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
-    add_small_results(
-      set, preprocessed_sets, minimum_candidate_size, maximum_candidate_size, similarity, candidates, already_seen);
+    add_small_results(set,
+                      small_index.begin(),
+                      small_index.end(),
+                      preprocessed_sets,
+                      minimum_candidate_size,
+                      maximum_candidate_size,
+                      similarity,
+                      candidates,
+                      already_seen);
 
     auto it = prefix_signature.begin_probing_signatures(set);
     auto it_end = prefix_signature.end_probing_signatures(set);

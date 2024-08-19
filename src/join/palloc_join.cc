@@ -23,15 +23,15 @@ void PallocJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& ba
     size_groups.emplace_back(lower_bound, upper_bound, partition_count);
   }
 
+  const int64_t max_asbs = similarity.max_asbs();
+
   for (auto& set : indexed_sets) {
     auto set_size = static_cast<int32_t>(set.get().tokens.size());
     while (size_groups.back().upper < set_size) {
       append_next_size_group();
     }
     auto it = std::lower_bound(
-      size_groups.begin(), size_groups.end(), set_size, [](auto& group, auto size) {
-        return group.upper < size;
-      });
+      size_groups.begin(), size_groups.end(), set_size, [](auto& group, auto size) { return group.upper < size; });
 
     size_t group_idx = std::distance(size_groups.begin(), it);
     auto& group = size_groups[group_idx];
@@ -42,6 +42,10 @@ void PallocJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& ba
     }
     for (auto del_sig : signatures.deletion_signatures) {
       index.insert(this->next_id, group_idx, del_sig);
+    }
+
+    if (static_cast<int64_t>(set_size) <= max_asbs) {
+      small_index.emplace(static_cast<int32_t>(this->next_id), static_cast<int32_t>(set_size));
     }
 
     ++this->next_id;
@@ -67,9 +71,7 @@ std::any PallocJoin<Handler, Filter>::get_probing_signatures(types::Batch& batch
     }
 
     auto it = std::lower_bound(
-      size_groups.begin(), size_groups.end(), min_set_size, [](auto& group, auto size) {
-        return group.upper < size;
-      });
+      size_groups.begin(), size_groups.end(), min_set_size, [](auto& group, auto size) { return group.upper < size; });
     size_t group_idx = std::distance(size_groups.begin(), it);
 
     for (size_t grp = group_idx; grp < size_groups.size() && size_groups[grp].lower <= max_set_size; ++grp) {
@@ -129,7 +131,15 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
     auto maximum_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
-    add_small_results(probing_set, indexed_sets, minimum_size, maximum_size, similarity, candidates, already_seen);
+    add_small_results(probing_set,
+                      small_index.begin(),
+                      small_index.end(),
+                      indexed_sets,
+                      minimum_size,
+                      maximum_size,
+                      similarity,
+                      candidates,
+                      already_seen);
 
     auto candidate_handler = [&](RecordId set_id) {
       if (Filter::set_pred(indexed_sets[set_id], probing_set)) {
@@ -203,7 +213,7 @@ void PallocJoin<Handler, Filter>::_probe_size_group(
   costs.reserve(size_group.partition_count);
   std::vector<util::object_ptr<std::vector<RecordId>>> normal_ils(size_group.partition_count, nullptr);
   std::vector<util::object_ptr<std::vector<RecordId>>> deletion_ils(group_sigs.signatures.deletion_signatures.size(),
-                                                                 nullptr);
+                                                                    nullptr);
 
   auto& nor_sig = group_sigs.signatures.normal_signatures;
   auto& del_sig = group_sigs.signatures.deletion_signatures;
@@ -293,7 +303,8 @@ void PallocJoin<Handler, Filter>::_probe_size_group(
 }
 
 template <class Handler, class Filter>
-int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
+int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound,
+                                                         int32_t partition_upper_bound) const {
   return (similarity.max_hd_to(
             partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
           2) +

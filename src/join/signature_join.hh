@@ -14,18 +14,21 @@ using RecordId = int64_t;
 template <class DataType>
 struct SizeGetter {};
 
-template <class DataType, class SimilarityType>
-inline void add_small_results(typename DataType::value_type data,
-                              DataType& indexed_data,
-                              int64_t minimum_candidate_size,
-                              int64_t maximum_candidate_size,
-                              SimilarityType& similarity,
-                              std::vector<RecordId>& candidates,
-                              std::vector<bool>& already_seen) {
+template <class It1, class It2, class Datatype, class SimilarityType>
+void add_small_results(const typename Datatype::value_type& data,
+                       It1 small_idx_start,
+                       It2 small_idx_end,
+                       Datatype& dataset,
+                       int64_t minimum_candidate_size,
+                       int64_t maximum_candidate_size,
+                       SimilarityType& similarity,
+                       std::vector<RecordId>& candidates,
+                       std::vector<bool>& already_seen) {
   auto always_similar_bound = similarity.always_similar_below_size(data);
-  for (int64_t i = 0; i < static_cast<int64_t>(indexed_data.size()); ++i) {
-    auto& candidate = indexed_data[i];
-    auto candidate_size = SizeGetter<typename DataType::value_type>::get_size(candidate);
+  for (; small_idx_start != small_idx_end; ++small_idx_start) {
+    auto id = small_idx_start->second;
+    auto& candidate = dataset[small_idx_start->second];
+    auto candidate_size = SizeGetter<typename Datatype::value_type>::get_size(candidate);
 
     if (candidate_size > always_similar_bound || candidate_size > maximum_candidate_size) {
       break;
@@ -35,8 +38,8 @@ inline void add_small_results(typename DataType::value_type data,
       continue;
     }
 
-    already_seen[i] = true;
-    candidates.push_back(i);
+    already_seen[id] = true;
+    candidates.push_back(id);
   }
 }
 
