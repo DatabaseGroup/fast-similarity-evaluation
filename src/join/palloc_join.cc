@@ -2,13 +2,13 @@
 
 namespace join {
 
-template <class Handler, class Filter>
-bool PallocJoin<Handler, Filter>::has_independent_probing_signatures() {
+template <class Handler>
+bool PallocJoin<Handler>::has_independent_probing_signatures() {
   return true;
 }
 
-template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler>
+void PallocJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   indexed_sets.reserve(indexed_sets.size() + sets.data.size());
@@ -52,8 +52,8 @@ void PallocJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& ba
   }
 }
 
-template <class Handler, class Filter>
-std::any PallocJoin<Handler, Filter>::get_probing_signatures(types::Batch& batch) {
+template <class Handler>
+std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<CachedSignatures> signatures(sets.data.size());
@@ -84,40 +84,48 @@ std::any PallocJoin<Handler, Filter>::get_probing_signatures(types::Batch& batch
   return signatures;
 }
 
-template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::selfjoin_batch(types::Batch& batch,
-                                                 Handler handler,
-                                                 statistics::JoinStatistics& statistics,
-                                                 std::shared_ptr<std::any> probing_signatures) {
+template <class Handler>
+void PallocJoin<Handler>::join_batch(types::Batch& batch,
+                                     Handler handler,
+                                     FilterConfig& filter_config,
+                                     statistics::JoinStatistics& statistics,
+                                     std::shared_ptr<std::any> probing_signatures) {
+  util::object_ptr<std::vector<CachedSignatures>> signatures;
+  std::vector<CachedSignatures> local_signatures;
   if (probing_signatures) {
-    auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
-    _join_batch<true>(batch, signatures, handler, statistics);
+    signatures = &std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
   } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
-    _join_batch<true>(batch, signatures, handler, statistics);
+    local_signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
+    signatures = &local_signatures;
+  }
+
+  // this could be done in a nicer way
+  switch (filter_config.type) {
+  case NOP:
+    _join_batch<NopFilter>(batch, *signatures, handler, filter_config, statistics);
+    break;
+  case SIMPLE_SELFJOIN:
+    _join_batch<SimpleSelfjoinFilter>(batch, *signatures, handler, filter_config, statistics);
+    break;
+  case SYMMETRIC_PAIRS:
+    _join_batch<SymmetricPairFilter>(batch, *signatures, handler, filter_config, statistics);
+    break;
+  case CUTOFF:
+    // todo
+    break;
+  case CUTOFF_SELFJOIN:
+    // todo
+    break;
   }
 }
 
-template <class Handler, class Filter>
-void PallocJoin<Handler, Filter>::join_batch(types::Batch& batch,
-                                             Handler handler,
-                                             statistics::JoinStatistics& statistics,
-                                             std::shared_ptr<std::any> probing_signatures) {
-  if (probing_signatures) {
-    auto& signatures = std::any_cast<std::vector<CachedSignatures>&>(*probing_signatures);
-    _join_batch<false>(batch, signatures, handler, statistics);
-  } else {
-    auto signatures = std::any_cast<std::vector<CachedSignatures>>(get_probing_signatures(batch));
-    _join_batch<false>(batch, signatures, handler, statistics);
-  }
-}
-
-template <class Handler, class Filter>
-template <bool IS_SELF_JOIN>
-void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
-                                              std::vector<CachedSignatures>& signatures,
-                                              Handler& handler,
-                                              statistics::JoinStatistics& statistics) {
+template <class Handler>
+template <class Filter>
+void PallocJoin<Handler>::_join_batch(types::Batch& batch,
+                                      std::vector<CachedSignatures>& signatures,
+                                      Handler& handler,
+                                      FilterConfig& filter_config,
+                                      statistics::JoinStatistics& statistics) {
   auto sets = std::get<types::SetBatch>(batch);
 
   std::vector<bool>& already_seen = this->indexed_bitmap;
@@ -142,7 +150,9 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
                       already_seen);
 
     auto candidate_handler = [&](RecordId set_id) {
-      if (Filter::set_pred(indexed_sets[set_id], probing_set)) {
+      // todo this could be optimized (actually perform the break instead of skipping); lists are maybe short enough
+      if (!Filter::scan_skip_cond(indexed_sets[set_id].get(), probing_set, filter_config) ||
+          !Filter::scan_break_cond(indexed_sets[set_id].get(), probing_set, filter_config)) {
         if (!already_seen[set_id]) {
           auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
           if (minimum_size <= index_size && index_size <= maximum_size) {
@@ -172,7 +182,7 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
         ++sig_iter;
       }
 
-      _probe_size_group<IS_SELF_JOIN>(
+      _probe_size_group<Filter::literally_selfjoin()>(
         probing_set, *sig_iter, size_groups[sig_iter->group_id], size_index.second, candidate_handler, statistics);
       ++index_iter;
       ++sig_iter;
@@ -182,7 +192,7 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
       // set from indexed data (indexed_sets set in index_batch)
       auto& candidate_set = indexed_sets[candidate_id];
 
-      if constexpr (IS_SELF_JOIN) {
+      if constexpr (Filter::literally_selfjoin()) {
         if (probing_set.id <= candidate_set.get().id) {
           already_seen[candidate_id] = false;
           continue;
@@ -200,15 +210,14 @@ void PallocJoin<Handler, Filter>::_join_batch(types::Batch& batch,
   }
 }
 
-template <class Handler, class Filter>
+template <class Handler>
 template <bool IS_SELF_JOIN, class CandidateHandler>
-void PallocJoin<Handler, Filter>::_probe_size_group(
-  types::Set& probing_set,
-  GroupSignatures& group_sigs,
-  SizeGroup& size_group,
-  indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
-  CandidateHandler& handler,
-  [[maybe_unused]] statistics::JoinStatistics& statistics) {
+void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
+                                            GroupSignatures& group_sigs,
+                                            SizeGroup& size_group,
+                                            indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
+                                            CandidateHandler& handler,
+                                            [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
   std::vector<util::object_ptr<std::vector<RecordId>>> normal_ils(size_group.partition_count, nullptr);
@@ -302,9 +311,8 @@ void PallocJoin<Handler, Filter>::_probe_size_group(
   }
 }
 
-template <class Handler, class Filter>
-int32_t PallocJoin<Handler, Filter>::get_partition_count(int32_t partition_lower_bound,
-                                                         int32_t partition_upper_bound) const {
+template <class Handler>
+int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
   return (similarity.max_hd_to(
             partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
           2) +

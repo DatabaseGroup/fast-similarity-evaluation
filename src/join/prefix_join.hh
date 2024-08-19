@@ -13,8 +13,8 @@ struct SizeGetter<types::Set> {
   static int64_t get_size(types::Set& set) { return static_cast<int64_t>(set.tokens.size()); }
 };
 
-template <class Handler, class Filter = NopFilter>
-class PrefixSignatureJoin : public SignatureJoin<Handler, Filter> {
+template <class Handler>
+class PrefixSignatureJoin : public SignatureJoin<Handler> {
 public:
   struct SharedState {
     similarity::SetQuasiSuffix sqs;
@@ -30,17 +30,17 @@ public:
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity), shared_state.sqs) {}
 
   void insert_batch(types::Batch& batch) override;
-  void selfjoin_batch(types::Batch& batch,
-                      Handler handler,
-                      statistics::JoinStatistics& statistics,
-                      std::shared_ptr<std::any> probing_signatures) override;
   void join_batch(types::Batch& batch,
                   Handler handler,
+                  FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
-  template <bool IS_SELF_JOIN>
-  void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics);
+  template <class Filter>
+  void _join_batch(types::Batch& batch,
+                   Handler handler,
+                   FilterConfig& filter_config,
+                   statistics::JoinStatistics& statistics);
 
 private:
   void insert_into_index(types::span<types::Set> sets);
@@ -56,8 +56,7 @@ private:
   std::vector<types::Set> preprocessed_sets;
 };
 
-template class PrefixSignatureJoin<MaterializeHandler, NopFilter>;
-template class PrefixSignatureJoin<MaterializeHandler, SymmetricPairFilter>;
+template class PrefixSignatureJoin<MaterializeHandler>;
 
 }  // namespace join
 

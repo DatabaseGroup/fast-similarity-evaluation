@@ -10,9 +10,9 @@
 
 namespace join {
 
-template <class Handler = MaterializeHandler, class Filter = NopFilter>
+template <class Handler = MaterializeHandler>
 struct AlgorithmInstance {
-  std::unique_ptr<JoinAlgorithm<Handler, Filter>> algorithm{};
+  std::unique_ptr<JoinAlgorithm<Handler>> algorithm{};
   std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> owned_data{};
   bool initialized{false};
 };

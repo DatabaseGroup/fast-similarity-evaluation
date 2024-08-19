@@ -16,8 +16,8 @@ struct SizeGetter<std::reference_wrapper<types::Set>> {
   }
 };
 
-template <class Handler, class Filter = NopFilter>
-class PallocJoin : public SignatureJoin<Handler, Filter> {
+template <class Handler>
+class PallocJoin : public SignatureJoin<Handler> {
 private:
   struct SizeGroup {
     int32_t lower;
@@ -60,20 +60,18 @@ public:
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
   void insert_batch(types::Batch& batch) override;
-  void selfjoin_batch(types::Batch& batch,
-                      Handler handler,
-                      statistics::JoinStatistics& statistics,
-                      std::shared_ptr<std::any> probing_signatures) override;
   void join_batch(types::Batch& batch,
                   Handler handler,
+                  FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
 private:
-  template <bool IS_SELF_JOIN>
+  template <class Filter>
   void _join_batch(types::Batch& batch,
               std::vector<CachedSignatures>& signatures,
               Handler& handler,
+              FilterConfig& filter_config,
               statistics::JoinStatistics& statistics);
 
   template <bool IS_SELF_JOIN, class CandidateHandler>
@@ -108,8 +106,7 @@ private:
   std::vector<SizeGroup>& size_groups;
 };
 
-template class PallocJoin<MaterializeHandler, NopFilter>;
-template class PallocJoin<MaterializeHandler, SymmetricPairFilter>;
+template class PallocJoin<MaterializeHandler>;
 
 }  // namespace join
 

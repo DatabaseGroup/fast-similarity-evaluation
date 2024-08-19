@@ -43,20 +43,8 @@ void add_small_results(const typename Datatype::value_type& data,
   }
 }
 
-template <class Handler, class Filter = NopFilter>
-class SignatureJoin : public JoinAlgorithm<Handler, Filter> {
-public:
-  void insert_batch(types::Batch& batch) = 0;
-
-  void selfjoin_batch(types::Batch& batch,
-                      Handler handler,
-                      statistics::JoinStatistics& statistics,
-                      std::shared_ptr<std::any> probing_signatures) = 0;
-  void join_batch(types::Batch& batch,
-                  Handler handler,
-                  statistics::JoinStatistics& statistics,
-                  std::shared_ptr<std::any> probing_signatures) = 0;
-
+template <class Handler>
+class SignatureJoin : public JoinAlgorithm<Handler> {
 protected:
   void resize_bitmap(uint64_t new_size) {
     if (indexed_bitmap.size() < new_size) {

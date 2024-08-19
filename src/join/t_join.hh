@@ -21,8 +21,8 @@ struct TreeGetter<types::Tree> {
 namespace join {
 
 // TJoin has its reduction somewhat hidden inside its implementation, so this implements both reducing and joining
-template <class Handler, class Filter = NopFilter>
-class TJoinLite : public JoinAlgorithm<Handler, Filter> {
+template <class Handler>
+class TJoinLite : public JoinAlgorithm<Handler> {
 private:
   using Label = types::Tree::Label;
   using CandidateIndex = tsim::candidate_index::CandidateIndex;
@@ -40,19 +40,17 @@ public:
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
   void insert_batch(types::Batch& batch) override;
-  void selfjoin_batch(types::Batch& batch,
-                      Handler handler,
-                      statistics::JoinStatistics& statistics,
-                      std::shared_ptr<std::any> probing_signatures) override;
   void join_batch(types::Batch& batch,
                   Handler handler,
+                  FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
-  template <bool IS_SELF_JOIN>
+  template <class Filter>
   void _join_batch(types::TreeBatch& trees,
                    bool probing_signatures_from_cache,
                    SetsCollection& possibly_cached_probing_sets,
                    Handler handler,
+                   FilterConfig& filter_config,
                    statistics::JoinStatistics& statistics);
 
 private:
@@ -66,8 +64,7 @@ private:
   TokenFrequencyMap token_map_list;
 };
 
-template class TJoinLite<MaterializeHandler, NopFilter>;
-template class TJoinLite<MaterializeHandler, SymmetricPairFilter>;
+template class TJoinLite<MaterializeHandler>;
 
 }  // namespace join
 

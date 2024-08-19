@@ -15,8 +15,8 @@ struct SizeGetter<std::reference_wrapper<types::String>> {
   }
 };
 
-template <class Handler, class Filter = NopFilter>
-class PassJoin : public SignatureJoin<Handler, Filter> {
+template <class Handler>
+class PassJoin : public SignatureJoin<Handler> {
 private:
   using StringId = int64_t;
   using RefString = std::reference_wrapper<types::String>;
@@ -90,20 +90,18 @@ public:
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
   void insert_batch(types::Batch& batch) override;
-  void selfjoin_batch(types::Batch& batch,
-                      Handler handler,
-                      statistics::JoinStatistics& statistics,
-                      std::shared_ptr<std::any> probing_signatures) override;
   void join_batch(types::Batch& batch,
                   Handler handler,
+                  FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
 private:
-  template<bool IS_SELF_JOIN>
+  template <class Filter>
   void _join_batch(types::Batch& batch,
               std::vector<CachedSignatures>& cached_probing_signatures,
               Handler handler,
+              FilterConfig& filter_config,
               statistics::JoinStatistics& statistics);
 
 private:
@@ -113,8 +111,7 @@ private:
   std::vector<RefString> indexed_strings;
 };
 
-template class PassJoin<MaterializeHandler, NopFilter>;
-template class PassJoin<MaterializeHandler, SymmetricPairFilter>;
+template class PassJoin<MaterializeHandler>;
 
 }  // namespace join
 

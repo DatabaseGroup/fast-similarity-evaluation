@@ -15,7 +15,7 @@ inline void evaluate_microbatch(types::Dataset& data,
                                 IndexedBatch& ipbatch,
                                 ontology::UCT::Selection& action,
                                 ontology::QueryPlan& selected_plan,
-                                AlgorithmInstance<MaterializeHandler, SymmetricPairFilter>& alg,
+                                AlgorithmInstance<MaterializeHandler>& alg,
                                 types::Batch& probing_batch,
                                 int64_t probing_offset,
                                 ReductionCache& reduction_cache,
@@ -23,13 +23,14 @@ inline void evaluate_microbatch(types::Dataset& data,
                                 std::vector<IndexedBatch>& all_dataset_batches,
                                 statistics::LocalJoinStatistics& plan_statistics) {
   std::shared_ptr<std::any> null;
+  FilterConfig config{FilterType::SYMMETRIC_PAIRS};
   if (selected_plan.steps.empty()) {
-    alg.algorithm->join_batch(probing_batch, handler, plan_statistics, null);
+    alg.algorithm->join_batch(probing_batch, handler, config, plan_statistics, null);
   } else {
     auto reduced = reduction_cache.reduce_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
     auto reduced_batch = dataset_to_batch(reduced->first);
 
-    alg.algorithm->join_batch(reduced_batch, handler, plan_statistics, null);
+    alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, null);
   }
 
   // this should not be necessary in general, but due to a "bug" in add_small_results, we currently need this
@@ -45,6 +46,7 @@ inline void evaluate_microbatch(types::Dataset& data,
                         ipbatch,
                         reduction_cache,
                         plan_statistics);
+  // types::print_result_pairs(std::cerr, handler.results, data);
   plan_statistics.result_size.add(static_cast<int64_t>(handler.results.size()));
   handler.results.clear();
 }
@@ -55,8 +57,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        timing::TimeStaticJoinTiming& timing,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
-  std::vector<AlgorithmInstance<MaterializeHandler, SymmetricPairFilter>> algorithms;
-  AlgorithmSharedState<MaterializeHandler, SymmetricPairFilter> shared_state;
+  std::vector<AlgorithmInstance<MaterializeHandler>> algorithms;
+  AlgorithmSharedState<MaterializeHandler> shared_state;
 
   // should be large enough to fit all index data of plans + one microbatch
   // a plan has at most 3 steps and we have ~plans.size + 1 different "batches" at the same time
@@ -77,7 +79,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       alg_instance.owned_data =
         reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
     }
-    alg_instance.algorithm = resolve_algorithmid<SymmetricPairFilter>(
+    alg_instance.algorithm = resolve_algorithmid(
       plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second, shared_state);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
     alg_instance.algorithm->insert_batch(index_batch);
@@ -117,7 +119,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         size_t probing_batch_id = plans.size() + lp_id;
         auto probing_batch = get_batch_by_offset(dataset.data, lp_id, lp_id + HALFBATCH);
         auto ipbatch = IndexedBatch(
-          probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
+          probing_batch_id, probing_batch);  // the first ids are used for indexing (might be fixed in the future)
 
         evaluate_microbatch(dataset.data,
                             similarity,

@@ -95,11 +95,13 @@ public:
       batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
       batch_cost.candidate_generation.start = timing::start_cost_measurement();
+      FilterConfig config{};
       if (index_batch.id == probe_batch.id) {
-        alg_instance.algorithm->selfjoin_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
+        config.type = FilterType::SIMPLE_SELFJOIN;
       } else {
-        alg_instance.algorithm->join_batch(probe_batch.batch, handler, statistics, cached_probing_signatures);
+        config.type = FilterType::NOP;
       }
+      alg_instance.algorithm->join_batch(probe_batch.batch, handler, config, statistics, cached_probing_signatures);
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     } else {
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
@@ -114,11 +116,13 @@ public:
       batch_cost.probing_preprocessing.end = timing::end_cost_measurement();
 
       batch_cost.candidate_generation.start = timing::start_cost_measurement();
+      FilterConfig config{};
       if (index_batch.id == probe_batch.id) {
-        alg_instance.algorithm->selfjoin_batch(batch, handler, statistics, cached_probing_signatures);
+        config.type = FilterType::SIMPLE_SELFJOIN;
       } else {
-        alg_instance.algorithm->join_batch(batch, handler, statistics, cached_probing_signatures);
+        config.type = FilterType::NOP;
       }
+      alg_instance.algorithm->join_batch(batch, handler, config, statistics, cached_probing_signatures);
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     }
   }

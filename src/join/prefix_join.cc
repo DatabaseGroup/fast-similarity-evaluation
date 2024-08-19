@@ -2,8 +2,8 @@
 
 namespace join {
 
-template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::Batch& batch) {
+template <class Handler>
+void PrefixSignatureJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
   prefix_signature.update_frequencies(sets.data);
   bool renew_required = false;
@@ -38,8 +38,8 @@ void PrefixSignatureJoin<Handler, Filter>::insert_batch([[maybe_unused]] types::
   this->resize_bitmap(preprocessed_sets.size());
 }
 
-template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::insert_into_index(types::span<types::Set> sets) {
+template <class Handler>
+void PrefixSignatureJoin<Handler>::insert_into_index(types::span<types::Set> sets) {
   int64_t max_asbs = similarity.max_asbs();
 
   for (auto& set : sets) {
@@ -62,37 +62,47 @@ void PrefixSignatureJoin<Handler, Filter>::insert_into_index(types::span<types::
   }
 }
 
-template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::join_batch(types::Batch& batch,
+template <class Handler>
+void PrefixSignatureJoin<Handler>::join_batch(types::Batch& batch,
                                                       Handler handler,
+                                                      FilterConfig& filter_config,
                                                       statistics::JoinStatistics& statistics,
                                                       [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
-  return _join_batch<false>(batch, handler, statistics);
+  // this could be done in a nicer way
+  switch (filter_config.type) {
+  case NOP:
+    _join_batch<NopFilter>(batch, handler, filter_config, statistics);
+    break;
+  case SIMPLE_SELFJOIN:
+    _join_batch<SimpleSelfjoinFilter>(batch, handler, filter_config, statistics);
+    break;
+  case SYMMETRIC_PAIRS:
+    _join_batch<SymmetricPairFilter>(batch, handler, filter_config, statistics);
+    break;
+  case CUTOFF:
+    // todo
+    break;
+  case CUTOFF_SELFJOIN:
+    // todo
+    break;
+  }
 }
 
-template <class Handler, class Filter>
-void PrefixSignatureJoin<Handler, Filter>::selfjoin_batch(
-  types::Batch& batch,
-  Handler handler,
-  statistics::JoinStatistics& statistics,
-  [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
-  return _join_batch<true>(batch, handler, statistics);
-}
-
-template <class Handler, class Filter>
-template <bool IS_SELF_JOIN>
-void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
+template <class Handler>
+template <class Filter>
+void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch,
                                                        Handler handler,
+                                                       FilterConfig& filter_config,
                                                        statistics::JoinStatistics& statistics) {
   auto& set_batch = std::get<types::SetBatch>(batch);
 
   std::vector<types::Set> prepared_probing_sets;
-  if constexpr (!IS_SELF_JOIN) {
+  if constexpr (!Filter::literally_selfjoin()) {
     prepared_probing_sets.reserve(set_batch.data.size());
     prepared_probing_sets.insert(prepared_probing_sets.begin(), set_batch.data.begin(), set_batch.data.end());
     prefix_signature.convert_tokens(types::span<types::Set>(prepared_probing_sets));
   }
-  auto& probing_sets = IS_SELF_JOIN ? preprocessed_sets : prepared_probing_sets;
+  auto& probing_sets = Filter::literally_selfjoin() ? preprocessed_sets : prepared_probing_sets;
 
   std::vector<bool>& already_seen = this->indexed_bitmap;
   std::vector<RecordId> candidates;
@@ -123,12 +133,16 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
       index.query(
         signature,
         [&](RecordId set_id) {
-          if (Filter::set_pred(preprocessed_sets[set_id], set)) {
+          if (Filter::scan_break_cond(preprocessed_sets[set_id], set, filter_config)) {
+            return true;
+          }
+          if (!Filter::scan_skip_cond(preprocessed_sets[set_id], set, filter_config)) {
             if (!already_seen[set_id]) {
               already_seen[set_id] = true;
               candidates.push_back(set_id);
             }
           }
+          return false;
         },
         length_iter);
     }
@@ -139,7 +153,7 @@ void PrefixSignatureJoin<Handler, Filter>::_join_batch(types::Batch& batch,
       // set from indexed data (indexed_sets set in index_batch)
       auto& candidate_set = preprocessed_sets[candidate_id];
 
-      if constexpr (IS_SELF_JOIN) {
+      if constexpr (Filter::literally_selfjoin()) {
         if (set.id <= candidate_set.id) {
           already_seen[candidate_id] = false;
           continue;

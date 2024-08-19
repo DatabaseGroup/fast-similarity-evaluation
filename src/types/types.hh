@@ -1,7 +1,9 @@
 #ifndef SRC_TYPES_HH
 #define SRC_TYPES_HH
 
+#include <absl/container/btree_map.h>
 #include <absl/container/flat_hash_map.h>
+#include <absl/container/node_hash_map.h>
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
 #include <tsim/node/node.h>
@@ -12,8 +14,6 @@
 #else
 #include <boost/core/span.hpp>
 #endif
-
-#include <absl/container/btree_map.h>
 
 #include <string>
 #include <utility>

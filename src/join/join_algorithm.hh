@@ -39,34 +39,61 @@ inline AlgorithmId string_to_algorithm(const std::string& algorithm) {
   return AlgorithmId::FALLBACK;
 }
 
-struct NopFilter {
-  static bool set_pred([[maybe_unused]] types::Set& index_set, [[maybe_unused]] types::Set& probe_set) { return true; }
-  static bool string_pred([[maybe_unused]] types::String& index_string, [[maybe_unused]] types::String& probe_string) {
+enum FilterType {
+  NOP, SIMPLE_SELFJOIN, SYMMETRIC_PAIRS, CUTOFF, CUTOFF_SELFJOIN
+};
+
+struct FilterConfig {
+  FilterType type;
+
+  FilterConfig() : type(NOP) {}
+  explicit FilterConfig(FilterType type) : type(type) {}
+};
+
+struct AbstractFilter {
+  constexpr static FilterType get_filter_type() = delete;
+  constexpr static bool literally_selfjoin() {
+    return false;
+  };
+
+  // return true if we should skip the remainder of the current list (including this tuple)
+  template<class T>
+  constexpr static bool scan_break_cond([[maybe_unused]]const T& index, [[maybe_unused]]const T& probe, [[maybe_unused]]FilterConfig& config) {
+    return false;
+  }
+  // return true if we should skip this single tuple
+  template<class T>
+  constexpr static bool scan_skip_cond([[maybe_unused]] const T& index, [[maybe_unused]]const T& probe, [[maybe_unused]]FilterConfig& config) {
+    return false;
+  }
+};
+
+struct NopFilter : AbstractFilter {
+  constexpr static FilterType get_filter_type() {
+    return NOP;
+  }
+};
+
+struct SymmetricPairFilter : AbstractFilter {
+  constexpr static FilterType get_filter_type() {
+    return SYMMETRIC_PAIRS;
+  }
+  constexpr static bool literally_selfjoin() {
+    return false;
+  }
+  template<class T>
+  constexpr static bool scan_skip_cond(const T& index, const T& probe, [[maybe_unused]] FilterConfig& config) {
+    return !(index.id < probe.id);
+  }
+};
+
+struct SimpleSelfjoinFilter : SymmetricPairFilter {
+  constexpr static bool literally_selfjoin() {
     return true;
   }
-  static bool tree_pred([[maybe_unused]] types::Tree& index_tree, [[maybe_unused]] types::Tree& probe_tree) {
-    return true;
-  }
 };
 
-struct SymmetricPairFilter {
-  static bool set_pred(const types::Set& index_set, const types::Set& probe_set) { return index_set.id < probe_set.id; }
-  static bool string_pred(const types::String& index_string, const types::String& probe_string) {
-    return index_string.id < probe_string.id;
-  }
-  static bool tree_pred(const types::Tree& index_tree, const types::Tree& probe_tree) {
-    return index_tree.id < probe_tree.id;
-  }
-};
-
-struct Filter {
-  template<class T>
-  static bool scan_break_cond(const T& index, const T& probe);
-  template<class T>
-  static bool scan_skip_cond(const T& index, const T& probe);
-};
-
-template <class Handler, class Filter = NopFilter>
+template <class Handler>
 class JoinAlgorithm {
 public:
   virtual ~JoinAlgorithm() = default;
@@ -77,12 +104,9 @@ public:
   }
   virtual void insert_batch(types::Batch& batch) = 0;
 
-  virtual void selfjoin_batch(types::Batch& batch,
-                              Handler handler,
-                              statistics::JoinStatistics& statistics,
-                              std::shared_ptr<std::any> probing_signatures) = 0;
   virtual void join_batch(types::Batch& batch,
                           Handler handler,
+                          FilterConfig& filter_config,
                           statistics::JoinStatistics& statistics,
                           std::shared_ptr<std::any> probing_signatures) = 0;
 };

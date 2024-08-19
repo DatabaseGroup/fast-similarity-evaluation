@@ -184,8 +184,10 @@ public:
     for (; iter != map.end(); ++iter) {
       if (iter->first > key_end) {
         break;
-      } else {
-        callback(iter->second);
+      }
+      bool should_break = callback(iter->second);
+      if (should_break) {
+        break;
       }
     }
   }
@@ -270,8 +272,10 @@ public:
     for (; iter != map.end(); ++iter) {
       if (iter->first > key_end) {
         break;
-      } else {
-        callback(iter->second);
+      }
+      bool should_break = callback(iter->second);
+      if (should_break) {
+        break;
       }
     }
   }
