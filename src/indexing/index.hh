@@ -157,6 +157,10 @@ public:
     map[key].insert(value, keys...);
   }
 
+  void clear() {
+    map.clear();
+  }
+
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
 public:
@@ -189,6 +193,10 @@ public:
   void insert(ValueType value, KeyType key) {
     // assume insertions are in order
     map.emplace_back(key, value);
+  }
+
+  void clear() {
+    map.clear();
   }
 
   static constexpr int32_t LEVEL() { return 0; }
@@ -238,6 +246,10 @@ public:
     map.back().second.insert(value, keys...);
   }
 
+  void clear() {
+    map.clear();
+  }
+
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
 
 public:
@@ -266,6 +278,10 @@ public:
 
   void insert(ValueType value, KeyType key) {
     map.emplace(key, value);
+  }
+
+  void clear() {
+    map.clear();
   }
 
   static constexpr int32_t LEVEL() { return 0; }
@@ -306,6 +322,10 @@ public:
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
     map[key].insert(value, keys...);
+  }
+
+  void clear() {
+    map.clear();
   }
 
   static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }

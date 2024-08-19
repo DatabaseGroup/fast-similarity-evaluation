@@ -11,12 +11,20 @@
 
 namespace join {
 
+template <class Handler = MaterializeHandler, class Filter = NopFilter>
+struct AlgorithmSharedState {
+  typename PrefixSignatureJoin<Handler, Filter>::SharedState prefix;
+  typename PallocJoin<Handler, Filter>::SharedState palloc;
+};
+
 template <class Filter = NopFilter>
-std::unique_ptr<JoinAlgorithm<MaterializeHandler, Filter>> resolve_algorithmid(AlgorithmId id,
-                                                                               similarity::Similarity& similarity) {
+std::unique_ptr<JoinAlgorithm<MaterializeHandler, Filter>> resolve_algorithmid(
+  AlgorithmId id,
+  similarity::Similarity& similarity,
+  AlgorithmSharedState<MaterializeHandler, Filter>& shared_state) {
   switch (id) {
   case PREFIX_SIGNATURE_JOIN:
-    return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity);
+    return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity, shared_state.prefix);
   case FALLBACK:
     // todo implement comparing all pairs as obvious fallback
     break;
@@ -25,9 +33,9 @@ std::unique_ptr<JoinAlgorithm<MaterializeHandler, Filter>> resolve_algorithmid(A
   case TJOIN:
     return std::make_unique<TJoinLite<MaterializeHandler, Filter>>(similarity);
   case PALLOC:
-    return std::make_unique<PallocJoin<MaterializeHandler, Filter>>(similarity);
+    return std::make_unique<PallocJoin<MaterializeHandler, Filter>>(similarity, shared_state.palloc);
   }
-  return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity);
+  return std::make_unique<PrefixSignatureJoin<MaterializeHandler, Filter>>(similarity, shared_state.prefix);
 }
 
 template <class DataType, class SimilarityPtr>

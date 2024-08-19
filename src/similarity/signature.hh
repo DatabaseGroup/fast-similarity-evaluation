@@ -43,36 +43,26 @@ public:
     }
   }
 
-  std::vector<types::Set> convert_tokens(const types::SetBatch& batch) {
-    return convert_tokens(batch.data.begin(), batch.data.end());
-  }
-
   template<class It1, class It2>
-  std::vector<types::Set> convert_tokens(It1 begin, It2 end) {
-    std::vector<types::Set> sets;
-    sets.reserve(std::distance(begin, end));
-
+  void convert_tokens(It1 begin, It2 end) {
     for (; begin != end; ++begin) {
       auto& set = *begin;
-      auto& new_set = sets.emplace_back(set.id);
 
-      for (auto token : set.tokens) {
+      for (auto& token : set.tokens) {
         // assert: no "real-world" dataset (i.e., not converted by reduction) has tokens with values between 2^62 and 2^63
         auto it = heavy_tokens.find(token);
 
         if (it != heavy_tokens.end()) {
-          new_set.tokens.push_back(it->second);
+          token = it->second;
         } else {
           // if real world dataset: this AND does not change anything
           // if reduced dataset: might add some false positives, but those are filtered on the other datatypes anyway
-          new_set.tokens.push_back(static_cast<int64_t>(static_cast<uint64_t>(token) & (~(UINT64_C(11) << 62))));
+          token = static_cast<int64_t>(static_cast<uint64_t>(token) & (~(UINT64_C(11) << 62)));
         }
       }
 
-      std::ranges::sort(new_set.tokens);
+      std::ranges::sort(set.tokens.begin(), set.tokens.end());
     }
-
-    return sets;
   }
 
 private:
@@ -86,18 +76,16 @@ public:
   using Signature = int64_t;
 
 public:
-  explicit SetPrefixSignature(SetSimilarity& similarity) : similarity(similarity) {}
+  explicit SetPrefixSignature(SetSimilarity& similarity, SetQuasiSuffix& sqs) : similarity(similarity), sqs(sqs) {}
 
 public:
-  void prepare_index(std::vector<types::Set>& sets) {
+  void update_frequencies(const types::span<types::Set> sets) {
     sqs.update_occurences(sets.begin(), sets.end());
     sqs.build_token_mapping(42000);
-
-    prepare_probe(sets);
   }
 
-  void prepare_probe(std::vector<types::Set>& sets) {
-    sets = sqs.convert_tokens(sets.begin(), sets.end());
+  void convert_tokens(types::span<types::Set> sets) {
+    sqs.convert_tokens(sets.begin(), sets.end());
   }
 
   // ReSharper disable once CppMemberFunctionMayBeStatic
@@ -129,7 +117,7 @@ private:
   };
   absl::flat_hash_map<types::Set::Token, CountOrToken> token_map;
   SetSimilarity& similarity;
-  SetQuasiSuffix sqs;
+  SetQuasiSuffix& sqs;
 };
 
 class PassJoinSignature {

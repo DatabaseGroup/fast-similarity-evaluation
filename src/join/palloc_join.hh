@@ -18,16 +18,6 @@ struct SizeGetter<std::reference_wrapper<types::Set>> {
 
 template <class Handler, class Filter = NopFilter>
 class PallocJoin : public SignatureJoin<Handler, Filter> {
-public:
-  using RefSet = std::reference_wrapper<types::Set>;
-  struct GroupSignatures {
-    similarity::PallocSignature::Signatures signatures;
-    int64_t group_id{};
-  };
-  struct CachedSignatures {
-    std::vector<GroupSignatures> group_signatures;
-  };
-
 private:
   struct SizeGroup {
     int32_t lower;
@@ -51,8 +41,21 @@ private:
   };
 
 public:
-  explicit PallocJoin(similarity::Similarity& similarity)
-      : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
+  struct SharedState {
+    std::vector<SizeGroup> size_groups;
+  };
+  using RefSet = std::reference_wrapper<types::Set>;
+  struct GroupSignatures {
+    similarity::PallocSignature::Signatures signatures;
+    int64_t group_id{};
+  };
+  struct CachedSignatures {
+    std::vector<GroupSignatures> group_signatures;
+  };
+
+public:
+  explicit PallocJoin(similarity::Similarity& similarity, SharedState& shared_state)
+      : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)), shared_state(shared_state), size_groups(shared_state.size_groups) {}
 
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
@@ -97,10 +100,11 @@ private:
 
 private:
   similarity::SetSimilarity& similarity;
+  SharedState& shared_state;
   std::vector<RefSet> indexed_sets;
   similarity::PallocSignature signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
-  std::vector<SizeGroup> size_groups;
+  std::vector<SizeGroup>& size_groups;
 };
 
 template class PallocJoin<MaterializeHandler, NopFilter>;

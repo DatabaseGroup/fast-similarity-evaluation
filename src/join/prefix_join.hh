@@ -16,9 +16,18 @@ struct SizeGetter<types::Set> {
 template <class Handler, class Filter = NopFilter>
 class PrefixSignatureJoin : public SignatureJoin<Handler, Filter> {
 public:
-  explicit PrefixSignatureJoin(similarity::Similarity& similarity)
+  struct SharedState {
+    similarity::SetQuasiSuffix sqs;
+    int64_t sqs_version = 0;
+    int64_t totally_indexed_sets = 0;
+    int64_t next_reindexing = 0;
+  };
+
+public:
+  explicit PrefixSignatureJoin(similarity::Similarity& similarity, SharedState& shared_state)
       : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
-        prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity)) {}
+        shared_state(shared_state),
+        prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity), shared_state.sqs) {}
 
   void insert_batch(types::Batch& batch) override;
   void selfjoin_batch(types::Batch& batch,
@@ -34,15 +43,21 @@ public:
   void _join_batch(types::Batch& batch, Handler handler, statistics::JoinStatistics& statistics);
 
 private:
+  void insert_into_index(types::span<types::Set> sets);
+
+private:
   similarity::SetSimilarity& similarity;
+  SharedState& shared_state;
+  int64_t local_sqs_version = 0;
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
-  std::vector<types::Set> indexed_sets;
+  std::vector<std::reference_wrapper<types::Set>> indexed_sets;
+  std::vector<types::Set> preprocessed_sets;
 };
 
 template class PrefixSignatureJoin<MaterializeHandler, NopFilter>;
 template class PrefixSignatureJoin<MaterializeHandler, SymmetricPairFilter>;
 
-}
+}  // namespace join
 
 #endif  // SRC_PREFIX_JOIN_HH

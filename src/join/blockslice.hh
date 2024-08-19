@@ -67,13 +67,13 @@ public:
       // if reductions are necessary
       if (plan.steps.empty()) {
         // the dataset and similarity are owned by the caller
-        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity, shared_shate);
         alg_instance.algorithm->insert_batch(index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_to_end(index_batch, similarity, plan, statistics.rc_statistics);
         alg_instance.owned_data = reduced;
-        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.owned_data->second, shared_shate);
 
         auto batch = dataset_to_batch(alg_instance.owned_data->first);
         alg_instance.algorithm->insert_batch(batch);
@@ -128,6 +128,7 @@ private:
   ReductionCache& reduction_cache;
   ProbingSignaturesCache& probing_signatures_cache;
   std::vector<AlgorithmInstance<>> algorithms;
+  AlgorithmSharedState<MaterializeHandler> shared_shate{};
 };
 
 class PlanExecutor {

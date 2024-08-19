@@ -55,8 +55,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        timing::TimeStaticJoinTiming& timing,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
-
   std::vector<AlgorithmInstance<MaterializeHandler, SymmetricPairFilter>> algorithms;
+  AlgorithmSharedState<MaterializeHandler, SymmetricPairFilter> shared_state;
 
   // should be large enough to fit all index data of plans + one microbatch
   // a plan has at most 3 steps and we have ~plans.size + 1 different "batches" at the same time
@@ -78,7 +78,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
     }
     alg_instance.algorithm = resolve_algorithmid<SymmetricPairFilter>(
-      plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second);
+      plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second, shared_state);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
     alg_instance.algorithm->insert_batch(index_batch);
   }
