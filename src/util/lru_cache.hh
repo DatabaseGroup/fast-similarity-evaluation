@@ -40,7 +40,7 @@ public:
     access_list.clear();
   }
 
-  Value emplace(const Key& key, Value&& value) {
+  Value& emplace(const Key& key, auto&&... value) {
     // do not insert if key already exists
     auto it = values.find(key);
     if (it == values.end()) {
@@ -50,7 +50,7 @@ public:
 
       // just accessed, put in front
       access_list.push_front(key);
-      auto value_it = values.try_emplace(key, std::move(value), access_list.begin());
+      auto value_it = values.try_emplace(key, std::make_pair(Value(std::forward<decltype(value)>(value)...), access_list.begin()));
 
       // my eyes hurt from this
       return value_it.first->second.first;

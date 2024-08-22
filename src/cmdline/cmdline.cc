@@ -256,8 +256,16 @@ int main(int argc, char** argv) {
     std::for_each(
       lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
   } else {
-    join::timeslice::do_the_thing(dataset, similarity, plans);
-    return 0;
+    using StatClass = statistics::LocalDynamicTimeSliceStatistics;
+    timing::TimeDynamicJoinTiming tdj_timing;
+
+    auto lls = setup_statistics<StatClass>(plans);
+    global_statistics = std::make_unique<statistics::GlobalDynamicTimeSliceStatistics>();
+    join::timeslice::DynamicTimeslicing dts;
+    dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
+    timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
+    std::for_each(
+      lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
   }
 
   nlohmann::json lsjson;

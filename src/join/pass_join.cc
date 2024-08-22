@@ -70,10 +70,10 @@ void PassJoin<Handler>::join_batch(types::Batch& batch,
     _join_batch<SymmetricPairFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    // todo
+    _join_batch<CutoffFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    // todo
+    _join_batch<CutoffSelfFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   }
 }

@@ -27,8 +27,8 @@ inline void evaluate_microbatch(types::Dataset& data,
   if (selected_plan.steps.empty()) {
     alg.algorithm->join_batch(probing_batch, handler, config, plan_statistics, null);
   } else {
-    auto reduced = reduction_cache.reduce_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
-    auto reduced_batch = dataset_to_batch(reduced->first);
+    auto reduced = reduction_cache.reduce_data_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
+    auto reduced_batch = dataset_to_batch(*reduced);
 
     alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, null);
   }
@@ -77,11 +77,12 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
       alg_instance.owned_data =
-        reduction_cache.reduce_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
+        reduction_cache.reduce_data_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
+      alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
     alg_instance.algorithm = resolve_algorithmid(
-      plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.owned_data->second, shared_state);
-    auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : alg_instance.owned_data->first);
+      plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
+    auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data);
     alg_instance.algorithm->insert_batch(index_batch);
   }
   timing.build_time.stop();
@@ -117,7 +118,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       // do left batch
       {
         size_t probing_batch_id = plans.size() + lp_id;
-        auto probing_batch = get_batch_by_offset(dataset.data, lp_id, lp_id + HALFBATCH);
+        auto probing_batch = get_batch_by_offset(dataset.data, lp_id, std::min(lp_id + HALFBATCH, rp_id));
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (might be fixed in the future)
 

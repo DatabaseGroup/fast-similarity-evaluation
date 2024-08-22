@@ -80,10 +80,10 @@ void PrefixSignatureJoin<Handler>::join_batch(types::Batch& batch,
     _join_batch<SymmetricPairFilter>(batch, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    // todo
+    _join_batch<CutoffFilter>(batch, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    // todo
+    _join_batch<CutoffSelfFilter>(batch, handler, filter_config, statistics);
     break;
   }
 }

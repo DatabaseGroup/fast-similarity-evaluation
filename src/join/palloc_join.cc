@@ -15,18 +15,10 @@ void PallocJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
   indexed_sets.insert(indexed_sets.end(), sets.data.begin(), sets.data.end());
   this->resize_bitmap(indexed_sets.size());
 
-  // initial size group
-  if (size_groups.empty()) {
-    int32_t lower_bound = 1;
-    int32_t upper_bound = next_size_lb(lower_bound) - 1;
-    int32_t partition_count = get_partition_count(lower_bound, upper_bound);
-    size_groups.emplace_back(lower_bound, upper_bound, partition_count);
-  }
-
   const int64_t max_asbs = similarity.max_asbs();
 
-  for (auto& set : indexed_sets) {
-    auto set_size = static_cast<int32_t>(set.get().tokens.size());
+  for (auto& set : sets.data) {
+    auto set_size = static_cast<int32_t>(set.tokens.size());
     while (size_groups.back().upper < set_size) {
       append_next_size_group();
     }
@@ -111,10 +103,10 @@ void PallocJoin<Handler>::join_batch(types::Batch& batch,
     _join_batch<SymmetricPairFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    // todo
+    _join_batch<CutoffFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    // todo
+    _join_batch<CutoffSelfFilter>(batch, *signatures, handler, filter_config, statistics);
     break;
   }
 }
@@ -151,7 +143,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
 
     auto candidate_handler = [&](RecordId set_id) {
       // todo this could be optimized (actually perform the break instead of skipping); lists are maybe short enough
-      if (!Filter::scan_skip_cond(indexed_sets[set_id].get(), probing_set, filter_config) ||
+      if (!Filter::scan_skip_cond(indexed_sets[set_id].get(), probing_set, filter_config) &&
           !Filter::scan_break_cond(indexed_sets[set_id].get(), probing_set, filter_config)) {
         if (!already_seen[set_id]) {
           auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
@@ -309,14 +301,6 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
 
     --remaining;
   }
-}
-
-template <class Handler>
-int32_t PallocJoin<Handler>::get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
-  return (similarity.max_hd_to(
-            partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
-          2) +
-         1;
 }
 
 }  // namespace join

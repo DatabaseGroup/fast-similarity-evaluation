@@ -55,7 +55,17 @@ public:
 
 public:
   explicit PallocJoin(similarity::Similarity& similarity, SharedState& shared_state)
-      : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)), shared_state(shared_state), size_groups(shared_state.size_groups) {}
+      : similarity(*std::get<similarity::SetSimilarityPtr>(similarity)),
+        shared_state(shared_state),
+        size_groups(shared_state.size_groups) {
+    // initial size group
+    if (size_groups.empty()) {
+      int32_t lower_bound = 1;
+      int32_t upper_bound = next_size_lb(lower_bound) - 1;
+      int32_t partition_count = get_partition_count(lower_bound, upper_bound);
+      size_groups.emplace_back(lower_bound, upper_bound, partition_count);
+    }
+  }
 
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
@@ -69,10 +79,10 @@ public:
 private:
   template <class Filter>
   void _join_batch(types::Batch& batch,
-              std::vector<CachedSignatures>& signatures,
-              Handler& handler,
-              FilterConfig& filter_config,
-              statistics::JoinStatistics& statistics);
+                   std::vector<CachedSignatures>& signatures,
+                   Handler& handler,
+                   FilterConfig& filter_config,
+                   statistics::JoinStatistics& statistics);
 
   template <bool IS_SELF_JOIN, class CandidateHandler>
   void _probe_size_group(types::Set& probing_set,
@@ -82,7 +92,12 @@ private:
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
-  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const;
+  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
+    return (similarity.max_hd_to(
+              partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
+            2) +
+           1;
+  }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
     auto step = similarity.maximum_length_bound(current_size) - current_size;
     auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);

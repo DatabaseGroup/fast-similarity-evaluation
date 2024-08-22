@@ -177,6 +177,13 @@ inline std::ostream& operator<<([[maybe_unused]] std::ostream& os, [[maybe_unuse
 using Dataset = std::variant<Sets, Strings, Trees>;
 using Batch = std::variant<SetBatch, StringBatch, TreeBatch>;
 
+inline void dataset_append(Dataset& d1, Dataset& d2) {
+  std::visit([&](auto& data1) {
+    auto& data2 = std::get<std::decay_t<decltype(data1)>>(d2);
+    data1.data.insert(data1.data.end(), data2.data.begin(), data2.data.end());
+  }, d1);
+}
+
 inline void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {
   std::visit(
     [&](auto& actual_dataset) {

@@ -157,22 +157,25 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
                                   IndexedBatch probe_batch,
                                   ReductionCache reduction_cache,
                                   statistics::LocalJoinStatistics& plan_statistics) {
-  for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
-    auto reduced_index =
-      reduction_cache.reduce_to_level(index_batch, similarity, plan, level, plan_statistics.rc_statistics);
-    auto reduced_index_batch = dataset_to_batch(reduced_index->first);
-    auto reduced_probe =
-      reduction_cache.reduce_to_level(probe_batch, similarity, plan, level, plan_statistics.rc_statistics);
-    auto reduced_probe_batch = dataset_to_batch(reduced_probe->first);
-
-    plan_statistics.step_verifications[plan.steps.size() - (level + 1)].add(static_cast<int64_t>(result_pairs.size()));
-    offset_verify_with_similarity(
-      reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, reduced_index->second, result_pairs);
-  }
-
-  // if data was actually reduced, we still have to verify with the "outermost" similarity
-  // otherwise, the algorithm instance has already verified this part
   if (!plan.steps.empty()) {
+    auto similarities = reduction_cache.get_all_reduced_similarities(similarity, plan);
+
+    for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
+      auto reduced_index =
+        reduction_cache.reduce_data_to_level(index_batch, similarity, plan, level, plan_statistics.rc_statistics);
+      auto reduced_index_batch = dataset_to_batch(*reduced_index);
+      auto reduced_probe =
+        reduction_cache.reduce_data_to_level(probe_batch, similarity, plan, level, plan_statistics.rc_statistics);
+      auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
+
+      plan_statistics.step_verifications[plan.steps.size() - (level + 1)].add(
+        static_cast<int64_t>(result_pairs.size()));
+      offset_verify_with_similarity(
+        reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, similarities[level - 1], result_pairs);
+    }
+
+    // if data was actually reduced, we still have to verify with the "outermost" similarity
+    // otherwise, the algorithm instance has already verified this part
     plan_statistics.step_verifications.back().add(static_cast<int64_t>(result_pairs.size()));
     verify_with_similarity(dataset, similarity, result_pairs);
   }

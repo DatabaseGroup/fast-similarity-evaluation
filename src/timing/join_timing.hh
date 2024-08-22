@@ -34,6 +34,10 @@ public:
   }
 };
 
+class TimeDynamicJoinTiming : public JoinTiming {
+
+};
+
 }
 
 #endif  // SRC_JOIN_TIMING_HH

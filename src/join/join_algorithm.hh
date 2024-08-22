@@ -46,8 +46,13 @@ enum FilterType {
 struct FilterConfig {
   FilterType type;
 
+  int64_t index_start{};
+  int64_t index_end{};
+
   FilterConfig() : type(NOP) {}
   explicit FilterConfig(FilterType type) : type(type) {}
+  FilterConfig(FilterType type, int64_t index_start, int64_t index_end)
+      : type(type), index_start(index_start), index_end(index_end) {}
 };
 
 struct AbstractFilter {
@@ -78,9 +83,6 @@ struct SymmetricPairFilter : AbstractFilter {
   constexpr static FilterType get_filter_type() {
     return SYMMETRIC_PAIRS;
   }
-  constexpr static bool literally_selfjoin() {
-    return false;
-  }
   template<class T>
   constexpr static bool scan_skip_cond(const T& index, const T& probe, [[maybe_unused]] FilterConfig& config) {
     return !(index.id < probe.id);
@@ -90,6 +92,33 @@ struct SymmetricPairFilter : AbstractFilter {
 struct SimpleSelfjoinFilter : SymmetricPairFilter {
   constexpr static bool literally_selfjoin() {
     return true;
+  }
+};
+
+struct CutoffFilter : AbstractFilter {
+  constexpr static FilterType get_filter_type() {
+    return CUTOFF;
+  }
+
+  template<class T>
+  constexpr static bool scan_skip_cond(const T& index, const T& probe, [[maybe_unused]] FilterConfig& config) {
+    return index.id < config.index_start;
+  }
+
+  template<class T>
+  constexpr static bool scan_break_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
+    return index.id > config.index_end;
+  }
+};
+
+struct CutoffSelfFilter : CutoffFilter {
+  constexpr static FilterType get_filter_type() {
+    return CUTOFF_SELFJOIN;
+  }
+
+  template<class T>
+  constexpr static bool scan_break_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
+    return !(index.id < probe.id) || (index.id > config.index_end);
   }
 };
 

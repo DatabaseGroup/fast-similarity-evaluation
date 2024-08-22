@@ -70,7 +70,6 @@ void TJoinLite<Handler>::join_batch(types::Batch& batch,
   case CUTOFF:
   case CUTOFF_SELFJOIN:
     throw std::invalid_argument("TJoinLite does not support cutoff-type filters.");
-    break;
   }
 }
 
@@ -106,7 +105,7 @@ void TJoinLite<Handler>::_join_batch(types::TreeBatch& trees,
     auto& index_tree = indexed_trees[pair.second];
     auto& probe_tree = trees.data[pair.first];
 
-    if (!Filter::scan_skip_cond(index_tree.get(), probe_tree, filter_config) ||
+    if (!Filter::scan_skip_cond(index_tree.get(), probe_tree, filter_config) &&
         !Filter::scan_break_cond(index_tree.get(), probe_tree, filter_config)) {
       if (ted.is_in_threshold(index_tree.get(), probe_tree)) {
         handler(index_tree.get().id, probe_tree.id);

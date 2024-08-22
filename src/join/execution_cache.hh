@@ -13,7 +13,8 @@ namespace join {
 template <class Handler = MaterializeHandler>
 struct AlgorithmInstance {
   std::unique_ptr<JoinAlgorithm<Handler>> algorithm{};
-  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> owned_data{};
+  std::shared_ptr<types::Dataset> owned_data{};
+  similarity::Similarity similarity;
   bool initialized{false};
 };
 
@@ -45,18 +46,17 @@ public:
   explicit ReductionCache(size_t cache_size) : cache(cache_size) {}
 
 public:
-  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_level(
-    IndexedBatch& batch,
-    similarity::Similarity& similarity,
-    ontology::QueryPlan& plan,
-    int32_t level,
-    statistics::ReductionCacheStatistics& statistics) {
+  std::shared_ptr<types::Dataset> reduce_data_to_level(IndexedBatch& batch,
+                                                       similarity::Similarity& similarity,
+                                                       ontology::QueryPlan& plan,
+                                                       int32_t level,
+                                                       statistics::ReductionCacheStatistics& statistics) {
     assert(!plan.steps.empty());
     // find lowest, processed step
     auto batch_id = batch.id;
     auto rit = plan.steps.rbegin() + level;
 
-    std::optional<std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache_result;
+    std::optional<std::shared_ptr<types::Dataset>> cache_result;
     for (; rit != plan.steps.rend(); ++rit) {
       auto step_id = rit->id;
       cache_result = cache.get({batch_id, step_id});
@@ -66,10 +66,10 @@ public:
       }
     }
 
-    std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> result_pair;
+    std::shared_ptr<types::Dataset> result;
     if (cache_result.has_value()) {
       statistics.reduction_cache_hits.inc();
-      result_pair = *cache_result;
+      result = *cache_result;
     } else {
       statistics.reduction_cache_misses.inc();
       // we have to start at the top at batch, do the first step manually (due to annoying problems with dataset vs
@@ -80,9 +80,7 @@ public:
       auto& reduction_step = *rit;
       auto& reduction = reduction_step.reduction.get();
       auto step_id = reduction_step.id;
-      result_pair = cache.emplace({batch_id, step_id},
-                                  std::make_shared<std::pair<types::Dataset, similarity::Similarity>>(
-                                    reduction.reduce_data(batch.batch), reduction.reduce_similarity(similarity)));
+      result = cache.emplace({batch_id, step_id}, std::make_shared<types::Dataset>(reduction.reduce_data(batch.batch)));
     }
 
     // go a step back to highest, unprocessed node
@@ -95,26 +93,41 @@ public:
       auto& reduction = reduction_step.reduction.get();
       auto step_id = reduction_step.id;
 
-      result_pair =
-        cache.emplace({batch_id, step_id},
-                      std::make_shared<std::pair<types::Dataset, similarity::Similarity>>(
-                        reduction.reduce_data(result_pair->first), reduction.reduce_similarity(result_pair->second)));
+      result = cache.emplace({batch_id, step_id}, std::make_shared<types::Dataset>(reduction.reduce_data(*result)));
     }
 
-    return result_pair;
+    return result;
   }
 
-  std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>> reduce_to_end(
-    IndexedBatch& batch,
-    similarity::Similarity& similarity,
-    ontology::QueryPlan& plan,
-    statistics::ReductionCacheStatistics& statistics) {
-    return reduce_to_level(batch, similarity, plan, 0, statistics);
+  std::shared_ptr<types::Dataset> reduce_data_to_end(IndexedBatch& batch,
+                                                     similarity::Similarity& similarity,
+                                                     ontology::QueryPlan& plan,
+                                                     statistics::ReductionCacheStatistics& statistics) {
+    return reduce_data_to_level(batch, similarity, plan, 0, statistics);
+  }
+
+  std::vector<similarity::Similarity> get_all_reduced_similarities(similarity::Similarity& similarity,
+                                                                   ontology::QueryPlan& plan) {
+    std::vector<similarity::Similarity> similarities;
+    if (!plan.steps.empty()) {
+      similarities.resize(plan.steps.size());
+      similarities.emplace_back(std::move(plan.steps.front().reduction.get().reduce_similarity(similarity)));
+      for (size_t i = 1; i < plan.steps.size(); ++i) {
+        similarities[plan.steps.size() - i] = std::move(plan.steps[i].reduction.get().reduce_similarity(similarities.back()));
+      }
+    }
+    return similarities;
+  }
+
+  similarity::Similarity reduce_similarity_to_end(similarity::Similarity& similarity,
+                                                                   ontology::QueryPlan& plan) {
+    assert(!plan.steps.empty());
+    return std::move(get_all_reduced_similarities(similarity, plan).back());
   }
 
 private:
   // use shared_ptr for pointer stability
-  util::LRUCache<CacheHashKey, std::shared_ptr<std::pair<types::Dataset, similarity::Similarity>>> cache;
+  util::LRUCache<CacheHashKey, std::shared_ptr<types::Dataset>> cache;
 };
 
 class ProbingSignaturesCache {

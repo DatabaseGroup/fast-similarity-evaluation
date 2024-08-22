@@ -29,7 +29,6 @@ struct ReductionCacheStatistics {
 
     return json;
   }
-
 };
 
 struct JoinStatistics {
@@ -63,9 +62,8 @@ struct LocalJoinStatistics : JoinStatistics {
     json["bandit_weights"] = bandit_weight.avg();
 
     std::vector verifications{join_verifications.value};
-    std::for_each(step_verifications.begin(), step_verifications.end(), [&](auto& cnt) {
-      verifications.push_back(cnt.value);
-    });
+    std::for_each(
+      step_verifications.begin(), step_verifications.end(), [&](auto& cnt) { verifications.push_back(cnt.value); });
     verifications.push_back(result_size.value);
     json["intermediary_sizes"] = verifications;
 
@@ -96,6 +94,10 @@ struct LocalTimeSliceStatistics : LocalJoinStatistics {
   explicit LocalTimeSliceStatistics(const nlohmann::json& description) : LocalJoinStatistics(description) {}
 };
 
+struct LocalDynamicTimeSliceStatistics : LocalJoinStatistics {
+  explicit LocalDynamicTimeSliceStatistics(const nlohmann::json& description) : LocalJoinStatistics(description) {}
+};
+
 struct GlobalJoinStatistics : JoinStatistics {
   virtual void merge(LocalJoinStatistics& local_stat) {
     this->result_size.value += local_stat.result_size.value;
@@ -120,16 +122,15 @@ struct GlobalBlockSliceStatistics : GlobalJoinStatistics {
   }
 };
 
-struct GlobalTimeSliceStatistics : GlobalJoinStatistics {
+struct GlobalTimeSliceStatistics : GlobalJoinStatistics {};
 
-};
+struct GlobalDynamicTimeSliceStatistics : GlobalJoinStatistics {};
 
 using LocalStatistics = std::vector<std::unique_ptr<LocalJoinStatistics>>;
 
-inline void merge_local_statistics(LocalStatistics& statistics, std::unique_ptr<GlobalJoinStatistics>& global_statistics) {
-  std::for_each(statistics.begin(), statistics.end(), [&](auto& stat) {
-    global_statistics->merge(*stat.get());
-  });
+inline void merge_local_statistics(LocalStatistics& statistics,
+                                   std::unique_ptr<GlobalJoinStatistics>& global_statistics) {
+  std::for_each(statistics.begin(), statistics.end(), [&](auto& stat) { global_statistics->merge(*stat.get()); });
 }
 
 }  // namespace statistics
