@@ -165,6 +165,23 @@ public:
     return ProcessBlock{start, largest_processed_block};
   }
 
+  Corner next_smallest_fitting(int64_t last_x, int64_t last_y) {
+    if (get_block().end == Corner(last_x, last_y)) {
+      return {last_x, last_y};
+    } else {
+      // explicitly taking copy here
+      const auto& block = get_block();
+      PlanBlock lb_outer{block.start, block.end};
+      PlanBlock lb_inner = lb_outer.get_current_subblock();
+      while (last_x < lb_inner.end.x || last_y < lb_inner.end.y) {
+        lb_outer = lb_inner;
+        lb_inner = lb_outer.get_current_subblock();
+      }
+      return lb_outer.end;
+    }
+
+  }
+
   [[nodiscard]] bool is_finished() const { return nested_blocks.empty(); }
 
 private:
@@ -269,10 +286,11 @@ public:
         // case 1: probe-and-insert
         // todo: just always process until the end of the next block once timeout is reached (make next end of block the
         // next target)
-        while ((!time_exceeded || block.approx_compute_ratio(left_id, right_id) >= 0.5) &&
-               (left_id < block.end.x || right_id < block.end.y)) {
-          if (left_id < block.end.x) {
-            auto real_block_end = std::min(left_id + HALFBATCH, block.end.x);
+        int64_t left_target_id = block.end.x;
+        int64_t right_target_id = block.end.y;
+        while (left_id < left_target_id || right_id < right_target_id) {
+          if (left_id < left_target_id) {
+            auto real_block_end = std::min(left_id + HALFBATCH, left_target_id);
             auto left_batch = get_batch_by_offset(dataset.data, left_id, real_block_end);
             auto ibatch = IndexedBatch(left_id, left_batch);
 
@@ -288,8 +306,8 @@ public:
             left_id = real_block_end;
           }
 
-          if (!block.self_join() && right_id < block.end.y) {
-            auto real_block_end = std::min(right_id + HALFBATCH, block.end.y);
+          if (!block.self_join() && right_id < right_target_id) {
+            auto real_block_end = std::min(right_id + HALFBATCH, right_target_id);
             auto right_batch = get_batch_by_offset(dataset.data, right_id, real_block_end);
             auto ibatch = IndexedBatch(right_id, right_batch);
 
@@ -302,8 +320,14 @@ public:
 
           end_time = timing::end_cost_measurement();
           time_required = timing::get_cost(start_time, end_time);
-          if (time_required > scaled_timeslice) {
+          if (!time_exceeded && time_required > scaled_timeslice) {
+            // break outer loop
             time_exceeded = true;
+            // stop processing at next full block border for inner loop
+            auto new_end = scheduler.next_smallest_fitting(left_id, right_id);
+            left_target_id = new_end.x;
+            right_target_id = new_end.y;
+            util::print_dbg(absl::StrFormat("New target (%i, %i)", left_target_id, right_target_id));
           }
         }
 
@@ -326,6 +350,7 @@ public:
 
       double reward = static_cast<double>(processed_pairs) /
                       static_cast<double>(dataset.statistics->count * (dataset.statistics->count - 1) / 2);
+      reward /= (time_required / TIMESLICE);
       util::print_dbg(absl::StrFormat(
         "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
       total_reward += reward;

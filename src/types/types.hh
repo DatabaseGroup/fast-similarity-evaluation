@@ -3,7 +3,7 @@
 
 #include <absl/container/btree_map.h>
 #include <absl/container/flat_hash_map.h>
-#include <absl/container/node_hash_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
 #include <tsim/node/node.h>
@@ -25,6 +25,8 @@ namespace types {
 template <class K, class V>
 using HashTable = absl::flat_hash_map<K, V>;
 // using HashTable = std::unordered_map<K,V>;
+template <class K>
+using HashSet = absl::flat_hash_set<K>;
 template <class K, class V>
 using TreeMTable = absl::btree_multimap<K, V>;
 
@@ -191,7 +193,11 @@ inline void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Datase
         auto& o1 = actual_dataset.data[id1];
         auto& o2 = actual_dataset.data[id2];
 
-        ostream << "(" << o1 << " : " << o2 << ")" << std::endl;
+        if (o1.id <= o2.id) {
+          ostream << "(" << o1 << " : " << o2 << ")" << std::endl;
+        } else {
+          ostream << "(" << o2 << " : " << o1 << ")" << std::endl;
+        }
       }
     },
     data);
