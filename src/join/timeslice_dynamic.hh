@@ -292,21 +292,23 @@ private:
   std::vector<types::TreeTable<int64_t, VarSizeAlgIns>> algorithms;
 };
 
+template <int64_t MINIMAL_BATCH = 64>
 class DynamicTimeslicing {
 public:
-  DynamicTimeslicing() : reduction_cache(42) {}
+  explicit DynamicTimeslicing(int64_t dataset_size)
+      : reduction_cache(2 * dataset_size / MINIMAL_BATCH), probing_cache(2 * dataset_size / MINIMAL_BATCH) {}
 
   void execute_join(data::Dataset& dataset,
                     similarity::Similarity& similarity,
                     std::vector<ontology::QueryPlan>& plans,
                     timing::TimeDynamicJoinTiming& timing,
                     std::vector<statistics::LocalDynamicTimeSliceStatistics>& all_statistics) {
-    BlockScheduler scheduler(dataset.statistics->count);
+    BlockScheduler<MINIMAL_BATCH> scheduler(dataset.statistics->count);
     BlockAlgorithmCache algorithm_cache(plans.size());
     ontology::UCT uct = ontology::UCT::from_query_plans(plans);
-    AlgorithmSharedState<MaterializeHandler> ass;
+    AlgorithmSharedState<> ass;
 
-    constexpr int64_t HALFBATCH = 64;
+    constexpr int64_t HALFBATCH = MINIMAL_BATCH;
     constexpr double TIMESLICE = 0.3;
     double scaled_timeslice = TIMESLICE;
 
@@ -421,6 +423,7 @@ public:
                                           ibatch,
                                           *new_left_alg,
                                           *new_right_alg,
+                                          selection.action,
                                           plan,
                                           handler,
                                           plan_statistics);
@@ -433,8 +436,16 @@ public:
                 auto right_batch = get_batch_by_offset(dataset.data, right_id, real_block_end);
                 auto ibatch = IndexedBatch(right_id, right_batch);
 
-                perform_twosided_microbatch(
-                  dataset.data, similarity, false, ibatch, *new_right_alg, *new_left_alg, plan, handler, plan_statistics);
+                perform_twosided_microbatch(dataset.data,
+                                            similarity,
+                                            false,
+                                            ibatch,
+                                            *new_right_alg,
+                                            *new_left_alg,
+                                            selection.action,
+                                            plan,
+                                            handler,
+                                            plan_statistics);
                 right_id = real_block_end;
               }
             } else {
@@ -504,6 +515,7 @@ private:
                                    IndexedBatch& batch,
                                    VarSizeAlgIns& indexing_alg,
                                    VarSizeAlgIns& probing_alg,
+                                   int64_t plan_id,
                                    ontology::QueryPlan& selected_plan,
                                    MaterializeHandler& handler,
                                    statistics::LocalDynamicTimeSliceStatistics& plan_statistics) {
@@ -526,16 +538,24 @@ private:
     }
 
     // 2. probe against probing_alg
-    std::shared_ptr<std::any> null;
+    std::shared_ptr<std::any> cached_probing_signatures;
     FilterConfig config{is_self_join ? FilterType::SYMMETRIC_PAIRS : FilterType::NOP};
     if (selected_plan.steps.empty()) {
-      probing_alg.algorithm->join_batch(batch.batch, handler, config, plan_statistics, null);
+      if (probing_alg.algorithm->has_independent_probing_signatures()) {
+        cached_probing_signatures = probing_cache.get_cached_probing_signatures(
+          plan_id, batch.id, batch.batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
+      }
+      probing_alg.algorithm->join_batch(batch.batch, handler, config, plan_statistics, cached_probing_signatures);
     } else {
       auto reduced =
         reduction_cache.reduce_data_to_end(batch, similarity, selected_plan, plan_statistics.rc_statistics);
       auto reduced_batch = dataset_to_batch(*reduced);
+      if (probing_alg.algorithm->has_independent_probing_signatures()) {
+        cached_probing_signatures = probing_cache.get_cached_probing_signatures(
+          plan_id, batch.id, reduced_batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
+      }
 
-      probing_alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, null);
+      probing_alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, cached_probing_signatures);
     }
 
     // 3. verify pairs
@@ -606,7 +626,7 @@ private:
                              ontology::QueryPlan& selected_plan,
                              MaterializeHandler& handler,
                              statistics::LocalDynamicTimeSliceStatistics& plan_statistics) {
-    int64_t BATCH_SIZE = 64;
+    constexpr int64_t BATCH_SIZE = MINIMAL_BATCH;
     int64_t probe_id = probe_block_start;
     while (probe_id < probe_block_end) {
       auto real_block_end = std::min(probe_id + BATCH_SIZE, probe_block_end);
@@ -635,6 +655,7 @@ private:
 
 private:
   ReductionCache reduction_cache;
+  ProbingSignaturesCache probing_cache;
 };
 
 // ReSharper restore CppDFANotInitializedField
