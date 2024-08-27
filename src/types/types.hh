@@ -28,6 +28,8 @@ using HashTable = absl::flat_hash_map<K, V>;
 template <class K>
 using HashSet = absl::flat_hash_set<K>;
 template <class K, class V>
+using TreeTable = absl::btree_map<K, V>;
+template <class K, class V>
 using TreeMTable = absl::btree_multimap<K, V>;
 
 #if __cplusplus > 201703L
