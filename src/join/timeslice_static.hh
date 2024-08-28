@@ -46,7 +46,7 @@ inline void evaluate_microbatch(types::Dataset& data,
                         ipbatch,
                         reduction_cache,
                         plan_statistics);
-  // types::print_result_pairs(std::cerr, handler.results, data);
+  types::print_result_pairs(std::cerr, handler.results, data);
   plan_statistics.result_size.add(static_cast<int64_t>(handler.results.size()));
   handler.results.clear();
 }

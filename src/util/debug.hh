@@ -4,13 +4,11 @@
 namespace util {
 
 #if FAST_DEBUG
-inline void print_dbg(const std::string& s) {
-  std::cerr << s << std::endl;
-}
+inline void print_dbg(const std::string& s, const std::string& eol = "\n") { std::cerr << s << eol; }
 #else
-inline void print_dbg([[maybe_unused]] const std::string& s) {}
+inline void print_dbg([[maybe_unused]] const std::string& s, [[maybe_unused]] const std::string& eol = "\n") {}
 #endif
 
-}
+}  // namespace util
 
-#endif //DEBUG_HH
+#endif  // DEBUG_HH

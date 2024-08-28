@@ -96,6 +96,17 @@ struct LocalTimeSliceStatistics : LocalJoinStatistics {
 
 struct LocalDynamicTimeSliceStatistics : LocalJoinStatistics {
   explicit LocalDynamicTimeSliceStatistics(const nlohmann::json& description) : LocalJoinStatistics(description) {}
+
+  CountItem<> index_cache_hits;
+  CountItem<> index_cache_misses;
+
+  [[nodiscard]] nlohmann::json to_json() const override {
+    auto json = LocalJoinStatistics::to_json();
+    index_cache_hits.add_to_json("index_cache_hits", json);
+    index_cache_misses.add_to_json("index_cache_misses", json);
+
+    return json;
+  }
 };
 
 struct GlobalJoinStatistics : JoinStatistics {
@@ -124,7 +135,26 @@ struct GlobalBlockSliceStatistics : GlobalJoinStatistics {
 
 struct GlobalTimeSliceStatistics : GlobalJoinStatistics {};
 
-struct GlobalDynamicTimeSliceStatistics : GlobalJoinStatistics {};
+struct GlobalDynamicTimeSliceStatistics : GlobalJoinStatistics {
+  CountItem<> index_cache_hits;
+  CountItem<> index_cache_misses;
+
+  void merge(LocalJoinStatistics &foreign_stat) override {
+    GlobalJoinStatistics::merge(foreign_stat);
+
+    auto& local_stat = dynamic_cast<LocalDynamicTimeSliceStatistics&>(foreign_stat);
+    this->index_cache_hits.value += local_stat.index_cache_hits.value;
+    this->index_cache_misses.value += local_stat.index_cache_misses.value;
+  }
+
+  [[nodiscard]] nlohmann::json to_json() const override {
+    auto json = GlobalJoinStatistics::to_json();
+    index_cache_hits.add_to_json("index_cache_hits", json);
+    index_cache_misses.add_to_json("index_cache_misses", json);
+
+    return json;
+  }
+};
 
 using LocalStatistics = std::vector<std::unique_ptr<LocalJoinStatistics>>;
 
