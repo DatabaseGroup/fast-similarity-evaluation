@@ -158,9 +158,9 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
                                   types::ResultPairs& result_pairs,
                                   int64_t index_offset,
                                   int64_t probe_offset,
-                                  IndexedBatch index_batch,
-                                  IndexedBatch probe_batch,
-                                  ReductionCache reduction_cache,
+                                  IndexedBatch& index_batch,
+                                  IndexedBatch& probe_batch,
+                                  ReductionCache& reduction_cache,
                                   statistics::LocalJoinStatistics& plan_statistics) {
   if (!plan.steps.empty()) {
     auto similarities = reduction_cache.get_all_reduced_similarities(similarity, plan);
