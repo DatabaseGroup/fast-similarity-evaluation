@@ -25,12 +25,14 @@ inline void evaluate_microbatch(types::Dataset& data,
   std::shared_ptr<std::any> null;
   FilterConfig config{FilterType::SYMMETRIC_PAIRS};
   if (selected_plan.steps.empty()) {
-    alg.algorithm->join_batch(probing_batch, handler, config, plan_statistics, null);
+    auto indexed_data = dataset_to_batch(data);
+    alg.algorithm->join_batch(indexed_data, probing_batch, handler, config, plan_statistics, null);
   } else {
     auto reduced = reduction_cache.reduce_data_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
     auto reduced_batch = dataset_to_batch(*reduced);
+    auto indexed_data = dataset_to_batch(*alg.owned_data);
 
-    alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, null);
+    alg.algorithm->join_batch(indexed_data, reduced_batch, handler, config, plan_statistics, null);
   }
 
   // this should not be necessary in general, but due to a "bug" in add_small_results, we currently need this
@@ -46,7 +48,7 @@ inline void evaluate_microbatch(types::Dataset& data,
                         ipbatch,
                         reduction_cache,
                         plan_statistics);
-  types::print_result_pairs(std::cerr, handler.results, data);
+  // types::print_result_pairs(std::cerr, handler.results, data);
   plan_statistics.result_size.add(static_cast<int64_t>(handler.results.size()));
   handler.results.clear();
 }
@@ -84,7 +86,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.algorithm = resolve_algorithmid(
       plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data);
-    alg_instance.algorithm->insert_batch(index_batch);
+    alg_instance.algorithm->insert_batch(index_batch, index_batch);
   }
   timing.build_time.stop();
 

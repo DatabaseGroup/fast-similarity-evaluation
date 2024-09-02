@@ -70,7 +70,7 @@ public:
       if (plan.steps.empty()) {
         // the dataset and similarity are owned by the caller
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity, shared_state);
-        alg_instance.algorithm->insert_batch(index_batch.batch);
+        alg_instance.algorithm->insert_batch(index_batch.batch, index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_data_to_end(index_batch, similarity, plan, statistics.rc_statistics);
@@ -79,7 +79,7 @@ public:
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.similarity, shared_state);
 
         auto batch = dataset_to_batch(*alg_instance.owned_data);
-        alg_instance.algorithm->insert_batch(batch);
+        alg_instance.algorithm->insert_batch(batch, batch);
       }
 
       alg_instance.initialized = true;
@@ -104,13 +104,14 @@ public:
       } else {
         config.type = FilterType::NOP;
       }
-      alg_instance.algorithm->join_batch(probe_batch.batch, handler, config, statistics, cached_probing_signatures);
+      alg_instance.algorithm->join_batch(index_batch.batch, probe_batch.batch, handler, config, statistics, cached_probing_signatures);
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     } else {
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
       auto reduced_probe = reduction_cache.reduce_data_to_end(probe_batch, similarity, plan, statistics.rc_statistics);
       auto batch = dataset_to_batch(*reduced_probe);
+      auto indexed_data = dataset_to_batch(*alg_instance.owned_data);
 
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
@@ -125,7 +126,7 @@ public:
       } else {
         config.type = FilterType::NOP;
       }
-      alg_instance.algorithm->join_batch(batch, handler, config, statistics, cached_probing_signatures);
+      alg_instance.algorithm->join_batch(indexed_data, batch, handler, config, statistics, cached_probing_signatures);
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     }
   }

@@ -8,11 +8,10 @@ bool PallocJoin<Handler>::has_independent_probing_signatures() {
 }
 
 template <class Handler>
-void PallocJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
+void PallocJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+  auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
-  indexed_sets.reserve(indexed_sets.size() + sets.data.size());
-  indexed_sets.insert(indexed_sets.end(), sets.data.begin(), sets.data.end());
   this->resize_bitmap(indexed_sets.size());
 
   const int64_t max_asbs = similarity.max_asbs();
@@ -77,7 +76,8 @@ std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
 }
 
 template <class Handler>
-void PallocJoin<Handler>::join_batch(types::Batch& batch,
+void PallocJoin<Handler>::join_batch(types::Batch& indexed_data,
+  types::Batch& batch,
                                      Handler handler,
                                      FilterConfig& filter_config,
                                      statistics::JoinStatistics& statistics,
@@ -94,31 +94,33 @@ void PallocJoin<Handler>::join_batch(types::Batch& batch,
   // this could be done in a nicer way
   switch (filter_config.type) {
   case NOP:
-    _join_batch<NopFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<NopFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case SIMPLE_SELFJOIN:
-    _join_batch<SimpleSelfjoinFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<SimpleSelfjoinFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case SYMMETRIC_PAIRS:
-    _join_batch<SymmetricPairFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<SymmetricPairFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    _join_batch<CutoffFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<CutoffFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    _join_batch<CutoffSelfFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<CutoffSelfFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   }
 }
 
 template <class Handler>
 template <class Filter>
-void PallocJoin<Handler>::_join_batch(types::Batch& batch,
+void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
+                                      types::Batch& batch,
                                       std::vector<CachedSignatures>& signatures,
                                       Handler& handler,
                                       FilterConfig& filter_config,
                                       statistics::JoinStatistics& statistics) {
-  auto sets = std::get<types::SetBatch>(batch);
+  auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
+  auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<bool>& already_seen = this->indexed_bitmap;
   std::vector<RecordId> candidates;
@@ -144,10 +146,10 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
 
     auto candidate_handler = [&](RecordId set_id) {
       // todo this could be optimized (actually perform the break instead of skipping); lists are maybe short enough
-      if (!Filter::scan_skip_cond(indexed_sets[set_id].get(), probing_set, filter_config) &&
-          !Filter::scan_break_cond(indexed_sets[set_id].get(), probing_set, filter_config)) {
+      if (!Filter::scan_skip_cond(indexed_sets[set_id], probing_set, filter_config) &&
+          !Filter::scan_break_cond(indexed_sets[set_id], probing_set, filter_config)) {
         if (!already_seen[set_id]) {
-          auto index_size = static_cast<int64_t>(indexed_sets[set_id].get().tokens.size());
+          auto index_size = static_cast<int64_t>(indexed_sets[set_id].tokens.size());
           if (minimum_size <= index_size && index_size <= maximum_size) {
             already_seen[set_id] = true;
             candidates.push_back(set_id);
@@ -186,14 +188,14 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
       auto& candidate_set = indexed_sets[candidate_id];
 
       if constexpr (Filter::literally_selfjoin()) {
-        if (probing_set.id <= candidate_set.get().id) {
+        if (probing_set.id <= candidate_set.id) {
           already_seen[candidate_id] = false;
           continue;
         }
       }
 
-      if (similarity.is_in_threshold(candidate_set.get(), probing_set)) {
-        handler(candidate_set.get().id, probing_set.id);
+      if (similarity.is_in_threshold(candidate_set, probing_set)) {
+        handler(candidate_set.id, probing_set.id);
       }
 
       already_seen[candidate_id] = false;

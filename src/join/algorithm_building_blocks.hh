@@ -120,11 +120,16 @@ inline void offset_verify_with_similarity(types::Batch& left_dataset,
   std::visit(util::overloaded{set_verify, string_verify, tree_verify}, left_dataset);
 }
 
-inline types::Batch dataset_to_batch(types::Dataset& dataset) {
+inline types::Batch dataset_to_batch(types::Dataset& dataset,
+                                     size_t start = 0,
+                                     size_t end = std::numeric_limits<size_t>::max()) {
   return std::visit(
-    [](auto&& data) {
+    [&](auto&& data) {
       using DatasetType = std::decay_t<decltype(data)>;
-      return types::Batch(types::DataBatch<typename DatasetType::value_type>(data));
+      auto real_end = std::min(data.data.size(), end);
+      return types::Batch(types::DataBatch<typename DatasetType::value_type>(
+        types::span<typename DatasetType::value_type>(data.data.begin() + start, data.data.begin() + real_end),
+        data.meta));
     },
     dataset);
 }

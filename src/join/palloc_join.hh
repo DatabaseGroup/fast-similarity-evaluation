@@ -61,8 +61,9 @@ public:
 
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
-  void insert_batch(types::Batch& batch) override;
-  void join_batch(types::Batch& batch,
+  void insert_batch(types::Batch& indexed_data, types::Batch& batch) override;
+  void join_batch(types::Batch& indexed_data,
+                  types::Batch& batch,
                   Handler handler,
                   FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
@@ -70,7 +71,8 @@ public:
 
 private:
   template <class Filter>
-  void _join_batch(types::Batch& batch,
+  void _join_batch(types::Batch& indexed_data,
+                   types::Batch& batch,
                    std::vector<CachedSignatures>& signatures,
                    Handler& handler,
                    FilterConfig& filter_config,
@@ -106,7 +108,6 @@ private:
 private:
   similarity::SetSimilarity& similarity;
   SharedState& shared_state;
-  std::vector<RefSet> indexed_sets;
   similarity::PallocSignature signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
   types::TreeMTable<int32_t, int32_t> small_index;

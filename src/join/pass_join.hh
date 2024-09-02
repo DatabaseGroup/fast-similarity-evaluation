@@ -81,8 +81,9 @@ public:
 public:
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
-  void insert_batch(types::Batch& batch) override;
-  void join_batch(types::Batch& batch,
+  void insert_batch(types::Batch& indexed_data, types::Batch& batch) override;
+  void join_batch(types::Batch& indexed_data,
+                  types::Batch& batch,
                   Handler handler,
                   FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
@@ -90,17 +91,17 @@ public:
 
 private:
   template <class Filter>
-  void _join_batch(types::Batch& batch,
-              std::vector<CachedSignatures>& cached_probing_signatures,
-              Handler handler,
-              FilterConfig& filter_config,
-              statistics::JoinStatistics& statistics);
+  void _join_batch(types::Batch& indexed_data,
+                   types::Batch& batch,
+                   std::vector<CachedSignatures>& cached_probing_signatures,
+                   Handler handler,
+                   FilterConfig& filter_config,
+                   statistics::JoinStatistics& statistics);
 
 private:
   similarity::StringEditDistance& similarity;
   similarity::PassJoinSignature passjoin_signature;
   indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
-  std::vector<RefString> indexed_strings;
 };
 
 template class PassJoin<MaterializeHandler>;

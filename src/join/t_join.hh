@@ -39,8 +39,8 @@ public:
 public:
   bool has_independent_probing_signatures() override;
   std::any get_probing_signatures(types::Batch& batch) override;
-  void insert_batch(types::Batch& batch) override;
-  void join_batch(types::Batch& batch,
+  void insert_batch(types::Batch& indexed_data, types::Batch& batch) override;
+  void join_batch(types::Batch& indexed_data, types::Batch& batch,
                   Handler handler,
                   FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,

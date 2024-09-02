@@ -5,11 +5,9 @@
 namespace join {
 
 template <class Handler>
-void PassJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
+void PassJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+  auto& indexed_strings = std::get<types::StringBatch>(indexed_data).data;
   auto& strings = std::get<types::StringBatch>(batch);
-
-  indexed_strings.reserve(indexed_strings.size() + strings.data.size());
-  indexed_strings.insert(indexed_strings.end(), strings.data.begin(), strings.data.end());
   this->resize_bitmap(indexed_strings.size());
 
   for (auto& string : strings.data) {
@@ -42,7 +40,8 @@ std::any PassJoin<Handler>::get_probing_signatures([[maybe_unused]] types::Batch
 }
 
 template <class Handler>
-void PassJoin<Handler>::join_batch(types::Batch& batch,
+void PassJoin<Handler>::join_batch(types::Batch& indexed_data,
+                                  types::Batch& batch,
                                    Handler handler,
                                    FilterConfig& filter_config,
                                    statistics::JoinStatistics& statistics,
@@ -60,31 +59,32 @@ void PassJoin<Handler>::join_batch(types::Batch& batch,
   // this could be done in a nicer way
   switch (filter_config.type) {
   case NOP:
-    _join_batch<NopFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<NopFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case SIMPLE_SELFJOIN:
-    _join_batch<SimpleSelfjoinFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<SimpleSelfjoinFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case SYMMETRIC_PAIRS:
-    _join_batch<SymmetricPairFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<SymmetricPairFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    _join_batch<CutoffFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<CutoffFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    _join_batch<CutoffSelfFilter>(batch, *signatures, handler, filter_config, statistics);
+    _join_batch<CutoffSelfFilter>(indexed_data, batch, *signatures, handler, filter_config, statistics);
     break;
   }
 }
 
 template <class Handler>
 template <class Filter>
-void PassJoin<Handler>::_join_batch(types::Batch& batch,
+void PassJoin<Handler>::_join_batch(types::Batch& indexed_data, types::Batch& batch,
                                     std::vector<CachedSignatures>& cached_probing_signatures,
                                     Handler handler,
                                     FilterConfig& filter_config,
                                     statistics::JoinStatistics& statistics) {
-  auto strings = std::get<types::StringBatch>(batch);
+  auto& indexed_strings = std::get<types::StringBatch>(indexed_data).data;
+  auto& strings = std::get<types::StringBatch>(batch);
 
   std::vector<bool>& already_seen = this->indexed_bitmap;
   std::vector<StringId> candidates;
@@ -101,10 +101,10 @@ void PassJoin<Handler>::_join_batch(types::Batch& batch,
     index.query(
       indexing::KeyRange(minimum_candidate_size, maximum_candidate_size),
       [&](StringId set_id) {
-        if (Filter::scan_break_cond(indexed_strings[set_id].get(), string, filter_config)) {
+        if (Filter::scan_break_cond(indexed_strings[set_id], string, filter_config)) {
           return true;
         }
-        if (!Filter::scan_skip_cond(indexed_strings[set_id].get(), string, filter_config)) {
+        if (!Filter::scan_skip_cond(indexed_strings[set_id], string, filter_config)) {
           if (!already_seen[set_id]) {
             already_seen[set_id] = true;
             candidates.push_back(set_id);
@@ -121,14 +121,14 @@ void PassJoin<Handler>::_join_batch(types::Batch& batch,
       auto candidate_string = indexed_strings[candidate_id];
 
       if constexpr (Filter::literally_selfjoin()) {
-        if (string.id <= candidate_string.get().id) {
+        if (string.id <= candidate_string.id) {
           already_seen[candidate_id] = false;
           continue;
         }
       }
 
       if (similarity.is_in_threshold(candidate_string, string)) {
-        handler(candidate_string.get().id, string.id);
+        handler(candidate_string.id, string.id);
       }
 
       already_seen[candidate_id] = false;

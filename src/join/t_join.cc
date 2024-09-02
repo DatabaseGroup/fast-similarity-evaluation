@@ -5,7 +5,7 @@
 namespace join {
 
 template <class Handler>
-void TJoinLite<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
+void TJoinLite<Handler>::insert_batch([[maybe_unused]] types::Batch& indexed_data, types::Batch& batch) {
   auto& tree_batch = std::get<types::TreeBatch>(batch);
 
   label_converter.measureAndAssignFrequencyIdentifiers(tree_batch.data, indexed_sets, token_map_list);
@@ -40,7 +40,8 @@ std::any TJoinLite<Handler>::get_probing_signatures(types::Batch& batch) {
 }
 
 template <class Handler>
-void TJoinLite<Handler>::join_batch(types::Batch& batch,
+void TJoinLite<Handler>::join_batch([[maybe_unused]] types::Batch& indexed_data,
+                                    types::Batch& batch,
                                     Handler handler,
                                     FilterConfig& filter_config,
                                     statistics::JoinStatistics& statistics,

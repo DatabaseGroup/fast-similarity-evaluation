@@ -23,15 +23,17 @@ public:
         shared_state(shared_state),
         prefix_signature(*std::get<similarity::SetSimilarityPtr>(similarity), shared_state.sqs) {}
 
-  void insert_batch(types::Batch& batch) override;
-  void join_batch(types::Batch& batch,
+  void insert_batch(types::Batch& indexed_data, types::Batch& batch) override;
+  void join_batch(types::Batch& indexed_data,
+                  types::Batch& batch,
                   Handler handler,
                   FilterConfig& filter_config,
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
   template <class Filter>
-  void _join_batch(types::Batch& batch,
+  void _join_batch(types::Batch& indexed_data,
+                   types::Batch& batch,
                    Handler handler,
                    FilterConfig& filter_config,
                    statistics::JoinStatistics& statistics);
@@ -46,7 +48,6 @@ private:
   similarity::SetPrefixSignature prefix_signature;
   indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
   types::TreeMTable<int32_t, int32_t> small_index;
-  std::vector<std::reference_wrapper<types::Set>> indexed_sets;
   std::vector<types::Set> preprocessed_sets;
 };
 

@@ -325,7 +325,7 @@ public:
     std::vector<AlgorithmSharedState<>> plan_shared_states(plans.size());
 
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
-    constexpr double TIMESLICE = 0.0001;
+    constexpr double TIMESLICE = 0.3;
     double scaled_timeslice = TIMESLICE;
 
     double total_reward = 0;
@@ -469,6 +469,7 @@ public:
               auto left_batch = get_batch_by_offset(dataset.data, left_id, real_block_end);
               auto ibatch = IndexedBatch(left_id, left_batch);
 
+              new_left_alg->end = real_block_end;
               perform_twosided_microbatch(dataset.data,
                                           similarity,
                                           block.self_join(),
@@ -488,6 +489,7 @@ public:
                 auto right_batch = get_batch_by_offset(dataset.data, right_id, real_block_end);
                 auto ibatch = IndexedBatch(right_id, right_batch);
 
+                new_right_alg->end = real_block_end;
                 perform_twosided_microbatch(dataset.data,
                                             similarity,
                                             false,
@@ -518,11 +520,9 @@ public:
           }
           processed_pairs += computed_pairs(block, left_id, right_id);
           scheduler.advance_block(left_id, right_id);
-          new_left_alg->end = left_target_id;
 
           algorithm_cache.emplace(selection.action, std::move(*new_left_alg));
           if (!block.self_join()) {
-            new_right_alg->end = right_target_id;
             algorithm_cache.emplace(selection.action, std::move(*new_right_alg));
           }
 
@@ -578,7 +578,8 @@ private:
                                    statistics::LocalDynamicTimeSliceStatistics& plan_statistics) {
     // 1. index into indexing_alg
     if (selected_plan.steps.empty()) {
-      indexing_alg.algorithm->insert_batch(batch.batch);
+      auto indexed_data = dataset_to_batch(data, indexing_alg.start, indexing_alg.end);
+      indexing_alg.algorithm->insert_batch(indexed_data, batch.batch);
     } else {
       std::shared_ptr<types::Dataset> last_level;
       for (int32_t level = static_cast<int32_t>(selected_plan.steps.size()) - 1; level >= 0; --level) {
@@ -590,29 +591,40 @@ private:
         dataset_append(indexing_alg.owned_data[level], *last_level);
       }
       auto batch_size = std::visit([](auto& b) { return b.data.size(); }, batch.batch);
+      auto indexed_data = dataset_to_batch(indexing_alg.owned_data.front());
       auto to_insert_batch = dataset_last_n(indexing_alg.owned_data.front(), batch_size);
-      indexing_alg.algorithm->insert_batch(to_insert_batch);
+      indexing_alg.algorithm->insert_batch(indexed_data, to_insert_batch);
     }
 
     // 2. probe against probing_alg
-    std::shared_ptr<std::any> cached_probing_signatures;
-    FilterConfig config{is_self_join ? FilterType::SYMMETRIC_PAIRS : FilterType::NOP};
-    if (selected_plan.steps.empty()) {
-      if (probing_alg.algorithm->has_independent_probing_signatures()) {
-        cached_probing_signatures = probing_cache.get_cached_probing_signatures(
-          plan_id, batch.id, batch.batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
-      }
-      probing_alg.algorithm->join_batch(batch.batch, handler, config, plan_statistics, cached_probing_signatures);
-    } else {
-      auto reduced =
-        reduction_cache.reduce_data_to_end(batch, similarity, selected_plan, plan_statistics.rc_statistics);
-      auto reduced_batch = dataset_to_batch(*reduced);
-      if (probing_alg.algorithm->has_independent_probing_signatures()) {
-        cached_probing_signatures = probing_cache.get_cached_probing_signatures(
-          plan_id, batch.id, reduced_batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
-      }
+    // only probe if the instance contains any data
+    if (probing_alg.start != probing_alg.end) {
+      std::shared_ptr<std::any> cached_probing_signatures;
+      FilterConfig config{is_self_join ? FilterType::SYMMETRIC_PAIRS : FilterType::NOP};
+      if (selected_plan.steps.empty()) {
+        if (probing_alg.algorithm->has_independent_probing_signatures()) {
+          cached_probing_signatures = probing_cache.get_cached_probing_signatures(
+            plan_id, batch.id, batch.batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
+        }
+        auto indexed_data = dataset_to_batch(data, probing_alg.start, probing_alg.end);
+        probing_alg.algorithm->join_batch(
+          indexed_data, batch.batch, handler, config, plan_statistics, cached_probing_signatures);
+      } else {
+        // it might be the case that no data was inserted into the probing_alg instance yet (this is the case for every
+        // first iteration); we have to skip this in that case (there is no indexed_data to be used)
 
-      probing_alg.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, cached_probing_signatures);
+        auto reduced =
+          reduction_cache.reduce_data_to_end(batch, similarity, selected_plan, plan_statistics.rc_statistics);
+        auto reduced_batch = dataset_to_batch(*reduced);
+        if (probing_alg.algorithm->has_independent_probing_signatures()) {
+          cached_probing_signatures = probing_cache.get_cached_probing_signatures(
+            plan_id, batch.id, reduced_batch, *probing_alg.algorithm, plan_statistics.rc_statistics);
+        }
+        auto indexed_data = dataset_to_batch(probing_alg.owned_data.front());
+
+        probing_alg.algorithm->join_batch(
+          indexed_data, reduced_batch, handler, config, plan_statistics, cached_probing_signatures);
+      }
     }
 
     // 3. verify pairs
@@ -642,7 +654,7 @@ private:
         // plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
         verify_with_similarity(data, similarity, handler.results);
       }
-      types::print_result_pairs(std::cerr, handler.results, data);
+      // types::print_result_pairs(std::cerr, handler.results, data);
       plan_statistics.result_size.add(handler.results.size());
       handler.results.clear();
     }
@@ -658,10 +670,6 @@ private:
                                    ontology::QueryPlan& selected_plan,
                                    MaterializeHandler& handler,
                                    statistics::LocalDynamicTimeSliceStatistics& plan_statistics) {
-    if (index_range.first <= 6 && 6 <= index_range.second) {
-      std::cerr << "..." << std::endl;
-    }
-
     // 1. probe against alg_with_index
     std::shared_ptr<std::any> cached_probing_signatures;
     FilterConfig config{is_self_join ? CUTOFF_SELFJOIN : CUTOFF, index_range.first, index_range.second};
@@ -670,8 +678,11 @@ private:
         cached_probing_signatures = probing_cache.get_cached_probing_signatures(
           plan_id, probing_batch.id, probing_batch.batch, *alg_with_index.algorithm, plan_statistics.rc_statistics);
       }
+
+      auto indexed_data = dataset_to_batch(data, alg_with_index.start, alg_with_index.end);
+
       alg_with_index.algorithm->join_batch(
-        probing_batch.batch, handler, config, plan_statistics, cached_probing_signatures);
+        indexed_data, probing_batch.batch, handler, config, plan_statistics, cached_probing_signatures);
     } else {
       auto reduced =
         reduction_cache.reduce_data_to_end(probing_batch, similarity, selected_plan, plan_statistics.rc_statistics);
@@ -682,7 +693,9 @@ private:
           plan_id, probing_batch.id, reduced_batch, *alg_with_index.algorithm, plan_statistics.rc_statistics);
       }
 
-      alg_with_index.algorithm->join_batch(reduced_batch, handler, config, plan_statistics, cached_probing_signatures);
+      auto indexed_data = dataset_to_batch(alg_with_index.owned_data.front());
+      alg_with_index.algorithm->join_batch(
+        indexed_data, reduced_batch, handler, config, plan_statistics, cached_probing_signatures);
     }
 
     // 2. verify pairs
@@ -712,7 +725,7 @@ private:
       verify_with_similarity(data, similarity, handler.results);
     }
     plan_statistics.result_size.add(handler.results.size());
-    types::print_result_pairs(std::cerr, handler.results, data);
+    // types::print_result_pairs(std::cerr, handler.results, data);
     handler.results.clear();
   }
 

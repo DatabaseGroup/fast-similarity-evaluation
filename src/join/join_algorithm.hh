@@ -101,7 +101,7 @@ struct CutoffFilter : AbstractFilter {
   }
 
   template<class T>
-  constexpr static bool scan_skip_cond(const T& index, const T& probe, [[maybe_unused]] FilterConfig& config) {
+  constexpr static bool scan_skip_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
     return index.id < config.index_start;
   }
 
@@ -131,9 +131,10 @@ public:
   virtual std::any get_probing_signatures([[maybe_unused]] types::Batch& batch) {
     throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
-  virtual void insert_batch(types::Batch& batch) = 0;
+  virtual void insert_batch(types::Batch& indexed_data, types::Batch& batch) = 0;
 
-  virtual void join_batch(types::Batch& batch,
+  virtual void join_batch(types::Batch& indexed_data,
+                          types::Batch& batch,
                           Handler handler,
                           FilterConfig& filter_config,
                           statistics::JoinStatistics& statistics,
