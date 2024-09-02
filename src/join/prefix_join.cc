@@ -18,6 +18,7 @@ void PrefixSignatureJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& b
     index.clear();
     preprocessed_sets.clear();
     this->next_id = 0;
+    local_sqs_version = shared_state.sqs_version;
 
     preprocessed_sets.insert(preprocessed_sets.begin(), indexed_sets.begin(), indexed_sets.end());
     prefix_signature.convert_tokens(preprocessed_sets);
@@ -55,7 +56,7 @@ void PrefixSignatureJoin<Handler>::insert_into_index(types::span<types::Set> set
     }
 
     if (static_cast<int64_t>(set_size) <= max_asbs) {
-      small_index.emplace(static_cast<int32_t>(this->next_id), static_cast<int32_t>(set_size));
+      small_index.emplace(static_cast<int32_t>(set_size), static_cast<int32_t>(this->next_id));
     }
 
     ++this->next_id;
@@ -113,7 +114,7 @@ void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch,
     auto maximum_candidate_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
-    add_small_results(set,
+    add_small_results<Filter>(set,
                       small_index.begin(),
                       small_index.end(),
                       preprocessed_sets,
@@ -121,6 +122,7 @@ void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch,
                       maximum_candidate_size,
                       similarity,
                       candidates,
+                      filter_config,
                       already_seen);
 
     auto it = prefix_signature.begin_probing_signatures(set);

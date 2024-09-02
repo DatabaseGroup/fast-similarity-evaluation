@@ -37,7 +37,7 @@ void PallocJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
     }
 
     if (static_cast<int64_t>(set_size) <= max_asbs) {
-      small_index.emplace(static_cast<int32_t>(this->next_id), static_cast<int32_t>(set_size));
+      small_index.emplace(static_cast<int32_t>(set_size), static_cast<int32_t>(this->next_id));
     }
 
     ++this->next_id;
@@ -131,7 +131,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
     auto maximum_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
-    add_small_results(probing_set,
+    add_small_results<Filter>(probing_set,
                       small_index.begin(),
                       small_index.end(),
                       indexed_sets,
@@ -139,6 +139,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& batch,
                       maximum_size,
                       similarity,
                       candidates,
+                      filter_config,
                       already_seen);
 
     auto candidate_handler = [&](RecordId set_id) {

@@ -49,7 +49,8 @@ public:
       : index_batch(index_batch),
         reduction_cache(reductionCache),
         probing_signatures_cache(probing_signatures_cache),
-        algorithms(algorithm_count) {}
+        algorithms(algorithm_count),
+        shared_states(algorithm_count) {}
 
 public:
   void probe_using_plan(IndexedBatch& probe_batch,
@@ -60,6 +61,7 @@ public:
                         BatchCost& batch_cost,
                         statistics::LocalJoinStatistics& statistics) {
     auto& plan = plans[plan_idx];
+    auto& shared_state = shared_states[plan_idx];
 
     batch_cost.indexing.start = timing::start_cost_measurement();
     auto& alg_instance = algorithms[plan_idx];
@@ -67,14 +69,14 @@ public:
       // if reductions are necessary
       if (plan.steps.empty()) {
         // the dataset and similarity are owned by the caller
-        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity, shared_shate);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, similarity, shared_state);
         alg_instance.algorithm->insert_batch(index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
         auto reduced = reduction_cache.reduce_data_to_end(index_batch, similarity, plan, statistics.rc_statistics);
         alg_instance.owned_data = reduced;
         alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
-        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.similarity, shared_shate);
+        alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.similarity, shared_state);
 
         auto batch = dataset_to_batch(*alg_instance.owned_data);
         alg_instance.algorithm->insert_batch(batch);
@@ -133,7 +135,7 @@ private:
   ReductionCache& reduction_cache;
   ProbingSignaturesCache& probing_signatures_cache;
   std::vector<AlgorithmInstance<>> algorithms;
-  AlgorithmSharedState<MaterializeHandler> shared_shate{};
+  std::vector<AlgorithmSharedState<MaterializeHandler>> shared_states;
 };
 
 class PlanExecutor {

@@ -7,12 +7,6 @@
 
 namespace join {
 
-// Used to support add_small_results for PrefixSignature
-template <>
-struct SizeGetter<types::Set> {
-  static int64_t get_size(types::Set& set) { return static_cast<int64_t>(set.tokens.size()); }
-};
-
 template <class Handler>
 class PrefixSignatureJoin : public SignatureJoin<Handler> {
 public:

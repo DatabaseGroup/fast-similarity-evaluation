@@ -111,18 +111,18 @@ public:
     std::vector<similarity::Similarity> similarities;
     if (!plan.steps.empty()) {
       similarities.resize(plan.steps.size());
-      similarities.emplace_back(std::move(plan.steps.front().reduction.get().reduce_similarity(similarity)));
+      similarities[plan.steps.size() - 1] = std::move(plan.steps.front().reduction.get().reduce_similarity(similarity));
       for (size_t i = 1; i < plan.steps.size(); ++i) {
-        similarities[plan.steps.size() - i] = std::move(plan.steps[i].reduction.get().reduce_similarity(similarities.back()));
+        similarities[plan.steps.size() - i - 1] =
+          std::move(plan.steps[plan.steps.size() - i].reduction.get().reduce_similarity(similarities.back()));
       }
     }
     return similarities;
   }
 
-  similarity::Similarity reduce_similarity_to_end(similarity::Similarity& similarity,
-                                                                   ontology::QueryPlan& plan) {
+  similarity::Similarity reduce_similarity_to_end(similarity::Similarity& similarity, ontology::QueryPlan& plan) {
     assert(!plan.steps.empty());
-    return std::move(get_all_reduced_similarities(similarity, plan).back());
+    return std::move(get_all_reduced_similarities(similarity, plan).front());
   }
 
 private:

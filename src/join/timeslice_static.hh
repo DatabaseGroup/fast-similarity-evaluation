@@ -58,7 +58,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
   std::vector<AlgorithmInstance<MaterializeHandler>> algorithms;
-  AlgorithmSharedState<MaterializeHandler> shared_state;
+  std::vector<AlgorithmSharedState<MaterializeHandler>> shared_states(plans.size());
 
   // should be large enough to fit all index data of plans + one microbatch
   // a plan has at most 3 steps and we have ~plans.size + 1 different "batches" at the same time
@@ -73,6 +73,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   for (size_t i = 0; i < plans.size(); ++i) {
     auto& plan = plans[i];
     auto& alg_instance = algorithms.emplace_back();
+    auto& shared_state = shared_states[i];
 
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {

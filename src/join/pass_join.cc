@@ -12,11 +12,10 @@ void PassJoin<Handler>::insert_batch([[maybe_unused]] types::Batch& batch) {
   indexed_strings.insert(indexed_strings.end(), strings.data.begin(), strings.data.end());
   this->resize_bitmap(indexed_strings.size());
 
-  for (auto string_ref : indexed_strings) {
-    auto& string = string_ref.get().str;
+  for (auto& string : strings.data) {
 
-    for (auto signatures = passjoin_signature.indexing_signatures(string); const auto sig : signatures) {
-      index.insert(this->next_id, static_cast<int64_t>(string.size()), sig);
+    for (auto signatures = passjoin_signature.indexing_signatures(string.str); const auto sig : signatures) {
+      index.insert(this->next_id, static_cast<int64_t>(string.str.size()), sig);
     }
 
     ++this->next_id;

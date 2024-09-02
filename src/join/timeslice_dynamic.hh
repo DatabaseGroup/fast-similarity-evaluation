@@ -86,8 +86,8 @@ private:
     }
 
     [[nodiscard]] PlanBlock get_current_subblock() const {
-      const int64_t half_x = std::ceil(static_cast<double>(end.x - start.x) / 2 / 64) * 64;
-      const int64_t half_y = std::ceil(static_cast<double>(end.y - start.y) / 2 / 64) * 64;
+      const int64_t half_x = std::ceil(static_cast<double>(end.x - start.x) / 2 / ALIGNMENT) * ALIGNMENT;
+      const int64_t half_y = std::ceil(static_cast<double>(end.y - start.y) / 2 / ALIGNMENT) * ALIGNMENT;
 
       Corner inner_start, inner_end;
 
@@ -208,10 +208,7 @@ private:
 };
 
 struct VarSizeAlgIns {
-  ontology::QueryPlan& plan;
   std::unique_ptr<JoinAlgorithm<MaterializeHandler>> algorithm{};
-  ReductionCache& reduction_cache;
-  AlgorithmSharedState<>& ass;
   std::vector<types::Dataset> owned_data;
   similarity::Similarity& similarity;
   std::vector<similarity::Similarity> similarities;
@@ -223,17 +220,9 @@ struct VarSizeAlgIns {
                 ReductionCache& reduction_cache,
                 AlgorithmSharedState<>& ass,
                 int64_t start)
-      : plan(plan), reduction_cache(reduction_cache), ass(ass), similarity(similarity), start(start), end(start) {
+      : similarity(similarity), start(start), end(start) {
     similarities = reduction_cache.get_all_reduced_similarities(similarity, plan);
-    reset();
-  }
-
-  [[nodiscard]] bool initialized() const { return start != end; }
-  void reset() {
-    owned_data.clear();
-    end = start;
-    algorithm.reset();
-    algorithm = resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : similarities.back(), ass);
+    algorithm = resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : similarities.front(), ass);
   }
 };
 
@@ -327,13 +316,16 @@ public:
                     std::vector<ontology::QueryPlan>& plans,
                     timing::TimeDynamicJoinTiming& timing,
                     std::vector<statistics::LocalDynamicTimeSliceStatistics>& all_statistics) {
+    // TJoin does not support the required filter configs and updates
+    std::erase_if(plans, [](ontology::QueryPlan& p) { return p.algorithm_id == TJOIN; });
+
     BlockScheduler<MINIMAL_BATCH> scheduler(dataset.statistics->count);
     BlockAlgorithmCache algorithm_cache(plans.size());
     ontology::UCT uct = ontology::UCT::from_query_plans(plans);
-    AlgorithmSharedState<> ass;
+    std::vector<AlgorithmSharedState<>> plan_shared_states(plans.size());
 
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
-    constexpr double TIMESLICE = 0.3;
+    constexpr double TIMESLICE = 0.0001;
     double scaled_timeslice = TIMESLICE;
 
     double total_reward = 0;
@@ -349,6 +341,7 @@ public:
       auto selection = uct.select_action();
       auto& plan = plans[selection.action];
       auto& plan_statistics = all_statistics[selection.action];
+      auto& ass = plan_shared_states[selection.action];
       plan_statistics.selection_count.inc();
 
       timing::ExecutionCost start_time = timing::start_cost_measurement();
@@ -591,14 +584,14 @@ private:
       for (int32_t level = static_cast<int32_t>(selected_plan.steps.size()) - 1; level >= 0; --level) {
         last_level =
           reduction_cache.reduce_data_to_level(batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
-        int32_t inverted_level = static_cast<int32_t>(selected_plan.steps.size()) - level;
-        if (indexing_alg.owned_data.size() < inverted_level) {
+        if (indexing_alg.owned_data.size() < selected_plan.steps.size()) {
           indexing_alg.owned_data.resize(selected_plan.steps.size());
         }
-        dataset_append(indexing_alg.owned_data[inverted_level - 1], *last_level);
+        dataset_append(indexing_alg.owned_data[level], *last_level);
       }
-      auto reduced_batch = dataset_to_batch(*last_level);
-      indexing_alg.algorithm->insert_batch(reduced_batch);
+      auto batch_size = std::visit([](auto& b) { return b.data.size(); }, batch.batch);
+      auto to_insert_batch = dataset_last_n(indexing_alg.owned_data.front(), batch_size);
+      indexing_alg.algorithm->insert_batch(to_insert_batch);
     }
 
     // 2. probe against probing_alg
@@ -624,32 +617,35 @@ private:
 
     // 3. verify pairs
     // todo: this should be cleaned up (see algorithm_building_blocks.hh)
-    for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
-      auto& reduced_index = indexing_alg.owned_data[level];
-      auto reduced_index_batch = dataset_to_batch(reduced_index);
-      auto reduced_probe =
-        reduction_cache.reduce_data_to_level(batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
-      auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
+    if (!handler.results.empty()) {
+      for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
+        auto& reduced_index = probing_alg.owned_data[level];
+        auto reduced_index_batch = dataset_to_batch(reduced_index);
+        auto reduced_probe =
+          reduction_cache.reduce_data_to_level(batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
+        auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
 
-      plan_statistics.step_verifications[selected_plan.steps.size() - (level + 1)].add(
-        static_cast<int64_t>(handler.results.size()));
-      offset_verify_with_similarity(reduced_index_batch,
-                                    indexing_alg.start,
-                                    reduced_probe_batch,
-                                    0,
-                                    indexing_alg.similarities[level],
-                                    handler.results);
-    }
+        plan_statistics.step_verifications[selected_plan.steps.size() - (level + 1)].add(
+          static_cast<int64_t>(handler.results.size()));
+        offset_verify_with_similarity(reduced_index_batch,
+                                      probing_alg.start,
+                                      reduced_probe_batch,
+                                      static_cast<int64_t>(batch.id),  // = first id
+                                      indexing_alg.similarities[level],
+                                      handler.results);
+      }
 
-    // if data was actually reduced, we still have to verify with the "outermost" similarity
-    // otherwise, the algorithm instance has already verified this part
-    if (!selected_plan.steps.empty()) {
-      plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
-      verify_with_similarity(data, similarity, handler.results);
+      // if data was actually reduced, we still have to verify with the "outermost" similarity
+      // otherwise, the algorithm instance has already verified this part
+      if (!selected_plan.steps.empty()) {
+        // todo initialize
+        // plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
+        verify_with_similarity(data, similarity, handler.results);
+      }
+      types::print_result_pairs(std::cerr, handler.results, data);
+      plan_statistics.result_size.add(handler.results.size());
+      handler.results.clear();
     }
-    // types::print_result_pairs(std::cerr, handler.results, data);
-    plan_statistics.result_size.add(handler.results.size());
-    handler.results.clear();
   }
 
   void perform_onesided_microbatch(types::Dataset& data,
@@ -662,6 +658,10 @@ private:
                                    ontology::QueryPlan& selected_plan,
                                    MaterializeHandler& handler,
                                    statistics::LocalDynamicTimeSliceStatistics& plan_statistics) {
+    if (index_range.first <= 6 && 6 <= index_range.second) {
+      std::cerr << "..." << std::endl;
+    }
+
     // 1. probe against alg_with_index
     std::shared_ptr<std::any> cached_probing_signatures;
     FilterConfig config{is_self_join ? CUTOFF_SELFJOIN : CUTOFF, index_range.first, index_range.second};
@@ -690,8 +690,8 @@ private:
     for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
       auto& reduced_index = alg_with_index.owned_data[level];
       auto reduced_index_batch = dataset_to_batch(reduced_index);
-      auto reduced_probe =
-        reduction_cache.reduce_data_to_level(probing_batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
+      auto reduced_probe = reduction_cache.reduce_data_to_level(
+        probing_batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
       auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
 
       plan_statistics.step_verifications[selected_plan.steps.size() - (level + 1)].add(
@@ -699,7 +699,7 @@ private:
       offset_verify_with_similarity(reduced_index_batch,
                                     alg_with_index.start,
                                     reduced_probe_batch,
-                                    0,
+                                    static_cast<int64_t>(probing_batch.id),
                                     alg_with_index.similarities[level],
                                     handler.results);
     }
@@ -707,11 +707,12 @@ private:
     // if data was actually reduced, we still have to verify with the "outermost" similarity
     // otherwise, the algorithm instance has already verified this part
     if (!selected_plan.steps.empty()) {
-      plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
+      // todo initialize
+      // plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
       verify_with_similarity(data, similarity, handler.results);
     }
     plan_statistics.result_size.add(handler.results.size());
-    // types::print_result_pairs(std::cerr, handler.results, data);
+    types::print_result_pairs(std::cerr, handler.results, data);
     handler.results.clear();
   }
 

@@ -171,7 +171,7 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
       plan_statistics.step_verifications[plan.steps.size() - (level + 1)].add(
         static_cast<int64_t>(result_pairs.size()));
       offset_verify_with_similarity(
-        reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, similarities[level - 1], result_pairs);
+        reduced_index_batch, index_offset, reduced_probe_batch, probe_offset, similarities[level], result_pairs);
     }
 
     // if data was actually reduced, we still have to verify with the "outermost" similarity

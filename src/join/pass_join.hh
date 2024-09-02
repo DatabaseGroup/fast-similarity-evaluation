@@ -7,14 +7,6 @@
 
 namespace join {
 
-// Used to support add_small_results in PassJoin
-template <>
-struct SizeGetter<std::reference_wrapper<types::String>> {
-  static int64_t get_size(std::reference_wrapper<types::String>& string) {
-    return static_cast<int64_t>(string.get().str.size());
-  }
-};
-
 template <class Handler>
 class PassJoin : public SignatureJoin<Handler> {
 private:
