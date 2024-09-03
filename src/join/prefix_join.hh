@@ -32,14 +32,14 @@ public:
                   std::shared_ptr<std::any> probing_signatures) override;
 
   template <class Filter>
-  void _join_batch(types::Batch& indexed_data,
-                   types::Batch& batch,
+  void _join_batch(types::Batch& batch,
                    Handler handler,
                    FilterConfig& filter_config,
                    statistics::JoinStatistics& statistics);
 
 private:
   void insert_into_index(types::span<types::Set> sets);
+  void update_index(types::span<types::Set>& indexed_sets);
 
 private:
   similarity::SetSimilarity& similarity;

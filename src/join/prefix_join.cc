@@ -8,7 +8,6 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
   auto& sets = std::get<types::SetBatch>(batch);
 
   prefix_signature.update_frequencies(sets.data);
-  bool renew_required = false;
 
   shared_state.totally_indexed_sets += static_cast<int64_t>(sets.data.size());
   if (shared_state.totally_indexed_sets > shared_state.next_reindexing) {
@@ -16,23 +15,14 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
     shared_state.next_reindexing = shared_state.totally_indexed_sets * 2;
   }
   if (local_sqs_version < shared_state.sqs_version) {
-    renew_required = true;
-    index.clear();
-    preprocessed_sets.clear();
-    this->next_id = 0;
-    local_sqs_version = shared_state.sqs_version;
-
-    preprocessed_sets.insert(preprocessed_sets.begin(), indexed_sets.begin(), indexed_sets.end());
-    prefix_signature.convert_tokens(preprocessed_sets);
-
-    insert_into_index(preprocessed_sets);
+    update_index(indexed_sets);
   } else {
     // preprocessing "consumes" the data, take copy
     preprocessed_sets.reserve(preprocessed_sets.size() + sets.data.size());
     preprocessed_sets.insert(preprocessed_sets.end(), sets.data.begin(), sets.data.end());
 
-    types::span<types::Set> new_sets =
-    types::span<types::Set>(preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
+    types::span<types::Set> new_sets = types::span<types::Set>(
+      preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
     prefix_signature.convert_tokens(new_sets);
     insert_into_index(new_sets);
   }
@@ -65,36 +55,54 @@ void PrefixSignatureJoin<Handler>::insert_into_index(types::span<types::Set> set
 }
 
 template <class Handler>
+void PrefixSignatureJoin<Handler>::update_index(types::span<types::Set>& indexed_sets) {
+  index.clear();
+  small_index.clear();
+  preprocessed_sets.clear();
+  this->next_id = 0;
+  local_sqs_version = shared_state.sqs_version;
+
+  preprocessed_sets.insert(preprocessed_sets.begin(), indexed_sets.begin(), indexed_sets.end());
+  prefix_signature.convert_tokens(preprocessed_sets);
+
+  insert_into_index(preprocessed_sets);
+}
+
+template <class Handler>
 void PrefixSignatureJoin<Handler>::join_batch(types::Batch& indexed_data,
                                               types::Batch& batch,
                                               Handler handler,
                                               FilterConfig& filter_config,
                                               statistics::JoinStatistics& statistics,
                                               [[maybe_unused]] std::shared_ptr<std::any> probing_signatures) {
+  if (local_sqs_version < shared_state.sqs_version) {
+    auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
+    update_index(indexed_sets);
+  }
+
   // this could be done in a nicer way
   switch (filter_config.type) {
   case NOP:
-    _join_batch<NopFilter>(indexed_data, batch, handler, filter_config, statistics);
+    _join_batch<NopFilter>(batch, handler, filter_config, statistics);
     break;
   case SIMPLE_SELFJOIN:
-    _join_batch<SimpleSelfjoinFilter>(indexed_data, batch, handler, filter_config, statistics);
+    _join_batch<SimpleSelfjoinFilter>(batch, handler, filter_config, statistics);
     break;
   case SYMMETRIC_PAIRS:
-    _join_batch<SymmetricPairFilter>(indexed_data, batch, handler, filter_config, statistics);
+    _join_batch<SymmetricPairFilter>(batch, handler, filter_config, statistics);
     break;
   case CUTOFF:
-    _join_batch<CutoffFilter>(indexed_data, batch, handler, filter_config, statistics);
+    _join_batch<CutoffFilter>(batch, handler, filter_config, statistics);
     break;
   case CUTOFF_SELFJOIN:
-    _join_batch<CutoffSelfFilter>(indexed_data, batch, handler, filter_config, statistics);
+    _join_batch<CutoffSelfFilter>(batch, handler, filter_config, statistics);
     break;
   }
 }
 
 template <class Handler>
 template <class Filter>
-void PrefixSignatureJoin<Handler>::_join_batch([[maybe_unused]] types::Batch& indexed_data,
-                                               types::Batch& batch,
+void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch,
                                                Handler handler,
                                                FilterConfig& filter_config,
                                                statistics::JoinStatistics& statistics) {

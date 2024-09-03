@@ -165,6 +165,10 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
     std::visit([](auto& datameta) {
       std::mt19937 prng(std::random_device{}());
       std::shuffle(datameta.data.begin(), datameta.data.end(), prng);
+
+      for (size_t i = 0; i < datameta.data.size(); ++i) {
+        datameta.data[i].id = i;
+      }
     },dataset.data);
   }
 
@@ -259,9 +263,12 @@ int main(int argc, char** argv) {
     using StatClass = statistics::LocalDynamicTimeSliceStatistics;
     timing::TimeDynamicJoinTiming tdj_timing;
 
+    // TJoin does not support the required filter configs and updates
+    std::erase_if(plans, [](ontology::QueryPlan& p) { return p.algorithm_id == join::TJOIN; });
+
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalDynamicTimeSliceStatistics>();
-    join::timeslice::DynamicTimeslicing<8> dts(dataset.statistics->count);
+    join::timeslice::DynamicTimeslicing<64> dts(dataset.statistics->count);
     dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
     timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
     std::for_each(

@@ -316,8 +316,9 @@ public:
                     std::vector<ontology::QueryPlan>& plans,
                     timing::TimeDynamicJoinTiming& timing,
                     std::vector<statistics::LocalDynamicTimeSliceStatistics>& all_statistics) {
-    // TJoin does not support the required filter configs and updates
-    std::erase_if(plans, [](ontology::QueryPlan& p) { return p.algorithm_id == TJOIN; });
+    for (size_t action = 0; action < plans.size(); ++action) {
+      util::print_dbg(absl::StrFormat("Action %i: %s", action, plans[action].to_string()));
+    }
 
     BlockScheduler<MINIMAL_BATCH> scheduler(dataset.statistics->count);
     BlockAlgorithmCache algorithm_cache(plans.size());
@@ -650,8 +651,7 @@ private:
       // if data was actually reduced, we still have to verify with the "outermost" similarity
       // otherwise, the algorithm instance has already verified this part
       if (!selected_plan.steps.empty()) {
-        // todo initialize
-        // plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
+        plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
         verify_with_similarity(data, similarity, handler.results);
       }
       // types::print_result_pairs(std::cerr, handler.results, data);
@@ -720,8 +720,7 @@ private:
     // if data was actually reduced, we still have to verify with the "outermost" similarity
     // otherwise, the algorithm instance has already verified this part
     if (!selected_plan.steps.empty()) {
-      // todo initialize
-      // plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
+      plan_statistics.step_verifications.back().add(static_cast<int64_t>(handler.results.size()));
       verify_with_similarity(data, similarity, handler.results);
     }
     plan_statistics.result_size.add(handler.results.size());
