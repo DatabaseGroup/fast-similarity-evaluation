@@ -242,7 +242,7 @@ public:
       // todo: Replace this with lower_bound (or similar) again
       auto it = map.begin();
       for (; it != map.end(); ++it) {
-        auto& instance = it->second;
+        auto& instance = *it;
         if (instance.start <= range_start && range_end <= instance.end) {
           double fitness =
             static_cast<double>(range_end - range_start) / static_cast<double>(instance.end - instance.start);
@@ -261,9 +261,16 @@ public:
   }
 
   void emplace(int64_t algorithm_id, VarSizeAlgIns&& instance) {
+    for (auto& alg : algorithms[algorithm_id]) {
+      if (alg.start == instance.start && alg.end == instance.end) {
+        util::print_dbg(
+      absl::StrFormat("\t\tIndex for action %i with range (%i, %i) already exists.", algorithm_id, instance.start, instance.end));
+        return;
+      }
+    }
     util::print_dbg(
       absl::StrFormat("\t\tIndexed action %i with range (%i, %i)", algorithm_id, instance.start, instance.end));
-    algorithms[algorithm_id].emplace(instance.end, std::forward<VarSizeAlgIns>(instance));
+    algorithms[algorithm_id].emplace_back(std::forward<VarSizeAlgIns>(instance));
   }
 
   void print() {
@@ -271,7 +278,7 @@ public:
     for (size_t action = 0; action < algorithms.size(); ++action) {
       auto& map = algorithms[action];
       for (auto& it : map) {
-        auto& alg = it.second;
+        auto& alg = it;
         util::print_dbg(absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), "");
       }
     }
@@ -286,7 +293,7 @@ public:
       int64_t range_start = 0;
       int64_t range_end = 0;
       for (auto& it : map) {
-        auto& alg = it.second;
+        auto& alg = it;
         if (range_start <= alg.start && alg.start <= range_end && range_end <= alg.end) {
           range_end = alg.end;
         }
@@ -302,7 +309,7 @@ public:
   }
 
 private:
-  std::vector<types::TreeMTable<int64_t, VarSizeAlgIns>> algorithms;
+  std::vector<std::vector<VarSizeAlgIns>> algorithms;
 };
 
 template <int64_t MINIMAL_BATCH = 64>
