@@ -146,10 +146,7 @@ void PrefixSignatureJoin<Handler>::_join_batch(types::Batch& batch,
       index.query(
         signature,
         [&](RecordId set_id) {
-          if (Filter::scan_break_cond(preprocessed_sets[set_id], set, filter_config)) {
-            return true;
-          }
-          if (!Filter::scan_skip_cond(preprocessed_sets[set_id], set, filter_config)) {
+          if (!Filter::scan_break_cond(preprocessed_sets[set_id], set, filter_config) && !Filter::scan_skip_cond(preprocessed_sets[set_id], set, filter_config)) {
             if (!already_seen[set_id]) {
               already_seen[set_id] = true;
               candidates.push_back(set_id);

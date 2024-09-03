@@ -400,41 +400,36 @@ public:
             absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end));
 
           if (left_is_index) {
-            int64_t computed_until = compute_with_index(dataset.data,
-                                                        similarity,
-                                                        {block.start.x, block.end.x},
-                                                        {block.start.y, block.end.y},
-                                                        *best_alg,
-                                                        block.self_join(),
-                                                        selection.action,
-                                                        plan,
-                                                        handler,
-                                                        plan_statistics);
-            // mark square or rectangle as processed
-            scheduler.advance_block(block.end.x, block.end.y);
-            if (block.self_join()) {
-              processed_pairs += (computed_until - block.start.y) * (best_alg->end - best_alg->start - 1) / 2;
-            } else {
-              processed_pairs += (computed_until - block.start.y) * (best_alg->end - best_alg->start);
-            }
+            compute_with_index(dataset.data,
+                               similarity,
+                               {block.start.x, block.end.x},
+                               {block.start.y, block.end.y},
+                               *best_alg,
+                               block.self_join(),
+                               selection.action,
+                               plan,
+                               handler,
+                               plan_statistics);
+
           } else {
-            int64_t computed_until = compute_with_index(dataset.data,
-                                                        similarity,
-                                                        {block.start.y, block.end.y},
-                                                        {block.start.x, block.end.x},
-                                                        *best_alg,
-                                                        block.self_join(),
-                                                        selection.action,
-                                                        plan,
-                                                        handler,
-                                                        plan_statistics);
-            // mark square or rectangle as processed
-            scheduler.advance_block(block.end.x, block.end.y);
-            if (block.self_join()) {
-              processed_pairs += (computed_until - block.end.x) * (best_alg->end - best_alg->start - 1) / 2;
-            } else {
-              processed_pairs += (computed_until - block.end.x) * (best_alg->end - best_alg->start);
-            }
+            compute_with_index(dataset.data,
+                               similarity,
+                               {block.start.y, block.end.y},
+                               {block.start.x, block.end.x},
+                               *best_alg,
+                               block.self_join(),
+                               selection.action,
+                               plan,
+                               handler,
+                               plan_statistics);
+          }
+
+          // mark square or rectangle as processed
+          scheduler.advance_block(block.end.x, block.end.y);
+          if (block.self_join()) {
+            processed_pairs += (block.end.y - block.start.y) * (block.end.x - block.start.x - 1) / 2;
+          } else {
+            processed_pairs += (block.end.y - block.start.y) * (block.end.x - block.start.x - 1);
           }
 
           util::print_dbg(
