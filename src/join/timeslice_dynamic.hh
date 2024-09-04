@@ -61,16 +61,17 @@ private:
     PlanBlock(int64_t start_x, int64_t start_y, int64_t end_x, int64_t end_y)
         : PlanBlock(Corner(start_x, start_y), Corner(end_x, end_y)) {}
     PlanBlock(const Corner& start, const Corner& end) : Block(start, end) {
-      if ((end.x - start.x) / ALIGNMENT > 1 && (end.y - start.y) / ALIGNMENT > 1) {
+      if (static_cast<double>(end.x - start.x) / ALIGNMENT > 1. &&
+          static_cast<double>(end.y - start.y) / ALIGNMENT > 1.) {
         if (start.x == start.y) {
           // self join
           missing_blocks = {LR, UR, UL};
         } else {
           missing_blocks = {LR, LL, UR, UL};
         }
-      } else if ((end.x - start.x) / ALIGNMENT > 1) {
+      } else if (static_cast<double>(end.x - start.x) / ALIGNMENT > 1.) {
         missing_blocks = {RIGHT, LEFT};
-      } else if ((end.y - start.y) / ALIGNMENT > 1) {
+      } else if (static_cast<double>(end.y - start.y) / ALIGNMENT > 1.) {
         missing_blocks = {LOWER, UPPER};
       }
     }
@@ -149,11 +150,15 @@ public:
     return {innermost_block.start, innermost_block.end};
   }
 
-  ProcessBlock advance_block(int64_t last_x, int64_t last_y) {
-    Corner largest_processed_block;
-    Corner start = get_block().start;
-    if (get_block().end == Corner(last_x, last_y)) {
-      largest_processed_block = Corner(last_x, last_y);
+  void advance_block(int64_t last_x, int64_t last_y) {
+    /*
+     *  Three cases:
+     *    1. block was completely processed
+     *    2. block was completely processed in one direction
+     *    3. block was not completely processed in both directions
+     */
+    const auto& last_block = get_block();
+    if (last_block.end == Corner(last_x, last_y)) {
       do {
         // block was fully processed
         nested_blocks.pop_back();
@@ -162,6 +167,23 @@ public:
           lb.advance_block();
         }
       } while (nested_blocks.size() > 1 && nested_blocks.back().is_finished());
+
+      if (!nested_blocks.empty()) {
+        if (nested_blocks.back().is_finished()) {
+          nested_blocks.pop_back();
+        } else {
+          nested_blocks.emplace_back(nested_blocks.back().get_current_subblock());
+        }
+      }
+    } else if (last_block.end.x == last_x || last_block.end.y == last_y) {
+      auto last_start = last_block.start;
+      auto last_end = last_block.end;
+      nested_blocks.pop_back();
+      if (last_block.end.x == last_x) {
+        nested_blocks.emplace_back(Corner(last_start.x, last_y), last_end);
+      } else {
+        nested_blocks.emplace_back(Corner(last_x, last_start.y), last_end);
+      }
     } else {
       // block was partially processed
       // find the largest processed subblock
@@ -170,26 +192,23 @@ public:
         nested_blocks.emplace_back(lb.get_current_subblock());
       } while (nested_blocks.back().end.x > last_x && nested_blocks.back().end.y > last_y);
       // last block was processed completely
-      largest_processed_block = nested_blocks.back().end;
       nested_blocks.pop_back();
       nested_blocks.back().advance_block();
-    }
-    if (!nested_blocks.empty()) {
-      if (nested_blocks.back().is_finished()) {
-        nested_blocks.pop_back();
-      } else {
-        nested_blocks.emplace_back(nested_blocks.back().get_current_subblock());
+
+      if (!nested_blocks.empty()) {
+        if (nested_blocks.back().is_finished()) {
+          nested_blocks.pop_back();
+        } else {
+          nested_blocks.emplace_back(nested_blocks.back().get_current_subblock());
+        }
       }
     }
-
-    return ProcessBlock{start, largest_processed_block};
   }
 
-  Corner next_smallest_fitting(int64_t last_x, int64_t last_y) {
+  Corner next_larger_fitting(int64_t last_x, int64_t last_y) {
     if (get_block().end == Corner(last_x, last_y)) {
       return {last_x, last_y};
     } else {
-      // explicitly taking copy here
       const auto& block = get_block();
       PlanBlock lb_outer{block.start, block.end};
       PlanBlock lb_inner = lb_outer.get_current_subblock();
@@ -198,6 +217,20 @@ public:
         lb_inner = lb_outer.get_current_subblock();
       }
       return lb_outer.end;
+    }
+  }
+
+  Corner next_smaller_fitting(int64_t last_x, int64_t last_y) {
+    if (get_block().end == Corner(last_x, last_y)) {
+      return {last_x, last_y};
+    } else {
+      const auto& block = get_block();
+      PlanBlock lb_inner{block.start, block.end};
+      lb_inner = lb_inner.get_current_subblock();
+      while (last_x < lb_inner.end.x || last_y < lb_inner.end.y) {
+        lb_inner = lb_inner.get_current_subblock();
+      }
+      return lb_inner.end;
     }
   }
 
@@ -231,21 +264,48 @@ public:
   explicit BlockAlgorithmCache(size_t algorithm_count) : algorithms(algorithm_count) {}
 
 public:
-  std::optional<util::object_ptr<VarSizeAlgIns>> find_instance(int64_t algorithm_id,
-                                                               int64_t range_start,
-                                                               int64_t range_end) {
+  std::optional<util::object_ptr<VarSizeAlgIns>> find_covered_instance(int64_t algorithm_id,
+                                                                       int64_t range_start,
+                                                                       int64_t range_end) {
+    return find_instance_by_predicate(
+      algorithm_id,
+      range_start,
+      range_end,
+      [](int64_t range_start, int64_t range_end, int64_t instance_start, int64_t instance_end) {
+        return instance_start <= range_start && range_end <= instance_end;
+      });
+  }
+
+  std::optional<util::object_ptr<VarSizeAlgIns>> find_starting_instance(
+    int64_t algorithm_id,
+    const std::pair<int64_t, int64_t>& index_range,
+    const std::pair<int64_t, int64_t>& probe_range) {
+    return find_instance_by_predicate(
+      algorithm_id,
+      index_range.first,
+      index_range.second,
+      [&](int64_t range_start, int64_t range_end, int64_t instance_start, int64_t instance_end) {
+        return instance_start == range_start;
+      });
+  }
+
+  std::optional<util::object_ptr<VarSizeAlgIns>> find_instance_by_predicate(
+    int64_t algorithm_id,
+    int64_t range_start,
+    int64_t range_end,
+    const std::function<bool(int64_t, int64_t, int64_t, int64_t)>& predicate) {
     auto& map = algorithms[algorithm_id];
     util::object_ptr<VarSizeAlgIns> best_fit;
     if (!map.empty()) {
       double best_fitness = 0;
 
-      // todo: Replace this with lower_bound (or similar) again
       auto it = map.begin();
       for (; it != map.end(); ++it) {
         auto& instance = *it;
-        if (instance.start <= range_start && range_end <= instance.end) {
-          double fitness =
-            static_cast<double>(range_end - range_start) / static_cast<double>(instance.end - instance.start);
+        if (predicate(range_start, range_end, instance.start, instance.end)) {
+          int64_t overlap = std::min(range_end, instance.end) - std::max(range_start, instance.start);
+          int64_t total_range = range_end - range_start + instance.end - instance.start;
+          double fitness = static_cast<double>(overlap) / static_cast<double>(total_range);
           if (fitness > best_fitness) {
             best_fit = &instance;
             best_fitness = fitness;
@@ -263,8 +323,8 @@ public:
   void emplace(int64_t algorithm_id, VarSizeAlgIns&& instance) {
     for (auto& alg : algorithms[algorithm_id]) {
       if (alg.start == instance.start && alg.end == instance.end) {
-        util::print_dbg(
-      absl::StrFormat("\t\tIndex for action %i with range (%i, %i) already exists.", algorithm_id, instance.start, instance.end));
+        util::print_dbg(absl::StrFormat(
+          "\t\tIndex for action %i with range (%i, %i) already exists.", algorithm_id, instance.start, instance.end));
         return;
       }
     }
@@ -373,8 +433,15 @@ public:
         int64_t right_id = block.start.y;
 
         algorithm_cache.print();
-        auto left_alg = algorithm_cache.find_instance(selection.action, block.start.x, block.end.x);
-        auto right_alg = algorithm_cache.find_instance(selection.action, block.start.y, block.end.y);
+        auto left_alg = algorithm_cache.find_covered_instance(selection.action, block.start.x, block.end.x);
+        auto right_alg = algorithm_cache.find_covered_instance(selection.action, block.start.y, block.end.y);
+
+        if (!left_alg && !right_alg) {
+          left_alg = algorithm_cache.find_starting_instance(
+            selection.action, {block.start.x, block.end.x}, {block.start.y, block.end.y});
+          right_alg = algorithm_cache.find_starting_instance(
+            selection.action, {block.start.y, block.end.y}, {block.start.x, block.end.x});
+        }
 
         /*
          * Cases:
@@ -406,45 +473,72 @@ public:
           util::print_dbg(
             absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end));
 
-          if (left_is_index) {
-            compute_with_index(dataset.data,
-                               similarity,
-                               {block.start.x, block.end.x},
-                               {block.start.y, block.end.y},
-                               *best_alg,
-                               block.self_join(),
-                               selection.action,
-                               plan,
-                               handler,
-                               plan_statistics);
+          Corner computed_until{};
 
-          } else {
+          if (left_is_index) {
+            std::pair<int64_t, int64_t> index_range{block.start.x, block.end.x};
+            std::pair<int64_t, int64_t> probe_range{block.start.y, block.end.y};
+            if (!(best_alg->start <= block.start.x && block.end.x <= best_alg->end)) {
+              assert(best_alg->start == block.start.x);
+              auto next_full_block =
+                scheduler.next_smaller_fitting(best_alg->end, probe_range.first + (best_alg->end - best_alg->start));
+              index_range.second = next_full_block.x;
+              probe_range.second = next_full_block.y;
+            }
             compute_with_index(dataset.data,
                                similarity,
-                               {block.start.y, block.end.y},
-                               {block.start.x, block.end.x},
+                               index_range,
+                               probe_range,
                                *best_alg,
                                block.self_join(),
                                selection.action,
                                plan,
                                handler,
                                plan_statistics);
+            computed_until.x = index_range.second;
+            computed_until.y = probe_range.second;
+          } else {
+            std::pair<int64_t, int64_t> index_range{block.start.y, block.end.y};
+            std::pair<int64_t, int64_t> probe_range{block.start.x, block.end.x};
+            if (!(best_alg->start <= block.start.y && block.end.y <= best_alg->end)) {
+              assert(best_alg->start == block.start.y);
+              auto next_full_block =
+                scheduler.next_smaller_fitting(probe_range.first + (best_alg->end - best_alg->start), best_alg->end);
+              index_range.second = next_full_block.y;
+              probe_range.second = next_full_block.x;
+            }
+            compute_with_index(dataset.data,
+                               similarity,
+                               index_range,
+                               probe_range,
+                               *best_alg,
+                               block.self_join(),
+                               selection.action,
+                               plan,
+                               handler,
+                               plan_statistics);
+            computed_until.x = probe_range.second;
+            computed_until.y = index_range.second;
           }
 
-          // mark square or rectangle as processed
-          scheduler.advance_block(block.end.x, block.end.y);
+          scheduler.advance_block(computed_until.x, computed_until.y);
           if (block.self_join()) {
-            processed_pairs += (block.end.y - block.start.y) * (block.end.x - block.start.x - 1) / 2;
+            processed_pairs += (computed_until.x - block.start.x) * (computed_until.y - block.start.y - 1) / 2;
           } else {
-            processed_pairs += (block.end.y - block.start.y) * (block.end.x - block.start.x - 1);
+            processed_pairs += (computed_until.x - block.start.x) * (computed_until.y - block.start.y);
           }
 
           util::print_dbg(
-            absl::StrFormat("\tFinished block left: (%i, %i), right (%i, %i) completely using cache index",
+            absl::StrFormat("\tFinished block left: (%i, %i), right (%i, %i) %s using cache index until (%i, %i)",
                             block.start.x,
                             block.end.x,
                             block.start.y,
-                            block.end.y));
+                            block.end.y,
+                            computed_until.x == block.end.x && computed_until.y == block.end.y   ? "completely"
+                            : computed_until.x == block.end.x || computed_until.y == block.end.y ? "semi-completely"
+                                                                                                 : "incompletely",
+                            computed_until.x,
+                            computed_until.y));
 
           end_time = timing::end_cost_measurement();
           time_required = timing::get_cost(start_time, end_time);
@@ -515,7 +609,7 @@ public:
               // break outer loop
               time_exceeded = true;
               // stop processing at next full block border for inner loop
-              auto new_end = scheduler.next_smallest_fitting(left_id, right_id);
+              auto new_end = scheduler.next_larger_fitting(left_id, right_id);
               left_target_id = new_end.x;
               right_target_id = new_end.y;
               util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id));
@@ -537,6 +631,12 @@ public:
                                           left_id,
                                           right_id));
         }
+      }
+
+      end_time = timing::end_cost_measurement();
+      time_required = timing::get_cost(start_time, end_time);
+      if (time_required / scaled_timeslice > 1.25) {
+        non_punctual++;
       }
 
       const double all_pairs =
