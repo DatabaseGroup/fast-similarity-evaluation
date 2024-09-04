@@ -65,6 +65,17 @@ public:
     return total_reward / nr_of_selections;
   }
 
+  void reset() {
+    total_reward = 0;
+    nr_of_selections = 0;
+    untried_action_ids.clear();
+    for (size_t i = 0; i < actions.size(); ++i) {
+      auto& child  = actions[i];
+      untried_action_ids.push_back(i);
+      child.reset();
+    }
+  }
+
 private:
   void select_path(std::vector<util::object_ptr<UCTNode>>& path) { // NOLINT(*-no-recursion)
     if (actions.empty()) {
@@ -166,6 +177,10 @@ public:
 
   void update_exp_weight(double weight) {
     config.exploration_weight = weight;
+  }
+
+  void reset() {
+    root.reset();
   }
 
 private:

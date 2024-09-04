@@ -20,6 +20,7 @@ struct Config {
   int64_t batch_count{};
   int64_t reduction_cache_size{};
   int64_t probing_signatures_cache_size{};
+  double timeslice{};
   std::string label;
   std::string mode;
   std::vector<std::string> excluded_algorithms;
@@ -46,7 +47,8 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "read-until,u",
     po::value(&config.read_file_until)->default_value(std::numeric_limits<int64_t>::max()),
     "Read the first X lines of the input")(
-    "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static");
+    "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static")(
+    "time-slice,i", po::value(&config.timeslice)->default_value(0.3), "Timeslice in seconds");
 
   const std::string exec_name(argv[0]);
 
@@ -162,14 +164,16 @@ std::pair<types::DatatypeId, data::Dataset> resolve_data(const std::string& data
   }
 
   if (shuffle) {
-    std::visit([](auto& datameta) {
-      std::mt19937 prng(std::random_device{}());
-      std::shuffle(datameta.data.begin(), datameta.data.end(), prng);
+    std::visit(
+      [](auto& datameta) {
+        std::mt19937 prng(std::random_device{}());
+        std::shuffle(datameta.data.begin(), datameta.data.end(), prng);
 
-      for (size_t i = 0; i < datameta.data.size(); ++i) {
-        datameta.data[i].id = i;
-      }
-    },dataset.data);
+        for (size_t i = 0; i < datameta.data.size(); ++i) {
+          datameta.data[i].id = i;
+        }
+      },
+      dataset.data);
   }
 
   return {data_id, std::move(dataset)};
@@ -255,7 +259,7 @@ int main(int argc, char** argv) {
 
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalTimeSliceStatistics>();
-    join::execute_timeslice_prebuilt(dataset, similarity, plans, tsj_timing, lls);
+    join::execute_timeslice_prebuilt(dataset, similarity, plans, config.timeslice, tsj_timing, lls);
     timing = std::make_unique<timing::TimeStaticJoinTiming>(std::move(tsj_timing));
     std::for_each(
       lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });
@@ -268,7 +272,7 @@ int main(int argc, char** argv) {
 
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalDynamicTimeSliceStatistics>();
-    join::timeslice::DynamicTimeslicing<64> dts(dataset.statistics->count);
+    join::timeslice::DynamicTimeslicing<64> dts(dataset.statistics->count, config.timeslice);
     dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
     timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
     std::for_each(

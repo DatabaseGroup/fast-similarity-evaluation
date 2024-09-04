@@ -56,6 +56,7 @@ inline void evaluate_microbatch(types::Dataset& data,
 inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        similarity::Similarity& similarity,
                                        std::vector<ontology::QueryPlan>& plans,
+                                       double timeslice,
                                        timing::TimeStaticJoinTiming& timing,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
@@ -93,8 +94,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   int64_t lp_id = 0;
   int64_t rp_id = dataset.statistics->count;
   constexpr int64_t HALFBATCH = 8;
-  constexpr double TIMESLICE = 0.15;
-  double scaled_timeslice = TIMESLICE;
+  double scaled_timeslice = timeslice;
 
   std::vector<types::ResultPair> result_pairs;
   MaterializeHandler handler(result_pairs);
@@ -178,7 +178,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     }
 
     double reward =
-      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (time_required / TIMESLICE);
+      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (time_required / timeslice);
     total_reward += reward;
     iterations += 1;
 

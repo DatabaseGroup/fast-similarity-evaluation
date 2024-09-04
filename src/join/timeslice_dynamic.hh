@@ -257,6 +257,17 @@ struct VarSizeAlgIns {
     similarities = reduction_cache.get_all_reduced_similarities(similarity, plan);
     algorithm = resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : similarities.front(), ass);
   }
+
+  VarSizeAlgIns(VarSizeAlgIns&& other) noexcept = default;
+  VarSizeAlgIns& operator=(VarSizeAlgIns&& other) noexcept {
+    algorithm = std::move(other.algorithm);
+    owned_data = std::move(other.owned_data);
+    similarity = std::move(other.similarity);
+    similarities = std::move(other.similarities);
+    start = other.start;
+    end = other.end;
+    return *this;
+  };
 };
 
 class BlockAlgorithmCache {
@@ -368,6 +379,28 @@ public:
     std::cerr << std::endl;
   }
 
+  void clear_small() {
+    for (size_t idx = 0; idx < algorithms.size(); ++idx) {
+      auto& a = algorithms[idx];
+      int64_t total_size = 0;
+      for (auto& i : a) {
+        total_size += i.end - i.start;
+      }
+      double avg = static_cast<double>(total_size) / static_cast<double>(a.size());
+
+      size_t previous_size = a.size();
+      std::erase_if(a, [&](auto& i) {
+        auto size = i.end - i.start;
+        return size / avg < .75;
+      });
+      size_t after_size = a.size();
+
+      util::print_dbg(
+        absl::StrFormat("\tAlgorithm %i: Cleared %i instances (avg = %f)", idx, previous_size - after_size, avg), " ");
+    }
+    util::print_dbg("");
+  }
+
 private:
   std::vector<std::vector<VarSizeAlgIns>> algorithms;
 };
@@ -375,8 +408,10 @@ private:
 template <int64_t MINIMAL_BATCH = 64>
 class DynamicTimeslicing {
 public:
-  explicit DynamicTimeslicing(int64_t dataset_size)
-      : reduction_cache(2 * dataset_size / MINIMAL_BATCH), probing_cache(2 * dataset_size / MINIMAL_BATCH) {}
+  explicit DynamicTimeslicing(int64_t dataset_size, double timeslice)
+      : reduction_cache(2 * dataset_size / MINIMAL_BATCH),
+        probing_cache(2 * dataset_size / MINIMAL_BATCH),
+        timeslice(timeslice) {}
 
   void execute_join(data::Dataset& dataset,
                     similarity::Similarity& similarity,
@@ -393,8 +428,7 @@ public:
     std::vector<AlgorithmSharedState<>> plan_shared_states(plans.size());
 
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
-    constexpr double TIMESLICE = 0.3;
-    double scaled_timeslice = TIMESLICE;
+    double scaled_timeslice = timeslice;
 
     double total_reward = 0;
     int64_t iterations = 0;
@@ -420,9 +454,9 @@ public:
 
       util::print_dbg(absl::StrFormat("Starting new measurement"));
 
+      bool has_started_using_cache = false;
       while (!scheduler.is_finished() && !time_exceeded) {
         auto block = scheduler.get_block();
-
         util::print_dbg(absl::StrFormat("\tStarting block with left: (%i, %i), right: (%i, %i)",
                                         block.start.x,
                                         block.end.x,
@@ -450,6 +484,7 @@ public:
          *     (alg.start <= block.start < block.end <= alg.end): Compute the block using the algorithm instance
          */
         if (left_alg || right_alg) {
+          has_started_using_cache = true;
           plan_statistics.index_cache_hits.inc();
           util::object_ptr<VarSizeAlgIns> best_alg;
           bool left_is_index = false;
@@ -547,89 +582,94 @@ public:
             time_exceeded = true;
           }
         } else {
-          plan_statistics.index_cache_misses.inc();
-          // case 1: probe-and-insert
-          int64_t left_target_id = block.end.x;
-          int64_t right_target_id = block.end.y;
-          // initialize algorithm
-          auto new_left_alg = std::make_shared<VarSizeAlgIns>(plan, similarity, reduction_cache, ass, left_id);
-          std::shared_ptr<VarSizeAlgIns> new_right_alg;
-          if (block.self_join()) {
-            new_right_alg = new_left_alg;
+          if (has_started_using_cache) {
+            util::print_dbg("Stopping to reduce fragmentation");
+            time_exceeded = true;
           } else {
-            new_right_alg = std::make_shared<VarSizeAlgIns>(plan, similarity, reduction_cache, ass, right_id);
-          }
-
-          while (left_id < left_target_id || right_id < right_target_id) {
-            if (left_id < left_target_id) {
-              auto real_block_end = std::min(left_id + HALFBATCH, left_target_id);
-              auto left_batch = get_batch_by_offset(dataset.data, left_id, real_block_end);
-              auto ibatch = IndexedBatch(left_id, left_batch);
-
-              new_left_alg->end = real_block_end;
-              perform_twosided_microbatch(dataset.data,
-                                          similarity,
-                                          block.self_join(),
-                                          ibatch,
-                                          *new_left_alg,
-                                          *new_right_alg,
-                                          selection.action,
-                                          plan,
-                                          handler,
-                                          plan_statistics);
-              left_id = real_block_end;
+            plan_statistics.index_cache_misses.inc();
+            // case 1: probe-and-insert
+            int64_t left_target_id = block.end.x;
+            int64_t right_target_id = block.end.y;
+            // initialize algorithm
+            auto new_left_alg = std::make_shared<VarSizeAlgIns>(plan, similarity, reduction_cache, ass, left_id);
+            std::shared_ptr<VarSizeAlgIns> new_right_alg;
+            if (block.self_join()) {
+              new_right_alg = new_left_alg;
+            } else {
+              new_right_alg = std::make_shared<VarSizeAlgIns>(plan, similarity, reduction_cache, ass, right_id);
             }
 
-            if (!block.self_join()) {
-              if (right_id < right_target_id) {
-                auto real_block_end = std::min(right_id + HALFBATCH, right_target_id);
-                auto right_batch = get_batch_by_offset(dataset.data, right_id, real_block_end);
-                auto ibatch = IndexedBatch(right_id, right_batch);
+            while (left_id < left_target_id || right_id < right_target_id) {
+              if (left_id < left_target_id) {
+                auto real_block_end = std::min(left_id + HALFBATCH, left_target_id);
+                auto left_batch = get_batch_by_offset(dataset.data, left_id, real_block_end);
+                auto ibatch = IndexedBatch(left_id, left_batch);
 
-                new_right_alg->end = real_block_end;
+                new_left_alg->end = real_block_end;
                 perform_twosided_microbatch(dataset.data,
                                             similarity,
-                                            false,
+                                            block.self_join(),
                                             ibatch,
-                                            *new_right_alg,
                                             *new_left_alg,
+                                            *new_right_alg,
                                             selection.action,
                                             plan,
                                             handler,
                                             plan_statistics);
-                right_id = real_block_end;
+                left_id = real_block_end;
               }
-            } else {
-              right_id = left_id;
+
+              if (!block.self_join()) {
+                if (right_id < right_target_id) {
+                  auto real_block_end = std::min(right_id + HALFBATCH, right_target_id);
+                  auto right_batch = get_batch_by_offset(dataset.data, right_id, real_block_end);
+                  auto ibatch = IndexedBatch(right_id, right_batch);
+
+                  new_right_alg->end = real_block_end;
+                  perform_twosided_microbatch(dataset.data,
+                                              similarity,
+                                              false,
+                                              ibatch,
+                                              *new_right_alg,
+                                              *new_left_alg,
+                                              selection.action,
+                                              plan,
+                                              handler,
+                                              plan_statistics);
+                  right_id = real_block_end;
+                }
+              } else {
+                right_id = left_id;
+              }
+
+              end_time = timing::end_cost_measurement();
+              time_required = timing::get_cost(start_time, end_time);
+              if (!time_exceeded && time_required > scaled_timeslice) {
+                // break outer loop
+                time_exceeded = true;
+                // stop processing at next full block border for inner loop
+                auto new_end = scheduler.next_larger_fitting(left_id, right_id);
+                left_target_id = new_end.x;
+                right_target_id = new_end.y;
+                util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id));
+              }
+            }
+            processed_pairs += computed_pairs(block, left_id, right_id);
+            scheduler.advance_block(left_id, right_id);
+
+            algorithm_cache.emplace(selection.action, std::move(*new_left_alg));
+            if (!block.self_join()) {
+              algorithm_cache.emplace(selection.action, std::move(*new_right_alg));
             }
 
-            end_time = timing::end_cost_measurement();
-            time_required = timing::get_cost(start_time, end_time);
-            if (!time_exceeded && time_required > scaled_timeslice) {
-              // break outer loop
-              time_exceeded = true;
-              // stop processing at next full block border for inner loop
-              auto new_end = scheduler.next_larger_fitting(left_id, right_id);
-              left_target_id = new_end.x;
-              right_target_id = new_end.y;
-              util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id));
-            }
+            util::print_dbg(absl::StrFormat("\tFinished block left: (%i, %i), right: (%i, %i) until (%i, %i) using 2sp",
+                                            block.start.x,
+                                            block.end.x,
+                                            block.start.y,
+                                            block.end.y,
+                                            left_id,
+                                            right_id));
           }
-          processed_pairs += computed_pairs(block, left_id, right_id);
-          scheduler.advance_block(left_id, right_id);
-
-          algorithm_cache.emplace(selection.action, std::move(*new_left_alg));
-          if (!block.self_join()) {
-            algorithm_cache.emplace(selection.action, std::move(*new_right_alg));
-          }
-
-          util::print_dbg(absl::StrFormat("\tFinished block left: (%i, %i), right: (%i, %i) until (%i, %i) using 2sp",
-                                          block.start.x,
-                                          block.end.x,
-                                          block.start.y,
-                                          block.end.y,
-                                          left_id,
-                                          right_id));
         }
       }
 
@@ -643,7 +683,7 @@ public:
         static_cast<double>(dataset.statistics->count) * (static_cast<double>(dataset.statistics->count) - 1) / 2;
       double reward = static_cast<double>(processed_pairs) / all_pairs;
 
-      reward /= (time_required / TIMESLICE);
+      reward /= time_required / timeslice;
       util::print_dbg(absl::StrFormat(
         "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
       total_reward += reward;
@@ -654,10 +694,14 @@ public:
         double next_weight = std::exp2(std::floor(std::log2(avg_reward)));
         uct.update_exp_weight(next_weight);
         next_weight_update *= 2;
-
-        if (static_cast<double>(non_punctual) / static_cast<double>(iterations) > 0.25) {
+        if (static_cast<double>(non_punctual) / (static_cast<double>(iterations) / 2) > 0.25) {
           scaled_timeslice *= 2;
+          util::print_dbg(absl::StrFormat("Increasing timeslice to %f", scaled_timeslice));
+          // uct.reset();
         }
+        // util::print_dbg(absl::StrFormat("Clearing small indexes:"));
+        // algorithm_cache.clear_small();
+        non_punctual = 0;
       }
 
       uct.update(selection, reward);
@@ -877,6 +921,7 @@ private:
 private:
   ReductionCache reduction_cache;
   ProbingSignaturesCache probing_cache;
+  const double timeslice;
 };
 
 // ReSharper restore CppDFANotInitializedField
