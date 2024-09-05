@@ -14,7 +14,7 @@ public:
     similarity::SetQuasiSuffix sqs;
     int64_t sqs_version = 0;
     int64_t totally_indexed_sets = 0;
-    int64_t next_reindexing = 0;
+    int64_t next_reindexing = 42424;
   };
 
 public:

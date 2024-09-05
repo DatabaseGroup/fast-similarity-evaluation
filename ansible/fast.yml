@@ -70,6 +70,6 @@
         chdir: "{{ home_dir }}/fast/src"
         cmd: "{{ item }}"
       loop:
-        - "rm -rf build && mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make"
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"

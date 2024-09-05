@@ -12,7 +12,7 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
   shared_state.totally_indexed_sets += static_cast<int64_t>(sets.data.size());
   if (shared_state.totally_indexed_sets > shared_state.next_reindexing) {
     ++shared_state.sqs_version;
-    shared_state.next_reindexing = shared_state.totally_indexed_sets * 2;
+    shared_state.next_reindexing = shared_state.totally_indexed_sets * 4;
   }
   if (local_sqs_version < shared_state.sqs_version) {
     update_index(indexed_sets);

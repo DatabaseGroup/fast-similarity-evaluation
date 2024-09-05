@@ -429,6 +429,8 @@ public:
 
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
     double scaled_timeslice = timeslice;
+    // account for higher cost of 2 x probe + 2 x indexing
+    double indexing_timeslice = 4 * scaled_timeslice;
 
     double total_reward = 0;
     int64_t iterations = 0;
@@ -450,11 +452,11 @@ public:
       timing::ExecutionCost end_time;
       double time_required;
       bool time_exceeded = false;
+      bool has_started_using_cache = false;
       int64_t processed_pairs = 0;
 
       util::print_dbg(absl::StrFormat("Starting new measurement"));
 
-      bool has_started_using_cache = false;
       while (!scheduler.is_finished() && !time_exceeded) {
         auto block = scheduler.get_block();
         util::print_dbg(absl::StrFormat("\tStarting block with left: (%i, %i), right: (%i, %i)",
@@ -644,7 +646,7 @@ public:
 
               end_time = timing::end_cost_measurement();
               time_required = timing::get_cost(start_time, end_time);
-              if (!time_exceeded && time_required > scaled_timeslice) {
+              if (!time_exceeded && time_required > indexing_timeslice) {
                 // break outer loop
                 time_exceeded = true;
                 // stop processing at next full block border for inner loop
@@ -675,7 +677,7 @@ public:
 
       end_time = timing::end_cost_measurement();
       time_required = timing::get_cost(start_time, end_time);
-      if (time_required / scaled_timeslice > 1.25) {
+      if (time_required / indexing_timeslice > 1.25) {
         non_punctual++;
       }
 
@@ -696,7 +698,8 @@ public:
         next_weight_update *= 2;
         if (static_cast<double>(non_punctual) / (static_cast<double>(iterations) / 2) > 0.25) {
           scaled_timeslice *= 2;
-          util::print_dbg(absl::StrFormat("Increasing timeslice to %f", scaled_timeslice));
+          indexing_timeslice = 4 * scaled_timeslice;
+          util::print_dbg(absl::StrFormat("Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
           // uct.reset();
         }
         // util::print_dbg(absl::StrFormat("Clearing small indexes:"));
