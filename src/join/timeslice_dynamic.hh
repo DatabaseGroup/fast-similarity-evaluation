@@ -435,7 +435,7 @@ public:
     double total_reward = 0;
     int64_t iterations = 0;
     int64_t non_punctual = 0;
-    auto next_weight_update = static_cast<int64_t>(plans.size());
+    auto next_weight_update = 2 * static_cast<int64_t>(plans.size());
 
     std::vector<types::ResultPair> result_pairs;
     MaterializeHandler handler(result_pairs);
@@ -689,16 +689,18 @@ public:
       const double all_pairs =
         static_cast<double>(dataset.statistics->count) * (static_cast<double>(dataset.statistics->count) - 1) / 2;
       double reward = static_cast<double>(processed_pairs) / all_pairs;
+      double no_of_ts = time_required / timeslice;
+      reward /= no_of_ts;
 
-      reward /= time_required / timeslice;
       util::print_dbg(absl::StrFormat(
         "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
       total_reward += reward;
       iterations += 1;
 
-      if (iterations == next_weight_update) {
+      if (iterations >= next_weight_update) {
         double avg_reward = total_reward / static_cast<double>(iterations);
-        double next_weight = std::exp2(std::floor(std::log2(avg_reward)));
+        double next_weight = avg_reward / 1.5;
+        util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(next_weight);
         next_weight_update *= 2;
         if (static_cast<double>(non_punctual) / (static_cast<double>(iterations) / 2) > 0.25) {
@@ -712,7 +714,7 @@ public:
         non_punctual = 0;
       }
 
-      uct.update(selection, reward, time_required / timeslice);
+      uct.update(selection, reward, no_of_ts);
     }
     timing.join_time.stop();
 
