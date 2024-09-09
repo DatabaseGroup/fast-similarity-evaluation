@@ -31,10 +31,10 @@ public:
     return path;
   }
 
-  void update_path(const std::vector<util::object_ptr<UCTNode>>& path, double reward) {
+  void update_path(const std::vector<util::object_ptr<UCTNode>>& path, double reward, double implicit_tries = 1) {
     for (auto node : path) {
       node->total_reward += reward;
-      ++node->nr_of_selections;
+      node->nr_of_selections += implicit_tries;
     }
   }
 
@@ -65,7 +65,7 @@ public:
     return total_reward / nr_of_selections;
   }
 
-  void reset() {
+  void reset() { // NOLINT(*-no-recursion)
     total_reward = 0;
     nr_of_selections = 0;
     untried_action_ids.clear();
@@ -167,8 +167,8 @@ public:
     return {action, path};
   }
 
-  void update(const Selection& selection, double reward) {
-    root.update_path(selection.path, reward);
+  void update(const Selection& selection, double reward, double implicit_tries = 1.) {
+    root.update_path(selection.path, reward, implicit_tries);
   }
 
   void for_each_action(const std::function<void(UCTNode&)>& fun) {

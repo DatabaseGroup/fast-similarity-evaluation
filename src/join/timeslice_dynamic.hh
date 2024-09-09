@@ -450,7 +450,7 @@ public:
 
       timing::ExecutionCost start_time = timing::start_cost_measurement();
       timing::ExecutionCost end_time;
-      double time_required;
+      double time_required = 0;
       bool time_exceeded = false;
       bool has_started_using_cache = false;
       int64_t processed_pairs = 0;
@@ -559,11 +559,14 @@ public:
           }
 
           scheduler.advance_block(computed_until.x, computed_until.y);
+          int64_t new_pairs;
           if (block.self_join()) {
-            processed_pairs += (computed_until.x - block.start.x) * (computed_until.y - block.start.y - 1) / 2;
+            new_pairs = (computed_until.x - block.start.x) * (computed_until.y - block.start.y - 1) / 2;
           } else {
-            processed_pairs += (computed_until.x - block.start.x) * (computed_until.y - block.start.y);
+            new_pairs = (computed_until.x - block.start.x) * (computed_until.y - block.start.y);
           }
+          util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs));
+          processed_pairs += new_pairs;
 
           util::print_dbg(
             absl::StrFormat("\tFinished block left: (%i, %i), right (%i, %i) %s using cache index until (%i, %i)",
@@ -656,7 +659,9 @@ public:
                 util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id));
               }
             }
-            processed_pairs += computed_pairs(block, left_id, right_id);
+            auto new_pairs = computed_pairs(block, left_id, right_id);
+            util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs));
+            processed_pairs += new_pairs;
             scheduler.advance_block(left_id, right_id);
 
             algorithm_cache.emplace(selection.action, std::move(*new_left_alg));
@@ -707,7 +712,7 @@ public:
         non_punctual = 0;
       }
 
-      uct.update(selection, reward);
+      uct.update(selection, reward, time_required / timeslice);
     }
     timing.join_time.stop();
 
