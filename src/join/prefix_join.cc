@@ -7,6 +7,7 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
   auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
+  // the frequencies might become biased if the same set is indexed multiple times
   prefix_signature.update_frequencies(sets.data);
 
   shared_state.totally_indexed_sets += static_cast<int64_t>(sets.data.size());

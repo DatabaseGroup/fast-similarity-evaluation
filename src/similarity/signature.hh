@@ -18,7 +18,8 @@ public:
 
   template<class It1, class It2>
   void update_occurences(It1 begin, It2 end) {
-    for (; begin != end; ++begin) {
+    // take a sample of only every 10-th set (for performance reasons)
+    for (; begin != end; advance_iterator_bounded(begin, end, 10)) {
       auto set = *begin;
       for (auto token : set.tokens) {
         ++occurences[token];
@@ -62,6 +63,15 @@ public:
       }
 
       std::ranges::sort(set.tokens.begin(), set.tokens.end());
+    }
+  }
+private:
+  template<class It1, class It2>
+  void advance_iterator_bounded(It1& begin, It2& end, int64_t n) {
+    if (std::distance(begin, end) >= n) {
+      begin += n;
+    } else {
+      begin = end;
     }
   }
 
