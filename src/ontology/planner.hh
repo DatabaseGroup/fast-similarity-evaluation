@@ -195,11 +195,19 @@ private:
 
 class StandardReductionGraph : public ReductionGraph {
 public:
-  StandardReductionGraph() {
+  StandardReductionGraph(std::vector<std::string>& additional_reductions) {
     auto& traversal_string_reduction = *reductions.emplace_back(std::make_unique<TraversalStringReduction>());
-    auto& qgram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3));
+    auto& q3gram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3));
     auto& label_set_reduction = *reductions.emplace_back(std::make_unique<LabelSetReduction>());
     auto& jaro_set_reduction = *reductions.emplace_back(std::make_unique<JaroSetReduction>(1));
+
+    std::vector<std::unique_ptr<Reduction>*> additional_qram_reductions;
+    for (auto& s : additional_reductions) {
+      if (s[0] == 'q') {
+        int64_t q = std::stoi(s.substr(1));
+        additional_qram_reductions.emplace_back(&reductions.emplace_back(std::make_unique<QGramReduction>(q)));
+      }
+    }
 
     // insert nodes first (otherwise pointers might change)
     insert_node(types::DatatypeId::TREE, similarity::SimilarityId::TREE_EDIT_DISTANCE);
@@ -221,7 +229,11 @@ public:
 
     ted.edges.emplace_back(traversal_string_reduction, sed);
     ted.edges.emplace_back(label_set_reduction, struct_set_sim);
-    sed.edges.emplace_back(qgram_reduction, struct_set_sim);
+    sed.edges.emplace_back(q3gram_reduction, struct_set_sim);
+    for (auto qgram_reduction : additional_qram_reductions) {
+      sed.edges.emplace_back(**qgram_reduction, struct_set_sim);
+    }
+
     jaro_string.edges.emplace_back(jaro_set_reduction, jaro_overlap);
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);

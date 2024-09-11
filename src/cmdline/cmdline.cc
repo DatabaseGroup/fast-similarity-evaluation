@@ -25,6 +25,7 @@ struct Config {
   std::string mode;
   std::vector<std::string> excluded_algorithms;
   std::vector<std::string> excluded_reductions;
+  std::vector<std::string> additional_reductions;
 };
 
 bool process_program_options(int argc, char** argv, Config& config) {
@@ -48,7 +49,10 @@ bool process_program_options(int argc, char** argv, Config& config) {
     po::value(&config.read_file_until)->default_value(std::numeric_limits<int64_t>::max()),
     "Read the first X lines of the input")(
     "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static")(
-    "time-slice,i", po::value(&config.timeslice)->default_value(0.3), "Timeslice in seconds");
+    "time-slice,i", po::value(&config.timeslice)->default_value(0.3), "Timeslice in seconds")(
+    "additional-reductions,a",
+    po::value(&config.additional_reductions)->multitoken(),
+    "Enable optional reductions. Currently supported: qX enables X-grams");
 
   const std::string exec_name(argv[0]);
 
@@ -221,7 +225,7 @@ int main(int argc, char** argv) {
   auto [data_id, dataset] = resolve_data(config.datatype, config.input_file, config.read_file_until, config.shuffle);
   auto [similarity_id, similarity] = resolve_similarity(config.similarity, config.threshold, dataset);
 
-  ontology::StandardReductionGraph graph;
+  ontology::StandardReductionGraph graph{config.additional_reductions};
   ontology::PlannerConfiguration plan_config;
   plan_config.excluded_algorithms = find_excluded_algorithms(config.excluded_algorithms);
   plan_config.excluded_reductions = config.excluded_reductions;
