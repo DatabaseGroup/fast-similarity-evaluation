@@ -50,18 +50,11 @@ public:
       auto& set = *begin;
 
       for (auto& token : set.tokens) {
-        // assert: no "real-world" dataset (i.e., not converted by reduction) has tokens with values between 2^62 and 2^63
         auto it = heavy_tokens.find(token);
-
         if (it != heavy_tokens.end()) {
           token = it->second;
-        } else {
-          // if real world dataset: this AND does not change anything
-          // if reduced dataset: might add some false positives, but those are filtered on the other datatypes anyway
-          token = static_cast<int64_t>(static_cast<uint64_t>(token) & (~(UINT64_C(11) << 62)));
         }
       }
-
       std::ranges::sort(set.tokens.begin(), set.tokens.end());
     }
   }
@@ -83,15 +76,17 @@ private:
 
 class SetPrefixSignature {
 public:
-  using Signature = int64_t;
+  using Signature = types::Set::Token;
 
 public:
   explicit SetPrefixSignature(SetSimilarity& similarity, SetQuasiSuffix& sqs) : similarity(similarity), sqs(sqs) {}
 
 public:
   void update_frequencies(const types::span<types::Set> sets) {
-    sqs.update_occurences(sets.begin(), sets.end());
-    sqs.build_token_mapping(42000);
+    if (token_budget != 0) {
+      sqs.update_occurences(sets.begin(), sets.end());
+      sqs.build_token_mapping(token_budget);
+    }
   }
 
   void convert_tokens(types::span<types::Set> sets) {
@@ -125,7 +120,8 @@ private:
     uint64_t count{0};
     types::Set::Token token;
   };
-  absl::flat_hash_map<types::Set::Token, CountOrToken> token_map;
+  types::HashTable<types::Set::Token, CountOrToken> token_map;
+  const int64_t token_budget = 42000;
   SetSimilarity& similarity;
   SetQuasiSuffix& sqs;
 };

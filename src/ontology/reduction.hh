@@ -55,6 +55,8 @@ public:
   [[nodiscard]] virtual std::string get_label() const = 0;
 };
 
+inline int64_t mask_highest_bit(const uint64_t n) { return static_cast<int64_t>(n & ~(0b1uLL << 63)); }
+
 class QGramReduction : public Reduction {
 public:
   explicit QGramReduction(int32_t q) : q(q) {}
@@ -106,8 +108,6 @@ public:
   [[nodiscard]] std::string get_label() const override { return std::to_string(q) + "gram"; }
 
 protected:
-  static int64_t mask_highest_bit(const uint64_t n) { return static_cast<int64_t>(n & ~(1uLL << 63)); }
-
   void generate_qgrams(types::String& string, types::Set& set) const {
     util::RabinFingerprint<types::String::str_t::value_type> rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
@@ -264,8 +264,9 @@ private:
       auto node = queue.back();
       queue.pop_back();
 
-      set.tokens.push_back(static_cast<types::Set::Token>(std::hash<std::string>{}(node.get().label().to_string())) &
-                           std::numeric_limits<types::Set::Token>::max());
+      auto token = static_cast<types::Set::Token>(std::hash<std::string>{}(node.get().label().to_string()));
+      token = mask_highest_bit(token);
+      set.tokens.push_back(token);
 
       for (auto& children = node.get().get_children(); const auto& it : children) {
         queue.emplace_back(it);

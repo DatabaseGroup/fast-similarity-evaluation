@@ -44,12 +44,6 @@ struct ProcessBlock : Block {
     return static_cast<int64_t>(static_cast<uint64_t>(start.x + x_offset) << 32 |
                                 static_cast<uint64_t>(start.y + y_offset));
   }
-
-  double approx_compute_ratio(int64_t last_x, int64_t last_y) {
-    double ratio_x = static_cast<double>(last_x - start.x) / static_cast<double>(end.x - start.x);
-    double larger_x = std::exp2(std::ceil(std::log2(ratio_x)));
-    return std::pow(ratio_x / larger_x, 2);
-  }
 };
 
 // ReSharper disable CppDFANotInitializedField
@@ -289,13 +283,12 @@ public:
 
   std::optional<util::object_ptr<VarSizeAlgIns>> find_starting_instance(
     int64_t algorithm_id,
-    const std::pair<int64_t, int64_t>& index_range,
-    const std::pair<int64_t, int64_t>& probe_range) {
+    const std::pair<int64_t, int64_t>& index_range) {
     return find_instance_by_predicate(
       algorithm_id,
       index_range.first,
       index_range.second,
-      [&](int64_t range_start, int64_t range_end, int64_t instance_start, int64_t instance_end) {
+      [&](int64_t range_start, [[maybe_unused]] int64_t range_end, int64_t instance_start, [[maybe_unused]] int64_t instance_end) {
         return instance_start == range_start;
       });
   }
@@ -473,10 +466,8 @@ public:
         auto right_alg = algorithm_cache.find_covered_instance(selection.action, block.start.y, block.end.y);
 
         if (!left_alg && !right_alg) {
-          left_alg = algorithm_cache.find_starting_instance(
-            selection.action, {block.start.x, block.end.x}, {block.start.y, block.end.y});
-          right_alg = algorithm_cache.find_starting_instance(
-            selection.action, {block.start.y, block.end.y}, {block.start.x, block.end.x});
+          left_alg = algorithm_cache.find_starting_instance(selection.action, {block.start.x, block.end.x});
+          right_alg = algorithm_cache.find_starting_instance(selection.action, {block.start.y, block.end.y});
         }
 
         /*
@@ -741,7 +732,7 @@ private:
       std::shared_ptr<types::Dataset> last_level;
       for (int32_t level = static_cast<int32_t>(selected_plan.steps.size()) - 1; level >= 0; --level) {
         last_level =
-          reduction_cache.reduce_data_to_level(batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
+          reduction_cache.reduce_data_to_level(batch, selected_plan, level, plan_statistics.rc_statistics);
         if (indexing_alg.owned_data.size() < selected_plan.steps.size()) {
           indexing_alg.owned_data.resize(selected_plan.steps.size());
         }
@@ -771,7 +762,7 @@ private:
         // first iteration); we have to skip this in that case (there is no indexed_data to be used)
 
         auto reduced =
-          reduction_cache.reduce_data_to_end(batch, similarity, selected_plan, plan_statistics.rc_statistics);
+          reduction_cache.reduce_data_to_end(batch, selected_plan, plan_statistics.rc_statistics);
         auto reduced_batch = dataset_to_batch(*reduced);
         if (probing_alg.algorithm->has_independent_probing_signatures()) {
           cached_probing_signatures = probing_cache.get_cached_probing_signatures(
@@ -791,7 +782,7 @@ private:
         auto& reduced_index = probing_alg.owned_data[level];
         auto reduced_index_batch = dataset_to_batch(reduced_index);
         auto reduced_probe =
-          reduction_cache.reduce_data_to_level(batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
+          reduction_cache.reduce_data_to_level(batch, selected_plan, level, plan_statistics.rc_statistics);
         auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
 
         plan_statistics.step_verifications[selected_plan.steps.size() - (level + 1)].add(
@@ -841,7 +832,7 @@ private:
         indexed_data, probing_batch.batch, handler, config, plan_statistics, cached_probing_signatures);
     } else {
       auto reduced =
-        reduction_cache.reduce_data_to_end(probing_batch, similarity, selected_plan, plan_statistics.rc_statistics);
+        reduction_cache.reduce_data_to_end(probing_batch, selected_plan, plan_statistics.rc_statistics);
       auto reduced_batch = dataset_to_batch(*reduced);
 
       if (alg_with_index.algorithm->has_independent_probing_signatures()) {
@@ -859,8 +850,7 @@ private:
     for (int32_t level = 1; level < static_cast<int32_t>(selected_plan.steps.size()); ++level) {
       auto& reduced_index = alg_with_index.owned_data[level];
       auto reduced_index_batch = dataset_to_batch(reduced_index);
-      auto reduced_probe = reduction_cache.reduce_data_to_level(
-        probing_batch, similarity, selected_plan, level, plan_statistics.rc_statistics);
+      auto reduced_probe = reduction_cache.reduce_data_to_level(probing_batch, selected_plan, level, plan_statistics.rc_statistics);
       auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
 
       plan_statistics.step_verifications[selected_plan.steps.size() - (level + 1)].add(

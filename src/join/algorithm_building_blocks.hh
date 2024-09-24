@@ -167,10 +167,10 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
 
     for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
       auto reduced_index =
-        reduction_cache.reduce_data_to_level(index_batch, similarity, plan, level, plan_statistics.rc_statistics);
+        reduction_cache.reduce_data_to_level(index_batch, plan, level, plan_statistics.rc_statistics);
       auto reduced_index_batch = dataset_to_batch(*reduced_index);
       auto reduced_probe =
-        reduction_cache.reduce_data_to_level(probe_batch, similarity, plan, level, plan_statistics.rc_statistics);
+        reduction_cache.reduce_data_to_level(probe_batch, plan, level, plan_statistics.rc_statistics);
       auto reduced_probe_batch = dataset_to_batch(*reduced_probe);
 
       plan_statistics.step_verifications[plan.steps.size() - (level + 1)].add(

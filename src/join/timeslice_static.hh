@@ -28,7 +28,7 @@ inline void evaluate_microbatch(types::Dataset& data,
     auto indexed_data = dataset_to_batch(data);
     alg.algorithm->join_batch(indexed_data, probing_batch, handler, config, plan_statistics, null);
   } else {
-    auto reduced = reduction_cache.reduce_data_to_end(ipbatch, similarity, selected_plan, plan_statistics.rc_statistics);
+    auto reduced = reduction_cache.reduce_data_to_end(ipbatch, selected_plan, plan_statistics.rc_statistics);
     auto reduced_batch = dataset_to_batch(*reduced);
     auto indexed_data = dataset_to_batch(*alg.owned_data);
 
@@ -59,6 +59,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        double timeslice,
                                        timing::TimeStaticJoinTiming& timing,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
+  for (size_t action = 0; action < plans.size(); ++action) {
+    util::print_dbg(absl::StrFormat("Action %i: %s", action, plans[action].to_string()));
+  }
+
   ontology::UCT uct = ontology::UCT::from_query_plans(plans);
   std::vector<AlgorithmInstance<MaterializeHandler>> algorithms;
   std::vector<AlgorithmSharedState<MaterializeHandler>> shared_states(plans.size());
@@ -81,7 +85,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
       alg_instance.owned_data =
-        reduction_cache.reduce_data_to_end(all_dataset_batches[i], similarity, plan, all_statistics[i].rc_statistics);
+        reduction_cache.reduce_data_to_end(all_dataset_batches[i], plan, all_statistics[i].rc_statistics);
       alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
     alg_instance.algorithm = resolve_algorithmid(

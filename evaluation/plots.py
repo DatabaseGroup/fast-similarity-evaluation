@@ -49,7 +49,7 @@ def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[
         for threshold in sorted(data.keys()):
             row = [threshold]
             for key in keys:
-                row.append(data[threshold][key])
+                row.append(data[threshold].get(key, ""))
             writer.writerow(row)
 
 def static_vs_dynamic(datasets: list[str], collection: pymongo.collection.Collection):

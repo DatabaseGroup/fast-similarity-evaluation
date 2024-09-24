@@ -73,7 +73,7 @@ public:
         alg_instance.algorithm->insert_batch(index_batch.batch, index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
-        auto reduced = reduction_cache.reduce_data_to_end(index_batch, similarity, plan, statistics.rc_statistics);
+        auto reduced = reduction_cache.reduce_data_to_end(index_batch, plan, statistics.rc_statistics);
         alg_instance.owned_data = reduced;
         alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.similarity, shared_state);
@@ -109,7 +109,7 @@ public:
     } else {
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
-      auto reduced_probe = reduction_cache.reduce_data_to_end(probe_batch, similarity, plan, statistics.rc_statistics);
+      auto reduced_probe = reduction_cache.reduce_data_to_end(probe_batch, plan, statistics.rc_statistics);
       auto batch = dataset_to_batch(*reduced_probe);
       auto indexed_data = dataset_to_batch(*alg_instance.owned_data);
 

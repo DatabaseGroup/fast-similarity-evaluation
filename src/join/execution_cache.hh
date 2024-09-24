@@ -47,7 +47,6 @@ public:
 
 public:
   std::shared_ptr<types::Dataset> reduce_data_to_level(IndexedBatch& batch,
-                                                       similarity::Similarity& similarity,
                                                        ontology::QueryPlan& plan,
                                                        int32_t level,
                                                        statistics::ReductionCacheStatistics& statistics) {
@@ -100,10 +99,9 @@ public:
   }
 
   std::shared_ptr<types::Dataset> reduce_data_to_end(IndexedBatch& batch,
-                                                     similarity::Similarity& similarity,
                                                      ontology::QueryPlan& plan,
                                                      statistics::ReductionCacheStatistics& statistics) {
-    return reduce_data_to_level(batch, similarity, plan, 0, statistics);
+    return reduce_data_to_level(batch, plan, 0, statistics);
   }
 
   std::vector<similarity::Similarity> get_all_reduced_similarities(similarity::Similarity& similarity,
@@ -111,10 +109,10 @@ public:
     std::vector<similarity::Similarity> similarities;
     if (!plan.steps.empty()) {
       similarities.resize(plan.steps.size());
-      similarities[plan.steps.size() - 1] = std::move(plan.steps.front().reduction.get().reduce_similarity(similarity));
+      similarities[plan.steps.size() - 1] = plan.steps.front().reduction.get().reduce_similarity(similarity);
       for (size_t i = 1; i < plan.steps.size(); ++i) {
         similarities[plan.steps.size() - i - 1] =
-          std::move(plan.steps[plan.steps.size() - i].reduction.get().reduce_similarity(similarities.back()));
+          plan.steps[plan.steps.size() - i].reduction.get().reduce_similarity(similarities.back());
       }
     }
     return similarities;

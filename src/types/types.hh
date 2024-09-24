@@ -16,7 +16,6 @@
 #endif
 
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -45,7 +44,7 @@ enum DatatypeId { SET, STRING, TREE };
 class Data {
 public:
   using Id = int64_t;
-  static const Id INVALID = -1;
+  static constexpr Id INVALID = -1;
   Id id;
 
   explicit Data(Id id) : id(id) {}
@@ -79,7 +78,7 @@ public:
 
 class Set : public Data {
 public:
-  using Token = int64_t;
+  using Token = uint64_t;
   std::vector<Token> tokens;
   explicit Set(Id id) : Data(id) {}
   Set() : Data(INVALID) {}
