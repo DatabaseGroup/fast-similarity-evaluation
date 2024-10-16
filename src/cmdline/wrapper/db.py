@@ -2,6 +2,7 @@ import json
 from typing import Mapping, List, Union, Tuple
 import pymongo as mng
 import pymongo.database
+import pymongo.collection
 
 # recursive type for json, see: https://github.com/python/typing/issues/182
 JSON = Union[str, int, float, bool, None, Mapping[str, 'JSON'], List['JSON']]

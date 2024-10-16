@@ -53,8 +53,8 @@ def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[
             writer.writerow(row)
 
 def static_vs_dynamic(datasets: list[str], collection: pymongo.collection.Collection):
-    time_static_label = 'ts-adapt'
-    time_dynamic_label = 'td-v4'
+    time_static_label = 'ts-c2'
+    time_dynamic_label = 'td-c2'
     labels = [time_static_label, time_dynamic_label]
 
     for dataset in datasets:
@@ -120,12 +120,12 @@ def main():
     database = client.get_database(config.db_config['database'])
     collection = database.get_collection(config.db_config['collection'])
 
-    datasets = ['bms-pos-raw.txt', 'dblp', 'dblp.short', 'enron', 'kosarak-dedup-raw.txt', 'pubchem-0.3m.txt',
+    datasets = ['bms-pos-dedup-raw.txt', 'dblp', 'dblp.short', 'enron', 'kosarak-dedup-raw.txt', 'pubchem-0.3m.txt',
                 'python.short',
-                'querylog', 'sentiment', 'swissprot.short', 'trec', 'word']
+                'querylog', 'sentiment', 'swissprot.short', 'trec', 'word', 'python', 'swissprot']
 
     static_vs_dynamic(datasets, collection)
-    static_vs_baseline(datasets, collection)
+    # static_vs_baseline(datasets, collection)
 
 
 if __name__ == '__main__':

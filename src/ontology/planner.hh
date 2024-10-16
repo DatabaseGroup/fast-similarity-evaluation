@@ -203,7 +203,7 @@ public:
 
     std::vector<std::unique_ptr<Reduction>*> additional_qram_reductions;
     for (auto& s : additional_reductions) {
-      if (s[0] == 'q') {
+      if (s.size() > 0 && s[0] == 'q') {
         int64_t q = std::stoi(s.substr(1));
         additional_qram_reductions.emplace_back(&reductions.emplace_back(std::make_unique<QGramReduction>(q)));
       }

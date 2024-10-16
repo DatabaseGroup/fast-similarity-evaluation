@@ -14,10 +14,12 @@
           - "lsb-release"
           - "parallel"
           - "python3"
-          - "python3.11-venv"
+          - "python3-setuptools"
+          - "python3-venv"
           - "tar"
           - "tmux"
           - "unzip"
+          - "parallel"
           - "pkg-config"
           - "zip"
 
@@ -64,6 +66,12 @@
         chdir: "{{ home_dir }}/.vcpkg"
         cmd: "./bootstrap-vcpkg.sh -disableMetrics"
 
+    - name: Add kappa host key
+      listen: compile_fast
+      ansible.builtin.known_hosts:
+        name: "[kappa.gsk.moe]:4950"
+        key: "[kappa.gsk.moe]:4950 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWfvuKpmpczMWqNXThSLlanYt3MDXXy1Ya87DABu0iHbajOLAUzCRbkw//JDWKmSVxb5U+pMq3qe6quyWvu+vsa/OH8rQHOoM/VL75YnjHaUqxA7TozADG3aLbm8J4VehGAvTC1JeK9JrUekAIV+0An7ey35uiCYelHMIk0HpCf/3+nfsk6mWMKPBbx2ahgGigkkPcLdadyY9QGz6JLocPTJmiJrq+wXf2iZwt6za+d+YBLV/fVi+A/o0l6ci4Wy2f9bsY9L1TB2HOyvbXpdDfiBGXRoEBo0xcojP5T7c3QspuChJ7Zv7MsmdNaZ9BdcGf8YcmZBuBywKJZq6pUhxJ"
+
     - name: Compile FAST
       listen: compile_fast
       ansible.builtin.shell:
@@ -73,3 +81,10 @@
         - "mkdir -p build"
         - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
+
+    - name: Setup venv
+      listen: compile_fast
+      ansible.builtin.pip:
+        name: pymongo
+        virtualenv: "{{ home_dir }}/experiments/wrapper/venv"
+        virtualenv_command: "python3 -m venv"
