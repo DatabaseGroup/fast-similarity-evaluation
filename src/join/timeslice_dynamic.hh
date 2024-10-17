@@ -428,7 +428,7 @@ public:
     double total_reward = 0;
     int64_t iterations = 0;
     int64_t non_punctual = 0;
-    auto next_weight_update = 2 * static_cast<int64_t>(plans.size());
+    auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
 
     std::vector<types::ResultPair> result_pairs;
     MaterializeHandler handler(result_pairs);

@@ -10,7 +10,7 @@ namespace ontology {
 namespace detail {
 
 struct UCTConfig {
-  double exploration_weight = 1e-2;
+  double exploration_weight = 5e-2;
 };
 
 class UCTNode {

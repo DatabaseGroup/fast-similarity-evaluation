@@ -22,16 +22,28 @@ public:
     for (; begin != end; advance_iterator_bounded(begin, end, 10)) {
       auto set = *begin;
       for (auto token : set.tokens) {
-        ++occurences[token];
+        if (occurences[token]++ == 0) {
+          all_tokens.push_back(token);
+        }
       }
+      total_token_count += static_cast<int64_t>(set.tokens.size());
     }
   }
 
   void build_token_mapping(int64_t budget = std::numeric_limits<int64_t>::max()) {
     std::vector<std::pair<types::Set::Token, int64_t>> sorted_pairs;
     sorted_pairs.reserve(occurences.size());
-    for (auto& entry : occurences) {
-      sorted_pairs.emplace_back(entry);
+
+    int64_t avg_token_count = total_token_count / static_cast<int64_t>(occurences.size());
+
+    auto begin = all_tokens.begin() + (avg_token_count % 10);
+    auto end = all_tokens.end();
+    // take a sample of only every 10-th list (for performance reasons)
+    for (; begin != end; advance_iterator_bounded(begin, end, 10)) {
+      // only consider the at most 10% of lists larger than 10 * avg
+      if (auto& entry = occurences[*begin]; entry >= 10 * avg_token_count) {
+        sorted_pairs.emplace_back(*begin, entry);
+      }
     }
     std::ranges::sort(sorted_pairs, [](const auto& p1, const auto& p2) { return p1.second > p2.second; });
     auto it = sorted_pairs.begin();
@@ -69,9 +81,11 @@ private:
   }
 
 private:
+  std::vector<types::Set::Token> all_tokens;
   types::HashTable<types::Set::Token, int64_t> occurences;
   types::HashTable<types::Set::Token, types::Set::Token> heavy_tokens;
   int64_t next_token = std::numeric_limits<int64_t>::max();
+  int64_t total_token_count = 0;
 };
 
 class SetPrefixSignature {

@@ -106,7 +106,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   double total_reward = 0;
   int64_t iterations = 0;
   int64_t non_punctual = 0;
-  auto next_weight_update = static_cast<int64_t>(plans.size());
+  auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
 
   timing.join_time.start();
   while (lp_id < rp_id) {
@@ -191,7 +191,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
     if (iterations == next_weight_update) {
       double avg_reward = total_reward / static_cast<double>(iterations);
-      double next_weight = std::exp2(std::floor(std::log2(avg_reward)));
+      double next_weight = avg_reward / 1.5;
       uct.update_exp_weight(next_weight);
       next_weight_update *= 2;
 
@@ -200,7 +200,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       }
     }
 
-    uct.update(action, reward);
+    uct.update(action, reward, time_required / timeslice);
   }
   timing.join_time.stop();
 
