@@ -10,7 +10,8 @@ namespace ontology {
 namespace detail {
 
 struct UCTConfig {
-  double exploration_weight = 5e-2;
+  // a reasonable estimated upper bound for avg. reward * sqrt(2)
+  double exploration_weight = std::sqrt(2) * 1e-2;
 };
 
 class UCTNode {

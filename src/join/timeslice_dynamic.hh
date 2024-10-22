@@ -425,7 +425,7 @@ public:
     // account for higher cost of 2 x probe + 2 x indexing
     double indexing_timeslice = 4 * scaled_timeslice;
 
-    double total_reward = 0;
+    double max_reward = 0;
     int64_t iterations = 0;
     int64_t non_punctual = 0;
     auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
@@ -685,12 +685,11 @@ public:
 
       util::print_dbg(absl::StrFormat(
         "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
-      total_reward += reward;
+      max_reward = std::max(reward, max_reward);
       iterations += 1;
 
       if (iterations >= next_weight_update) {
-        double avg_reward = total_reward / static_cast<double>(iterations);
-        double next_weight = avg_reward / 1.5;
+        double next_weight = max_reward * std::sqrt(2);
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(next_weight);
         next_weight_update *= 2;
