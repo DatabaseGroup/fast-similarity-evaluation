@@ -96,9 +96,14 @@ public:
   explicit SetPrefixSignature(SetSimilarity& similarity, SetQuasiSuffix& sqs) : similarity(similarity), sqs(sqs) {}
 
 public:
-  void update_frequencies(const types::span<types::Set> sets) {
+  void update_frequencies(const types::span<types::Set> sets) const {
     if (token_budget != 0) {
       sqs.update_occurences(sets.begin(), sets.end());
+    }
+  }
+
+  void build_token_mapping() const {
+    if (token_budget != 0) {
       sqs.build_token_mapping(token_budget);
     }
   }

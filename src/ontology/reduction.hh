@@ -229,7 +229,21 @@ public:
       set.id = tree.id;
       generate_labelset(tree, set);
 
-      std::sort(set.tokens.begin(), set.tokens.end());
+      std::ranges::sort(set.tokens);
+
+      // somewhat more efficient counting of duplicates by keeping the order.
+      auto last_token = set.tokens.front() - 1;
+      int64_t count = 0;
+      for (auto& token : set.tokens) {
+        if (token == last_token) {
+          ++count;
+          count &= (1 << counter_bits) - 1;
+          token += count;
+        } else {
+          last_token = token;
+          count = 0;
+        }
+      }
 
       ++in_iter;
       ++out_iter;
@@ -265,6 +279,7 @@ private:
       queue.pop_back();
 
       auto token = static_cast<types::Set::Token>(std::hash<std::string>{}(node.get().label().to_string()));
+      token <<= counter_bits;
       token = mask_highest_bit(token);
       set.tokens.push_back(token);
 
@@ -273,6 +288,9 @@ private:
       }
     }
   }
+
+private:
+  static constexpr int64_t counter_bits = 3;
 };
 
 class JaroSetReduction : public QGramReduction {

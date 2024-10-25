@@ -10,10 +10,13 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
   // the frequencies might become biased if the same set is indexed multiple times
   prefix_signature.update_frequencies(sets.data);
 
-  shared_state.totally_indexed_sets += static_cast<int64_t>(sets.data.size());
-  if (shared_state.totally_indexed_sets > shared_state.next_reindexing) {
+  std::for_each(sets.data.begin(), sets.data.end(), [&](const auto& set) {
+    shared_state.totally_indexed_tokens += set.tokens.size();
+  });
+  if (shared_state.totally_indexed_tokens > shared_state.next_reindexing) {
+    shared_state.sqs.build_token_mapping();
     ++shared_state.sqs_version;
-    shared_state.next_reindexing = shared_state.totally_indexed_sets * 4;
+    shared_state.next_reindexing = shared_state.totally_indexed_tokens * 4;
   }
   if (local_sqs_version < shared_state.sqs_version) {
     update_index(indexed_sets);
