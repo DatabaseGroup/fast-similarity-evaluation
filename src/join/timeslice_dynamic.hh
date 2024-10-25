@@ -689,7 +689,7 @@ public:
       iterations += 1;
 
       if (iterations >= next_weight_update) {
-        double next_weight = max_reward * std::sqrt(2);
+        double next_weight = max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(next_weight);
         next_weight_update *= 2;

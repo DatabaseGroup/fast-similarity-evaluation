@@ -88,8 +88,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         reduction_cache.reduce_data_to_end(all_dataset_batches[i], plan, all_statistics[i].rc_statistics);
       alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
-    alg_instance.algorithm = resolve_algorithmid(
-      plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
+    alg_instance.algorithm =
+      resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data);
     alg_instance.algorithm->insert_batch(index_batch, index_batch);
   }
@@ -190,7 +190,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       "Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
 
     if (iterations == next_weight_update) {
-      double next_weight = max_reward * std::sqrt(2);
+      double next_weight = max_reward;
+      util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
       uct.update_exp_weight(next_weight);
       next_weight_update *= 2;
 
