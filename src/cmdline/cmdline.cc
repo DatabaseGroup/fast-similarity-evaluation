@@ -109,6 +109,8 @@ nlohmann::json get_metadata(Config& config) {
     json["batch_count"] = config.batch_count;
     json["reduction_cache_size"] = config.reduction_cache_size;
     json["probing_signatures_cache_size"] = config.probing_signatures_cache_size;
+  } else {
+    json["timeslice"] = config.timeslice;
   }
 
   return json;

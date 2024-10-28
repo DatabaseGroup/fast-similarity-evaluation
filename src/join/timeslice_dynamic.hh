@@ -425,9 +425,11 @@ public:
     // account for higher cost of 2 x probe + 2 x indexing
     double indexing_timeslice = 4 * scaled_timeslice;
 
+    double total_unweighted_reward = 0;
     double max_reward = 0;
     int64_t iterations = 0;
     int64_t non_punctual = 0;
+    double non_punctual_scale = 1;
     auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
 
     std::vector<types::ResultPair> result_pairs;
@@ -680,6 +682,7 @@ public:
       const double all_pairs =
         static_cast<double>(dataset.statistics->count) * (static_cast<double>(dataset.statistics->count) - 1) / 2;
       double reward = static_cast<double>(processed_pairs) / all_pairs;
+      total_unweighted_reward += reward;
       double no_of_ts = time_required / timeslice;
       reward /= no_of_ts;
 
@@ -689,16 +692,17 @@ public:
       iterations += 1;
 
       if (iterations >= next_weight_update) {
-        double next_weight = max_reward;
+        double next_weight = (1. * (1 - total_unweighted_reward) + 0.25 * total_unweighted_reward) * max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(next_weight);
         next_weight_update *= 2;
         if (static_cast<double>(non_punctual) / (static_cast<double>(iterations) / 2) > 0.25) {
-          scaled_timeslice *= 2;
-          indexing_timeslice = 4 * scaled_timeslice;
-          util::print_dbg(absl::StrFormat("Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
+          non_punctual_scale *= 2;
           // uct.reset();
         }
+        scaled_timeslice = timeslice * non_punctual_scale * (1 + total_unweighted_reward);
+        indexing_timeslice = 4 * scaled_timeslice;
+        util::print_dbg(absl::StrFormat("Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
         // util::print_dbg(absl::StrFormat("Clearing small indexes:"));
         // algorithm_cache.clear_small();
         non_punctual = 0;

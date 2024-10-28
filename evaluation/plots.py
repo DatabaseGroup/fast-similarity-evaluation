@@ -9,12 +9,10 @@ from pymongo.server_api import ServerApi
 
 
 def remove_extension(filename):
-    if '.short' not in filename:
-        return os.path.splitext(filename)[0]
-    return filename
+    return os.path.splitext(filename)[0]
 
 
-def average_time(collection: pymongo.collection.Collection, label: str, dataset: str):
+def average_time(collection: pymongo.collection.Collection, label: str, dataset: str, similarity: str):
     # Perform the query
     pipeline = [
         {
@@ -37,6 +35,9 @@ def average_time(collection: pymongo.collection.Collection, label: str, dataset:
         }
     ]
 
+    if similarity != "":
+        pipeline[0]['$match']['meta.similarity'] = similarity
+
     results = collection.aggregate(pipeline)
     return results
 
@@ -52,15 +53,16 @@ def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[
                 row.append(data[threshold].get(key, ""))
             writer.writerow(row)
 
-def static_vs_dynamic(datasets: list[str], collection: pymongo.collection.Collection):
-    time_static_label = 'ts-c2'
-    time_dynamic_label = 'td-c2'
+
+def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
+    time_static_label = 'final-v2-ts'
+    time_dynamic_label = 'final-v2-td'
     labels = [time_static_label, time_dynamic_label]
 
     for dataset in datasets:
         data = {}
         for label in labels:
-            results = average_time(collection, label, dataset)
+            results = average_time(collection, label, dataset, similarity)
             for result in results:
                 threshold = result['_id']['threshold']
                 avg_join_time = result['average_join_time']
@@ -73,7 +75,7 @@ def static_vs_dynamic(datasets: list[str], collection: pymongo.collection.Collec
                 if label == time_static_label:
                     data[threshold]['time-static-with-build'] = avg_join_time + avg_build_time
 
-        filename = f'time/{remove_extension(dataset)}.csv'
+        filename = f'time/{remove_extension(dataset)}-{similarity}.csv'
         headers = ['Threshold', 'time-static', 'time-dynamic', 'time-static-with-build']
         keys = [time_static_label, time_dynamic_label, 'time-static-with-build']
         write_to_csv(filename, headers, keys, data)
@@ -90,7 +92,8 @@ def static_vs_baseline(datasets: list[str], collection: pymongo.collection.Colle
         data = {}
         results = list(average_time(collection, time_static_label, dataset))
         similarity = results[0]['_id']['similarity']
-        baseline_labels = set_baselines if similarity in ['jaccard'] else string_baselines if similarity in ['sed'] else tree_baselines
+        baseline_labels = set_baselines if similarity in ['jaccard'] else string_baselines if similarity in [
+            'sed'] else tree_baselines
         all_results = []  # type: list[pymongo.collection.Mapping]
         all_results.extend(results)
         for label in baseline_labels:
@@ -112,6 +115,7 @@ def static_vs_baseline(datasets: list[str], collection: pymongo.collection.Colle
         keys.extend(baseline_labels)
         write_to_csv(filename, headers, keys, data)
 
+
 def main():
     uri = config.db_config['connection_string']
 
@@ -120,11 +124,14 @@ def main():
     database = client.get_database(config.db_config['database'])
     collection = database.get_collection(config.db_config['collection'])
 
-    datasets = ['bms-pos-dedup-raw.txt', 'dblp', 'dblp.short', 'enron', 'kosarak-dedup-raw.txt', 'pubchem-0.3m.txt',
-                'python.short',
-                'querylog', 'sentiment', 'swissprot.short', 'trec', 'word', 'python', 'swissprot']
+    set_datasets = ['bms-pos-dedup-raw.txt', 'kosarak-dedup-raw.txt', 'livejournal-userswithgroups-raw.txt',
+                    'orkut-userswithgroups-dedup-raw.txt', 'dblpv14', 'lnonis1']
+    string_datasets = ['dblp', 'enron', 'trec', 'word']
+    tree_datasets = ['sentiment', 'python', 'swissprot', 'synthetic', 'dblp']
 
-    static_vs_dynamic(datasets, collection)
+    static_vs_dynamic(set_datasets, 'jaccard', collection)
+    static_vs_dynamic(string_datasets, 'sed', collection)
+    static_vs_dynamic(tree_datasets, 'ted', collection)
     # static_vs_baseline(datasets, collection)
 
 

@@ -103,6 +103,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   std::vector<types::ResultPair> result_pairs;
   MaterializeHandler handler(result_pairs);
 
+  double total_unweighted_reward = 0;
   double max_reward = 0;
   int64_t iterations = 0;
   int64_t non_punctual = 0;
@@ -181,8 +182,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       }
     }
 
-    double reward =
-      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count) / (time_required / timeslice);
+    double unweighted_reward =
+      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count);
+    total_unweighted_reward += unweighted_reward;
+    double reward = unweighted_reward / (time_required / timeslice);
     max_reward = std::max(reward, max_reward);
     iterations += 1;
 
@@ -190,7 +193,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       "Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
 
     if (iterations == next_weight_update) {
-      double next_weight = max_reward;
+      double next_weight = (1. * (1 - total_unweighted_reward) + 0.25 * total_unweighted_reward) * max_reward;
       util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
       uct.update_exp_weight(next_weight);
       next_weight_update *= 2;
