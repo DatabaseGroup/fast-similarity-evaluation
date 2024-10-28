@@ -22,7 +22,6 @@ void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, type
     update_index(indexed_sets);
   } else {
     // preprocessing "consumes" the data, take copy
-    preprocessed_sets.reserve(preprocessed_sets.size() + sets.data.size());
     preprocessed_sets.insert(preprocessed_sets.end(), sets.data.begin(), sets.data.end());
 
     types::span<types::Set> new_sets = types::span<types::Set>(
