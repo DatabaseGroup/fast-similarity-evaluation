@@ -93,8 +93,8 @@ private:
            1;
   }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
-    auto step = similarity.maximum_length_bound(current_size) - current_size;
-    auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
+    const auto step = similarity.maximum_length_bound(current_size) - current_size;
+    const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1.5);
     return current_size + scaled_step + 1;
   }
 

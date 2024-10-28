@@ -149,7 +149,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
       if (!Filter::scan_skip_cond(indexed_sets[set_id], probing_set, filter_config) &&
           !Filter::scan_break_cond(indexed_sets[set_id], probing_set, filter_config)) {
         if (!already_seen[set_id]) {
-          auto index_size = static_cast<int64_t>(indexed_sets[set_id].tokens.size());
+          const auto index_size = static_cast<int64_t>(indexed_sets[set_id].tokens.size());
           if (minimum_size <= index_size && index_size <= maximum_size) {
             already_seen[set_id] = true;
             candidates.push_back(set_id);
@@ -183,7 +183,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
       ++sig_iter;
     }
 
-    for (auto candidate_id : candidates) {
+    for (const auto candidate_id : candidates) {
       // set from indexed data (indexed_sets set in index_batch)
       auto& candidate_set = indexed_sets[candidate_id];
 

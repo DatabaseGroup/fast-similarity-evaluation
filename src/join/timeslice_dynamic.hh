@@ -713,7 +713,7 @@ public:
     timing.join_time.stop();
 
     uct.for_each_action(
-      [&](ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weight.record(n.get_mean()); });
+      [&](const ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weight.record(n.get_mean()); });
   }
 
 private:
