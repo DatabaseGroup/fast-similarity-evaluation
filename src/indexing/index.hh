@@ -8,7 +8,6 @@ namespace indexing {
 
 enum IndexType {
   HASH,  // only direct access is allowed, universe of keys unknown
-  ORDERED,  // range queries for one dimension are allowed
   ORDERED_RANDOM  // range queries for one dimension are allowed, random order of inserts supported
 };
 
@@ -165,97 +164,6 @@ public:
 
 public:
   types::HashTable<KeyType, ComplexIndex<ValueType, TailIndexes...>> map;
-};
-
-template <class ValueType>
-class ComplexIndex<ValueType, ORDERED> {
-private:
-  using KeyValuePair = std::pair<KeyType, ValueType>;
-
-public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
-  void query(KeyRange key_range, CallbackFun callback, [[maybe_unused]] KeyFun& key_function) {
-    auto key_begin = key_range.first;
-    auto key_end = key_range.second;
-
-    auto iter = std::lower_bound(
-      map.begin(), map.end(), key_begin, [](const KeyValuePair& o1, const KeyType o2) { return o1.first < o2; });
-
-    for (; iter != map.end(); ++iter) {
-      if (iter->first > key_end) {
-        break;
-      }
-      bool should_break = callback(iter->second);
-      if (should_break) {
-        break;
-      }
-    }
-  }
-
-  void insert(ValueType value, KeyType key) {
-    // assume insertions are in order
-    map.emplace_back(key, value);
-  }
-
-  void clear() {
-    map.clear();
-  }
-
-  static constexpr int32_t LEVEL() { return 0; }
-
-public:
-  std::vector<KeyValuePair> map;
-};
-
-template <class ValueType, IndexType... TailIndexes>
-class ComplexIndex<ValueType, ORDERED, TailIndexes...> {
-private:
-  using KeyIndexPair = std::pair<KeyType, ComplexIndex<ValueType, TailIndexes...>>;
-
-public:
-  template <class CallbackFun, class KeyFun, int32_t LEVEL = 0>
-  void query(KeyRange key_range, CallbackFun callback, KeyFun& key_function) {
-    auto key_begin = key_range.first;
-    auto key_end = key_range.second;
-
-    auto iter = std::lower_bound(
-      map.begin(), map.end(), key_begin, [](const KeyIndexPair& o1, const KeyType o2) { return o1.first < o2; });
-
-    for (; iter != map.end(); ++iter) {
-      if (iter->first > key_end) {
-        break;
-      } else {
-        auto key = iter->first;
-        key_function.template set_level_key<LEVEL>(key);
-        for (auto next_key_iter = key_function.template get_level_iterator<LEVEL>();
-             next_key_iter != key_function.template get_level_end<LEVEL>();
-             ++next_key_iter) {
-          auto next_key = *next_key_iter;
-          iter->second.template query<CallbackFun, KeyFun, LEVEL + 1>(next_key, callback, key_function);
-        }
-      }
-    }
-  }
-
-  template <class... Keys>
-  void insert(ValueType value, KeyType key, Keys... keys) {
-    // assume insertions are in order
-    assert(map.empty() || map.back().first <= key);
-    if (map.empty() || map.back().first != key) {
-      map.emplace_back();
-      map.back().first = key;
-    }
-    map.back().second.insert(value, keys...);
-  }
-
-  void clear() {
-    map.clear();
-  }
-
-  static constexpr int32_t LEVEL() { return ComplexIndex<ValueType, TailIndexes...>::LEVEL() + 1; }
-
-public:
-  std::vector<KeyIndexPair> map;
 };
 
 template <class ValueType>

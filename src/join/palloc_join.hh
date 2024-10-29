@@ -78,7 +78,7 @@ private:
                    FilterConfig& filter_config,
                    statistics::JoinStatistics& statistics);
 
-  template <bool IS_SELF_JOIN, class CandidateHandler>
+  template <class CandidateHandler>
   void _probe_size_group(types::Set& probing_set,
                          GroupSignatures& group_sigs,
                          SizeGroup& size_group,
@@ -94,7 +94,7 @@ private:
   }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
     const auto step = similarity.maximum_length_bound(current_size) - current_size;
-    const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1.5);
+    const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 2);
     return current_size + scaled_step + 1;
   }
 

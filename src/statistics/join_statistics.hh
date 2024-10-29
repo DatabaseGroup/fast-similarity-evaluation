@@ -34,6 +34,7 @@ struct ReductionCacheStatistics {
 struct JoinStatistics {
   CountItem<> result_size;
   CountItem<> join_verifications;
+  CountItem<> index_skips;
 
   virtual ~JoinStatistics() = default;
 
@@ -42,6 +43,7 @@ struct JoinStatistics {
 
     result_size.add_to_json("result_size", json);
     join_verifications.add_to_json("join_verifications", json);
+    index_skips.add_to_json("index_skips", json);
 
     return json;
   }

@@ -39,9 +39,7 @@ inline AlgorithmId string_to_algorithm(const std::string& algorithm) {
   return AlgorithmId::FALLBACK;
 }
 
-enum FilterType {
-  NOP, SIMPLE_SELFJOIN, SYMMETRIC_PAIRS, CUTOFF, CUTOFF_SELFJOIN
-};
+enum FilterType { NOP, SIMPLE_SELFJOIN, SYMMETRIC_PAIRS, CUTOFF, CUTOFF_SELFJOIN };
 
 struct FilterConfig {
   FilterType type;
@@ -57,67 +55,65 @@ struct FilterConfig {
 
 struct AbstractFilter {
   constexpr static FilterType get_filter_type() = delete;
-  constexpr static bool literally_selfjoin() {
-    return false;
-  };
+  constexpr static bool literally_selfjoin() { return false; };
 
   // return true if we should skip the remainder of the current list (including this tuple)
-  template<class T>
-  constexpr static bool scan_break_cond([[maybe_unused]]const T& index, [[maybe_unused]]const T& probe, [[maybe_unused]]FilterConfig& config) {
+  template <class T>
+  constexpr static bool scan_break_cond([[maybe_unused]] const T& index,
+                                        [[maybe_unused]] const T& probe,
+                                        [[maybe_unused]] FilterConfig& config) {
     return false;
   }
   // return true if we should skip this single tuple
-  template<class T>
-  constexpr static bool scan_skip_cond([[maybe_unused]] const T& index, [[maybe_unused]]const T& probe, [[maybe_unused]]FilterConfig& config) {
+  template <class T>
+  constexpr static bool scan_skip_cond([[maybe_unused]] const T& index,
+                                       [[maybe_unused]] const T& probe,
+                                       [[maybe_unused]] FilterConfig& config) {
     return false;
   }
 };
 
 struct NopFilter : AbstractFilter {
-  constexpr static FilterType get_filter_type() {
-    return NOP;
-  }
+  constexpr static FilterType get_filter_type() { return NOP; }
 };
 
 struct SymmetricPairFilter : AbstractFilter {
-  constexpr static FilterType get_filter_type() {
-    return SYMMETRIC_PAIRS;
-  }
-  template<class T>
+  constexpr static FilterType get_filter_type() { return SYMMETRIC_PAIRS; }
+  template <class T>
   constexpr static bool scan_skip_cond(const T& index, const T& probe, [[maybe_unused]] FilterConfig& config) {
     return !(index.id < probe.id);
   }
 };
 
 struct SimpleSelfjoinFilter : SymmetricPairFilter {
-  constexpr static bool literally_selfjoin() {
-    return true;
-  }
+  constexpr static bool literally_selfjoin() { return true; }
 };
 
 struct CutoffFilter : AbstractFilter {
-  constexpr static FilterType get_filter_type() {
-    return CUTOFF;
-  }
+  constexpr static FilterType get_filter_type() { return CUTOFF; }
 
-  template<class T>
-  constexpr static bool scan_skip_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
+  template <class T>
+  constexpr static bool scan_skip_cond(const T& index,
+                                       [[maybe_unused]] const T& probe,
+                                       [[maybe_unused]] FilterConfig& config) {
     return index.id < config.index_start;
   }
 
-  template<class T>
-  constexpr static bool scan_break_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
+  template <class T>
+  constexpr static bool scan_break_cond(const T& index,
+                                        [[maybe_unused]] const T& probe,
+                                        [[maybe_unused]] FilterConfig& config) {
     return index.id > config.index_end;
   }
 };
 
 struct CutoffSelfFilter : CutoffFilter {
-  constexpr static FilterType get_filter_type() {
-    return CUTOFF_SELFJOIN;
-  }
+  constexpr static FilterType get_filter_type() { return CUTOFF_SELFJOIN; }
 
-  template<class T>
-  constexpr static bool scan_break_cond(const T& index, [[maybe_unused]] const T& probe, [[maybe_unused]] FilterConfig& config) {
+  template <class T>
+  constexpr static bool scan_break_cond(const T& index,
+                                        [[maybe_unused]] const T& probe,
+                                        [[maybe_unused]] FilterConfig& config) {
     return !(index.id < probe.id) || (index.id > config.index_end);
   }
 };

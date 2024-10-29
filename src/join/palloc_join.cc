@@ -63,7 +63,7 @@ std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
 
     auto it = std::lower_bound(
       size_groups.begin(), size_groups.end(), min_set_size, [](auto& group, auto size) { return group.upper < size; });
-    size_t group_idx = std::distance(size_groups.begin(), it);
+    const size_t group_idx = std::distance(size_groups.begin(), it);
 
     for (size_t grp = group_idx; grp < size_groups.size() && size_groups[grp].lower <= max_set_size; ++grp) {
       auto& e = sig_entry.group_signatures.emplace_back();
@@ -77,7 +77,7 @@ std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
 
 template <class Handler>
 void PallocJoin<Handler>::join_batch(types::Batch& indexed_data,
-  types::Batch& batch,
+                                     types::Batch& batch,
                                      Handler handler,
                                      FilterConfig& filter_config,
                                      statistics::JoinStatistics& statistics,
@@ -128,21 +128,21 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
   for (size_t i = 0; i < sets.data.size(); ++i) {
     auto& probing_set = sets.data[i];
     auto& sig = signatures[i];
-    auto set_size = static_cast<int64_t>(probing_set.tokens.size());
+    const auto set_size = static_cast<int64_t>(probing_set.tokens.size());
     auto minimum_size = similarity.minimum_length_bound(set_size);
     auto maximum_size = similarity.maximum_length_bound(set_size);
 
     // first find sets that might be similar due to size alone
     add_small_results<Filter>(probing_set,
-                      small_index.begin(),
-                      small_index.end(),
-                      indexed_sets,
-                      minimum_size,
-                      maximum_size,
-                      similarity,
-                      candidates,
-                      filter_config,
-                      already_seen);
+                              small_index.begin(),
+                              small_index.end(),
+                              indexed_sets,
+                              minimum_size,
+                              maximum_size,
+                              similarity,
+                              candidates,
+                              filter_config,
+                              already_seen);
 
     auto candidate_handler = [&](RecordId set_id) {
       // todo this could be optimized (actually perform the break instead of skipping); lists are maybe short enough
@@ -155,6 +155,8 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
             candidates.push_back(set_id);
           }
         }
+      } else {
+        statistics.index_skips.inc();
       }
     };
 
@@ -166,7 +168,6 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
     auto last_group = sig.group_signatures.back().group_id;
     auto sig_iter = sig.group_signatures.begin();
 
-    // probe lower signatures
     while (index_iter != index.map.end() && sig_iter != sig.group_signatures.end()) {
       auto& size_index = *index_iter;
       auto group_id = size_index.first;
@@ -177,7 +178,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
         ++sig_iter;
       }
 
-      _probe_size_group<Filter::literally_selfjoin()>(
+      _probe_size_group(
         probing_set, *sig_iter, size_groups[sig_iter->group_id], size_index.second, candidate_handler, statistics);
       ++index_iter;
       ++sig_iter;
@@ -206,7 +207,7 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
 }
 
 template <class Handler>
-template <bool IS_SELF_JOIN, class CandidateHandler>
+template <class CandidateHandler>
 void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
                                             GroupSignatures& group_sigs,
                                             SizeGroup& size_group,
