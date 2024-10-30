@@ -11,6 +11,7 @@
           - "cmake"
           - "curl"
           - "git"
+          - "kitty-terminfo"
           - "lsb-release"
           - "parallel"
           - "python3"

@@ -2,9 +2,7 @@
 #define SRC_TYPES_HH
 
 #include <absl/container/btree_map.h>
-#include <absl/container/btree_set.h>
-#include <absl/container/flat_hash_map.h>
-#include <absl/container/flat_hash_set.h>
+#include <ankerl/unordered_dense.h>
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
 #include <tsim/node/node.h>
@@ -23,12 +21,8 @@
 namespace types {
 
 template <class K, class V>
-using HashTable = absl::flat_hash_map<K, V>;
+using HashTable = ankerl::unordered_dense::map<K, V>;
 // using HashTable = std::unordered_map<K,V>;
-template <class K>
-using HashSet = absl::flat_hash_set<K>;
-template <class K>
-using TreeSet = absl::btree_set<K>;
 template <class K, class V>
 using TreeTable = absl::btree_map<K, V>;
 template <class K, class V>
