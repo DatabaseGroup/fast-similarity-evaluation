@@ -676,7 +676,7 @@ public:
           non_punctual_window_size = 0;
           non_punctual_scale *= 2;
         }
-        scaled_timeslice = timeslice * non_punctual_scale * (1 + 2 * total_unweighted_reward);
+        scaled_timeslice = timeslice * non_punctual_scale * (1 + std::min(2., 4 * total_unweighted_reward));
         indexing_timeslice = 4 * scaled_timeslice;
         util::print_dbg(absl::StrFormat(
           "Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
