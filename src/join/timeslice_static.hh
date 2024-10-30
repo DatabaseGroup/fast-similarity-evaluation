@@ -107,7 +107,9 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   double max_reward = 0;
   int64_t iterations = 0;
   int64_t non_punctual = 0;
-  auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
+  int64_t non_punctual_window_size = 0;
+  auto next_weight_update = 2 * static_cast<int64_t>(plans.size());
+  constexpr int64_t WEIGHT_UPDATE_STEP = 10;
 
   timing.join_time.start();
   while (lp_id < rp_id) {
@@ -188,17 +190,19 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     double reward = unweighted_reward / (time_required / timeslice);
     max_reward = std::max(reward, max_reward);
     iterations += 1;
+    non_punctual_window_size += 1;
 
     util::print_dbg(absl::StrFormat(
       "Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
 
     if (iterations == next_weight_update) {
-      double next_weight = (1. * (1 - total_unweighted_reward) + 0.25 * total_unweighted_reward) * max_reward;
+      double next_weight = std::max(0., (1. * (1 - 2 * total_unweighted_reward))) * max_reward;
       util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
       uct.update_exp_weight(next_weight);
-      next_weight_update *= 2;
-
-      if (static_cast<double>(non_punctual) / static_cast<double>(iterations) > 0.25) {
+      next_weight_update += WEIGHT_UPDATE_STEP;
+      if (static_cast<double>(non_punctual) / static_cast<double>(non_punctual_window_size) > 0.25) {
+        non_punctual = 0;
+        non_punctual_window_size = 0;
         scaled_timeslice *= 2;
       }
     }

@@ -401,8 +401,10 @@ public:
     double max_reward = 0;
     int64_t iterations = 0;
     int64_t non_punctual = 0;
+    int64_t non_punctual_window_size = 0;
     double non_punctual_scale = 1;
     auto next_weight_update = 2 * static_cast<int64_t>(plans.size());
+    constexpr int64_t WEIGHT_UPDATE_STEP = 10;
 
     std::vector<types::ResultPair> result_pairs;
     MaterializeHandler handler(result_pairs);
@@ -662,20 +664,23 @@ public:
         "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
       max_reward = std::max(reward, max_reward);
       iterations += 1;
+      non_punctual_window_size += 1;
 
       if (iterations >= next_weight_update) {
-        double next_weight = (1. * (1 - total_unweighted_reward) + 0. * total_unweighted_reward) * max_reward;
+        double next_weight = std::max(0., (1. * (1 - 2 * total_unweighted_reward))) * max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
-        uct.update_exp_weight(next_weight);
-        next_weight_update += static_cast<int64_t>(plans.size());
-        if (static_cast<double>(non_punctual) / (static_cast<double>(iterations) / 2) > 0.25) {
+        uct.update_exp_weight(0);
+        next_weight_update += WEIGHT_UPDATE_STEP;
+        if (static_cast<double>(non_punctual) / static_cast<double>(non_punctual_window_size) > 0.25) {
+          non_punctual = 0;
+          non_punctual_window_size = 0;
           non_punctual_scale *= 2;
         }
         scaled_timeslice = timeslice * non_punctual_scale * (1 + 2 * total_unweighted_reward);
         indexing_timeslice = 4 * scaled_timeslice;
         util::print_dbg(absl::StrFormat(
           "Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
-        non_punctual = 0;
+
       }
 
       uct.update(selection, reward, no_of_ts);
