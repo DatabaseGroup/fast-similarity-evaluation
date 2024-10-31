@@ -2,18 +2,14 @@
 #define SRC_TYPES_HH
 
 #include <absl/container/btree_map.h>
+#include <absl/container/flat_hash_map.h>
 #include <ankerl/unordered_dense.h>
+#include <tsim/cost_model/unit_cost_model.h>
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>
 #include <tsim/node/node.h>
-#include <tsim/cost_model/unit_cost_model.h>
 
-#if __cplusplus > 201703L
 #include <span>
-#else
-#include <boost/core/span.hpp>
-#endif
-
 #include <string>
 #include <variant>
 #include <vector>
@@ -21,8 +17,9 @@
 namespace types {
 
 template <class K, class V>
-using HashTable = ankerl::unordered_dense::map<K, V>;
-// using HashTable = std::unordered_map<K,V>;
+// using HashTable = ankerl::unordered_dense::map<K, V>;
+// using HashTable = std::unordered_map<K, V>;
+using HashTable = absl::flat_hash_map<K, V>;
 template <class K, class V>
 using TreeTable = absl::btree_map<K, V>;
 template <class K, class V>
@@ -178,27 +175,29 @@ using Dataset = std::variant<Sets, Strings, Trees>;
 using Batch = std::variant<SetBatch, StringBatch, TreeBatch>;
 
 inline void dataset_append(Dataset& d1, Dataset& d2) {
-  auto d1empty = std::visit([](auto& data1) {
-    return data1.data.empty();
-  }, d1);
+  auto d1empty = std::visit([](auto& data1) { return data1.data.empty(); }, d1);
 
   if (d1empty) {
     d1 = d2;
   } else {
-    std::visit([&](auto& data1) {
-    auto& data2 = std::get<std::decay_t<decltype(data1)>>(d2);
-    data1.data.insert(data1.data.end(), data2.data.begin(), data2.data.end());
-  }, d1);
+    std::visit(
+      [&](auto& data1) {
+        auto& data2 = std::get<std::decay_t<decltype(data1)>>(d2);
+        data1.data.insert(data1.data.end(), data2.data.begin(), data2.data.end());
+      },
+      d1);
   }
 }
 
 inline Batch dataset_last_n(Dataset& d, int64_t n) {
-  return std::visit([n](auto& data) {
-    using Type = std::decay_t<decltype(data)>;
-    auto span = types::span<typename Type::value_type>(data.data.end() - n, data.data.end());
-    auto db = DataBatch<typename Type::value_type>(span, data.meta);
-    return Batch(db);
-  }, d);
+  return std::visit(
+    [n](auto& data) {
+      using Type = std::decay_t<decltype(data)>;
+      auto span = types::span<typename Type::value_type>(data.data.end() - n, data.data.end());
+      auto db = DataBatch<typename Type::value_type>(span, data.meta);
+      return Batch(db);
+    },
+    d);
 }
 
 inline void print_result_pairs(std::ostream& ostream, ResultPairs& pairs, Dataset& data) {

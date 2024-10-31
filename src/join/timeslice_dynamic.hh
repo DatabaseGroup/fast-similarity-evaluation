@@ -327,20 +327,20 @@ public:
 
   void emplace(int64_t algorithm_id, VarSizeAlgIns&& instance) {
     util::print_dbg(
-      absl::StrFormat("\t\tIndexed action %i with range (%i, %i)", algorithm_id, instance.start, instance.end));
+      absl::StrFormat("\t\tIndexed action %i with range (%i, %i)", algorithm_id, instance.start, instance.end), util::DEBUG);
     algorithms[algorithm_id].emplace_back(std::forward<VarSizeAlgIns>(instance));
   }
 
   void print() {
-    util::print_dbg("\t\tCurrent index cache: ", "");
+    util::print_dbg("\t\tCurrent index cache: ", util::DEBUG, "");
     for (size_t action = 0; action < algorithms.size(); ++action) {
       auto& map = algorithms[action];
       for (auto& it : map) {
         auto& alg = it;
-        util::print_dbg(absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), "");
+        util::print_dbg(absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), util::DEBUG, "");
       }
     }
-    util::print_dbg("");
+    util::print_dbg("", util::DEBUG);
   }
 
   void print_covered() {
@@ -395,7 +395,7 @@ public:
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
     double scaled_timeslice = timeslice;
     // account for higher cost of 2 x probe + 2 x indexing
-    double indexing_timeslice = 4 * scaled_timeslice;
+    double indexing_timeslice = INDEXING_BONUS * scaled_timeslice;
 
     double total_unweighted_reward = 0;
     double max_reward = 0;
@@ -403,7 +403,7 @@ public:
     int64_t non_punctual = 0;
     int64_t non_punctual_window_size = 0;
     double non_punctual_scale = 1;
-    auto next_weight_update = 2 * static_cast<int64_t>(plans.size());
+    auto next_weight_update = 3 * static_cast<int64_t>(plans.size());
     constexpr int64_t WEIGHT_UPDATE_STEP = 10;
 
     std::vector<types::ResultPair> result_pairs;
@@ -424,7 +424,7 @@ public:
       bool has_started_using_cache = false;
       int64_t processed_pairs = 0;
 
-      util::print_dbg(absl::StrFormat("Starting new measurement"));
+      util::print_dbg(absl::StrFormat("Starting new measurement"), util::DEBUG);
 
       while (!scheduler.is_finished() && !time_exceeded) {
         auto block = scheduler.get_block();
@@ -432,7 +432,7 @@ public:
                                         block.start.x,
                                         block.end.x,
                                         block.start.y,
-                                        block.end.y));
+                                        block.end.y), util::DEBUG);
 
         int64_t left_id = block.start.x;
         int64_t right_id = block.start.y;
@@ -475,7 +475,7 @@ public:
           }
 
           util::print_dbg(
-            absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end));
+            absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end), util::DEBUG);
 
           Corner computed_until{};
 
@@ -532,7 +532,7 @@ public:
           } else {
             new_pairs = (computed_until.x - block.start.x) * (computed_until.y - block.start.y);
           }
-          util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs));
+          util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs), util::DEBUG);
           processed_pairs += new_pairs;
 
           util::print_dbg(
@@ -545,7 +545,7 @@ public:
                             : computed_until.x == block.end.x || computed_until.y == block.end.y ? "semi-completely"
                                                                                                  : "incompletely",
                             computed_until.x,
-                            computed_until.y));
+                            computed_until.y), util::DEBUG);
 
           end_time = timing::end_cost_measurement();
           time_required = timing::get_cost(start_time, end_time);
@@ -555,7 +555,7 @@ public:
           }
         } else {
           if (has_started_using_cache) {
-            util::print_dbg("Stopping to reduce fragmentation");
+            util::print_dbg("Stopping to reduce fragmentation", util::DEBUG);
             time_exceeded = true;
           } else {
             plan_statistics.index_cache_misses.inc();
@@ -623,11 +623,11 @@ public:
                 auto new_end = scheduler.next_larger_fitting(left_id, right_id);
                 left_target_id = new_end.x;
                 right_target_id = new_end.y;
-                util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id));
+                util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id), util::DEBUG);
               }
             }
             auto new_pairs = computed_pairs(block, left_id, right_id);
-            util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs));
+            util::print_dbg(absl::StrFormat("\t\tComputed %i pairs.", new_pairs), util::DEBUG);
             processed_pairs += new_pairs;
             scheduler.advance_block(left_id, right_id);
 
@@ -642,7 +642,7 @@ public:
                                             block.start.y,
                                             block.end.y,
                                             left_id,
-                                            right_id));
+                                            right_id), util::DEBUG);
           }
         }
       }
@@ -658,16 +658,19 @@ public:
       double reward = static_cast<double>(processed_pairs) / all_pairs;
       total_unweighted_reward += reward;
       double no_of_ts = time_required / timeslice;
-      reward /= no_of_ts;
+      if (!has_started_using_cache) {
+        no_of_ts /= INDEXING_BONUS;
+      }
+      reward = reward / no_of_ts;
 
       util::print_dbg(absl::StrFormat(
-        "Reward for action %d: %f (Time: %f, #pairs: %d)", selection.action, reward, time_required, processed_pairs));
+        "Reward for action %d: %f (Time: %f, Tries: %f, #pairs: %d)", selection.action, reward, time_required, no_of_ts, processed_pairs));
       max_reward = std::max(reward, max_reward);
       iterations += 1;
       non_punctual_window_size += 1;
 
       if (iterations >= next_weight_update) {
-        double next_weight = std::max(0., (1. * (1 - 2 * total_unweighted_reward))) * max_reward;
+        double next_weight = std::max(0., (1. * (1 - 1.5 * total_unweighted_reward))) * max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(0);
         next_weight_update += WEIGHT_UPDATE_STEP;
@@ -677,10 +680,9 @@ public:
           non_punctual_scale *= 2;
         }
         scaled_timeslice = timeslice * non_punctual_scale * (1 + std::min(2., 4 * total_unweighted_reward));
-        indexing_timeslice = 4 * scaled_timeslice;
+        indexing_timeslice = INDEXING_BONUS * scaled_timeslice;
         util::print_dbg(absl::StrFormat(
           "Increasing timeslice to %f, indexing timeslice to %f", scaled_timeslice, indexing_timeslice));
-
       }
 
       uct.update(selection, reward, no_of_ts);
@@ -853,8 +855,8 @@ private:
   // returns last probed id
   int64_t compute_with_index(types::Dataset& data,
                              similarity::Similarity& similarity,
-                             std::pair<int64_t, int64_t> index_range,
-                             std::pair<int64_t, int64_t> probe_range,
+                             const std::pair<int64_t, int64_t>& index_range,
+                             const std::pair<int64_t, int64_t>& probe_range,
                              VarSizeAlgIns& alg_with_index,
                              bool is_self_join,
                              int64_t plan_id,
@@ -864,8 +866,8 @@ private:
     constexpr int64_t BATCH_SIZE = MINIMAL_BATCH;
     int64_t probe_id = probe_range.first;
     while (probe_id < probe_range.second) {
-      auto real_block_end = std::min(probe_id + BATCH_SIZE, probe_range.second);
-      auto probe_batch = get_batch_by_offset(data, probe_id, real_block_end);
+      const auto real_block_end = std::min(probe_id + BATCH_SIZE, probe_range.second);
+      const auto probe_batch = get_batch_by_offset(data, probe_id, real_block_end);
       auto ibatch = IndexedBatch(probe_id, probe_batch);
 
       perform_onesided_microbatch(data,
@@ -898,6 +900,7 @@ private:
   ReductionCache reduction_cache;
   ProbingSignaturesCache probing_cache;
   const double timeslice;
+  const double INDEXING_BONUS = 4.;
 };
 
 // ReSharper restore CppDFANotInitializedField
