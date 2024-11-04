@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(src)
+project(fast)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CheckIPOSupported)

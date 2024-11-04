@@ -672,7 +672,7 @@ public:
       if (iterations >= next_weight_update) {
         double next_weight = std::max(0., (1. * (1 - 1.5 * total_unweighted_reward))) * max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
-        uct.update_exp_weight(0);
+        uct.update_exp_weight(next_weight);
         next_weight_update += WEIGHT_UPDATE_STEP;
         if (static_cast<double>(non_punctual) / static_cast<double>(non_punctual_window_size) > 0.25) {
           non_punctual = 0;
