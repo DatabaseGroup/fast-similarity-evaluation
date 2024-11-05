@@ -239,8 +239,10 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
   std::make_heap(costs.begin(), costs.end(), std::greater{});
 
   const auto probing_set_size = static_cast<int32_t>(probing_set.tokens.size());
-  const int32_t hamming_distance = similarity.max_hd_to(probing_set_size, size_group.lower, size_group.upper) + 1;
+  const int32_t hamming_distance = similarity.max_hd_to(size_group.lower, size_group.upper, probing_set_size) + 1;
   int32_t remaining = hamming_distance;
+
+  assert(hamming_distance <= 2 * size_group.partition_count);
 
   while (0 < remaining) {
     std::pop_heap(costs.begin(), costs.end(), std::greater{});

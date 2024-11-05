@@ -196,7 +196,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       "Reward for action %d: %f (Time: %f, #ids: %d)", action.action, reward, time_required, processed_ids));
 
     if (iterations == next_weight_update) {
-      double next_weight = std::max(0., (1. * (1 - 2 * total_unweighted_reward))) * max_reward;
+      double next_weight = std::max(0., 1. * (1 - 1.5 * total_unweighted_reward)) * max_reward;
       util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
       uct.update_exp_weight(next_weight);
       next_weight_update += WEIGHT_UPDATE_STEP;

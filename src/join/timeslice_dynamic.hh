@@ -670,7 +670,7 @@ public:
       non_punctual_window_size += 1;
 
       if (iterations >= next_weight_update) {
-        double next_weight = std::max(0., (1. * (1 - 1.5 * total_unweighted_reward))) * max_reward;
+        double next_weight = std::max(0., 1. * (1 - 1.5 * total_unweighted_reward)) * max_reward;
         util::print_dbg(absl::StrFormat("Updating UCT weights to %f", next_weight));
         uct.update_exp_weight(next_weight);
         next_weight_update += WEIGHT_UPDATE_STEP;
@@ -900,7 +900,7 @@ private:
   ReductionCache reduction_cache;
   ProbingSignaturesCache probing_cache;
   const double timeslice;
-  const double INDEXING_BONUS = 4.;
+  const double INDEXING_BONUS = 2.;
 };
 
 // ReSharper restore CppDFANotInitializedField

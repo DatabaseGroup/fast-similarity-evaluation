@@ -104,9 +104,16 @@ public:
   virtual int64_t equivalent_hd(int64_t s1, int64_t s2) {
     return static_cast<int64_t>(static_cast<double>(s1 + s2) - 2 * equivalent_fractional_overlap(s1, s2));
   }
-  virtual int64_t max_hd_to(int64_t reference, [[maybe_unused]] int64_t lower, int64_t upper) {
+  virtual int64_t max_hd_to([[maybe_unused]] int64_t index_lower,
+                            int64_t index_upper,
+                            [[maybe_unused]] int64_t probe_lower,
+                            int64_t probe_upper) {
     // by default, this almost always defaults to inserting the upper bound in the equivalent hd due to monotonicity
-    return equivalent_hd(reference, upper);
+    return equivalent_hd(index_upper, probe_upper);
+  }
+  virtual int64_t max_hd_to([[maybe_unused]] int64_t index_lower, int64_t index_upper, int64_t probing) {
+    // by default, this almost always defaults to inserting the upper bound in the equivalent hd due to monotonicity
+    return max_hd_to(index_lower, index_upper, probing, probing);
   }
 
   double similarity(const types::Set& s1, const types::Set& s2) override = 0;
@@ -244,9 +251,7 @@ public:
     return 0;
   }
 
-  int64_t max_asbs() override {
-    return _thresh;
-  };
+  int64_t max_asbs() override { return _thresh; };
 
 private:
   const int32_t _thresh;
@@ -262,13 +267,13 @@ public:
     return static_cast<int32_t>(std::max(s1, s2)) - q * integer_threshold;
   }
 
-  int64_t max_hd_to(int64_t reference, [[maybe_unused]] int64_t lower, [[maybe_unused]] int64_t upper) override {
-    if (reference < lower) {
-      return equivalent_hd(reference, lower);
-    } else if (upper < reference) {
-      return equivalent_hd(reference, upper);
+  int64_t max_hd_to(int64_t index_lower, int64_t index_upper, int64_t probe_lower, int64_t probe_upper) override {
+    if (probe_upper < index_lower) {
+      return equivalent_hd(index_lower, probe_upper);
+    } else if (index_upper < probe_lower) {
+      return equivalent_hd(index_upper, probe_lower);
     } else {
-      return equivalent_hd(reference, reference);
+      return equivalent_hd(probe_upper, probe_upper);
     }
   }
 
@@ -284,9 +289,7 @@ public:
     return 0;
   }
 
-  int64_t max_asbs() override {
-    return q * integer_threshold;
-  };
+  int64_t max_asbs() override { return q * integer_threshold; };
 
 private:
   int32_t q;
@@ -309,9 +312,7 @@ public:
     return 0;
   }
 
-  int64_t max_asbs() override {
-    return integer_threshold;
-  };
+  int64_t max_asbs() override { return integer_threshold; };
 
   double similarity(const types::Set& s1, const types::Set& s2) override {
     return static_cast<double>(s1.tokens.size() + s2.tokens.size() - 2 * overlap(s1, s2));
@@ -396,6 +397,9 @@ public:
   int64_t maximum_length_bound(int64_t size) override {
     return static_cast<int64_t>(std::floor(static_cast<double>(size) / (3 * threshold - 2)));
   }
+  int64_t max_hd_to(int64_t index_lower, int64_t index_upper, int64_t probe_lower, int64_t probe_upper) override {
+    return equivalent_hd(std::min(index_lower, probe_lower), std::max(index_upper, probe_upper));
+  }
 };
 
 class JaroSimilarity : public StringSimilarity {
@@ -410,8 +414,8 @@ public:
 
 private:
   static int get_transpositions(const types::String::str_t& match_string,
-                         const std::vector<bool>& matched_in_query_string,
-                         const std::vector<types::String::str_t::value_type>& common_chars) {
+                                const std::vector<bool>& matched_in_query_string,
+                                const std::vector<types::String::str_t::value_type>& common_chars) {
     int32_t curr_common_char_pos{};
     int32_t transpositions{};
 
@@ -446,8 +450,8 @@ private:
   }
 
   static double jaro(const types::String::str_t& query_string,
-              const types::String::str_t& match_string,
-              double jaro_threshold) {
+                     const types::String::str_t& match_string,
+                     double jaro_threshold) {
     const auto query_string_length = static_cast<int32_t>(query_string.length());
     const auto match_string_length = static_cast<int32_t>(match_string.length());
     const auto max_char_distance = std::max(std::max(query_string_length, match_string_length) / 2 - 1, 0);

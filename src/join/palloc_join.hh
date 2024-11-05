@@ -86,15 +86,15 @@ private:
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
-  int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
-    return (similarity.max_hd_to(
-              partition_upper_bound, partition_lower_bound, similarity.maximum_length_bound(partition_upper_bound)) /
-            2) +
-           1;
+  [[nodiscard]] int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
+    int32_t max_probe = similarity.maximum_length_bound(partition_upper_bound);
+    int32_t min_probe = similarity.minimum_length_bound(partition_lower_bound);
+    return similarity.max_hd_to(partition_lower_bound, partition_upper_bound, min_probe, max_probe) / 2 + 1;
   }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
-    const auto step = similarity.maximum_length_bound(current_size) - current_size;
-    const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 2);
+    const auto step =
+      similarity.maximum_length_bound(std::floor(similarity.maximum_length_bound(current_size))) - current_size;
+    const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
     return current_size + scaled_step + 1;
   }
 
