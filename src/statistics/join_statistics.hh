@@ -35,6 +35,7 @@ struct JoinStatistics {
   CountItem<> result_size;
   CountItem<> join_verifications;
   CountItem<> index_skips;
+  double indexed_ratio{};
 
   virtual ~JoinStatistics() = default;
 
@@ -44,6 +45,7 @@ struct JoinStatistics {
     result_size.add_to_json("result_size", json);
     join_verifications.add_to_json("join_verifications", json);
     index_skips.add_to_json("index_skips", json);
+    json["indexed_ratio"] = indexed_ratio;
 
     return json;
   }
@@ -115,6 +117,7 @@ struct GlobalJoinStatistics : JoinStatistics {
   virtual void merge(LocalJoinStatistics& local_stat) {
     this->result_size.value += local_stat.result_size.value;
     this->join_verifications.value += local_stat.join_verifications.value;
+    this->indexed_ratio += local_stat.indexed_ratio;
   }
 };
 

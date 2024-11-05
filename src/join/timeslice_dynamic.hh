@@ -327,50 +327,38 @@ public:
 
   void emplace(int64_t algorithm_id, VarSizeAlgIns&& instance) {
     util::print_dbg(
-      absl::StrFormat("\t\tIndexed action %i with range (%i, %i)", algorithm_id, instance.start, instance.end), util::DEBUG);
+      absl::StrFormat("\t\tIndexed action %i with range (%i, %i)", algorithm_id, instance.start, instance.end),
+      util::DEBUG);
     algorithms[algorithm_id].emplace_back(std::forward<VarSizeAlgIns>(instance));
   }
 
-  void print() {
+  void print() const {
     util::print_dbg("\t\tCurrent index cache: ", util::DEBUG, "");
     for (size_t action = 0; action < algorithms.size(); ++action) {
       auto& map = algorithms[action];
       for (auto& it : map) {
         auto& alg = it;
-        util::print_dbg(absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), util::DEBUG, "");
+        util::print_dbg(
+          absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), util::DEBUG, "");
       }
     }
     util::print_dbg("", util::DEBUG);
   }
 
-  void print_covered() {
-    std::cerr << "\t\tCurrent index cache coverage: \n";
-    for (size_t action = 0; action < algorithms.size(); ++action) {
-      auto& map = algorithms[action];
-      std::cerr << "\t\t\tAlgorithm " << action << ": ";
-      int64_t range_start = 0;
-      int64_t range_end = 0;
-      for (auto& it : map) {
-        auto& alg = it;
-        if (range_start <= alg.start && alg.start <= range_end && range_end <= alg.end) {
-          range_end = alg.end;
-        }
-        if (range_end < alg.start) {
-          std::cerr << absl::StrFormat("(%i, %i), ", range_start, range_end);
-          range_start = alg.start;
-          range_end = alg.end;
-        }
-      }
-      std::cerr << absl::StrFormat("(%i, %i), ", range_start, range_end);
+  [[nodiscard]] int64_t get_coverage(size_t algorithm_id) const {
+    auto& map = algorithms[algorithm_id];
+    int64_t coverage = 0;
+    for (auto& it : map) {
+      coverage += it.end - it.start;
     }
-    std::cerr << std::endl;
+    return coverage;
   }
 
 private:
   std::vector<std::vector<VarSizeAlgIns>> algorithms;
 };
 
-template <int64_t MINIMAL_BATCH = 64>
+template <int64_t MINIMAL_BATCH = 32>
 class DynamicTimeslicing {
 public:
   explicit DynamicTimeslicing(int64_t dataset_size, double timeslice)
@@ -432,7 +420,8 @@ public:
                                         block.start.x,
                                         block.end.x,
                                         block.start.y,
-                                        block.end.y), util::DEBUG);
+                                        block.end.y),
+                        util::DEBUG);
 
         int64_t left_id = block.start.x;
         int64_t right_id = block.start.y;
@@ -475,7 +464,8 @@ public:
           }
 
           util::print_dbg(
-            absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end), util::DEBUG);
+            absl::StrFormat("\t\tProcessing using cached index for range (%i, %i)", best_alg->start, best_alg->end),
+            util::DEBUG);
 
           Corner computed_until{};
 
@@ -545,7 +535,8 @@ public:
                             : computed_until.x == block.end.x || computed_until.y == block.end.y ? "semi-completely"
                                                                                                  : "incompletely",
                             computed_until.x,
-                            computed_until.y), util::DEBUG);
+                            computed_until.y),
+            util::DEBUG);
 
           end_time = timing::end_cost_measurement();
           time_required = timing::get_cost(start_time, end_time);
@@ -623,7 +614,8 @@ public:
                 auto new_end = scheduler.next_larger_fitting(left_id, right_id);
                 left_target_id = new_end.x;
                 right_target_id = new_end.y;
-                util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id), util::DEBUG);
+                util::print_dbg(absl::StrFormat("\t\tNew target (%i, %i)", left_target_id, right_target_id),
+                                util::DEBUG);
               }
             }
             auto new_pairs = computed_pairs(block, left_id, right_id);
@@ -642,7 +634,8 @@ public:
                                             block.start.y,
                                             block.end.y,
                                             left_id,
-                                            right_id), util::DEBUG);
+                                            right_id),
+                            util::DEBUG);
           }
         }
       }
@@ -663,8 +656,12 @@ public:
       }
       reward = reward / no_of_ts;
 
-      util::print_dbg(absl::StrFormat(
-        "Reward for action %d: %f (Time: %f, Tries: %f, #pairs: %d)", selection.action, reward, time_required, no_of_ts, processed_pairs));
+      util::print_dbg(absl::StrFormat("Reward for action %d: %f (Time: %f, Tries: %f, #pairs: %d)",
+                                      selection.action,
+                                      reward,
+                                      time_required,
+                                      no_of_ts,
+                                      processed_pairs));
       max_reward = std::max(reward, max_reward);
       iterations += 1;
       non_punctual_window_size += 1;
@@ -689,6 +686,11 @@ public:
     }
     timing.join_time.stop();
 
+    for (size_t i = 0; i < plans.size(); ++i) {
+      auto& statistic = all_statistics[i];
+      statistic.indexed_ratio =
+        static_cast<double>(algorithm_cache.get_coverage(i)) / static_cast<double>(dataset.statistics->count);
+    }
     uct.for_each_action(
       [&](const ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weight.record(n.get_mean()); });
   }

@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
 
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalDynamicTimeSliceStatistics>();
-    join::timeslice::DynamicTimeslicing<64> dts(dataset.statistics->count, config.timeslice);
+    join::timeslice::DynamicTimeslicing dts(dataset.statistics->count, config.timeslice);
     dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
     timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
     std::for_each(

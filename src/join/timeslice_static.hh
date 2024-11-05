@@ -81,6 +81,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     auto& plan = plans[i];
     auto& alg_instance = algorithms.emplace_back();
     auto& shared_state = shared_states[i];
+    all_statistics[i].indexed_ratio = 1;
 
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
