@@ -12,7 +12,8 @@
 
 struct Config {
   std::string input_file;
-  bool shuffle;
+  bool shuffle{false};
+  bool warmup{false};
   int64_t read_file_until{};
   std::string datatype;
   std::string similarity;
@@ -33,7 +34,10 @@ bool process_program_options(int argc, char** argv, Config& config) {
 
   po::options_description optdesc{"DESCRIPTION"};
   optdesc.add_options()("input-file,f", po::value(&config.input_file)->required(), "Specify input file")(
-    "shuffe,h", po::bool_switch(&config.shuffle)->default_value(false), "Shuffle the dataset after parsing")(
+    "shuffle,h", po::bool_switch(&config.shuffle)->default_value(false), "Shuffle the dataset after parsing")(
+    "warmup,w",
+    po::bool_switch(&config.warmup)->default_value(false),
+    "Perform warmup by filling caches before execution (only affects time-dynamic)")(
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
@@ -279,6 +283,11 @@ int main(int argc, char** argv) {
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalDynamicTimeSliceStatistics>();
     join::timeslice::DynamicTimeslicing dts(plans, dataset.statistics->count, config.timeslice);
+    if (config.warmup) {
+      auto temp_lls = setup_statistics<StatClass>(plans);
+      timing::TimeDynamicJoinTiming temp_timing;
+      dts.execute_join(dataset, similarity, plans, temp_timing, temp_lls);
+    }
     dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
     timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
     std::for_each(
