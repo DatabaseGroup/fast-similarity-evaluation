@@ -10,17 +10,16 @@ namespace ontology {
 namespace detail {
 
 struct UCTConfig {
-  // a reasonable estimated upper bound for avg. reward * sqrt(2)
-  double exploration_weight = std::sqrt(2) * 1e-2;
+  double exploration_weight;
 };
 
 class UCTNode {
 public:
-  explicit UCTNode(UCTConfig& config) : config(config) {}
+  explicit UCTNode(std::shared_ptr<UCTConfig> config) : config(config) {}
 
   [[nodiscard]] double action_quality(const UCTNode& child) const {
     double mean_reward = child.total_reward / child.nr_of_selections;
-    double bias = config.exploration_weight * std::sqrt(std::log(nr_of_selections) / child.nr_of_selections);
+    double bias = config->exploration_weight * std::sqrt(std::log(nr_of_selections) / child.nr_of_selections);
 
     return mean_reward + bias;
   }
@@ -39,20 +38,16 @@ public:
     }
   }
 
-  [[nodiscard]] int64_t get_action() const {
-    return action;
-  }
+  [[nodiscard]] int64_t get_action() const { return action; }
 
-  void set_action(int64_t action) {
-    this->action = action;
-  }
+  void set_action(int64_t action) { this->action = action; }
 
   util::object_ptr<UCTNode> add_child() {
     untried_action_ids.push_back(actions.size());
     return &actions.emplace_back(config);
   }
 
-  void for_each_action(const std::function<void(UCTNode&)>& fun) { // NOLINT(*-no-recursion)
+  void for_each_action(const std::function<void(UCTNode&)>& fun) {  // NOLINT(*-no-recursion)
     if (actions.empty()) {
       fun(*this);
     } else {
@@ -62,23 +57,21 @@ public:
     }
   }
 
-  [[nodiscard]] double get_mean() const {
-    return total_reward / nr_of_selections;
-  }
+  [[nodiscard]] double get_mean() const { return total_reward / nr_of_selections; }
 
-  void reset() { // NOLINT(*-no-recursion)
+  void reset() {  // NOLINT(*-no-recursion)
     total_reward = 0;
     nr_of_selections = 0;
     untried_action_ids.clear();
     for (size_t i = 0; i < actions.size(); ++i) {
-      auto& child  = actions[i];
+      auto& child = actions[i];
       untried_action_ids.push_back(i);
       child.reset();
     }
   }
 
 private:
-  void select_path(std::vector<util::object_ptr<UCTNode>>& path) { // NOLINT(*-no-recursion)
+  void select_path(std::vector<util::object_ptr<UCTNode>>& path) {  // NOLINT(*-no-recursion)
     if (actions.empty()) {
       return;
     }
@@ -108,10 +101,10 @@ private:
   }
 
 private:
-  int64_t action{-1}; // only available if leaf
+  int64_t action{-1};  // only available if leaf
   double total_reward{};
   double nr_of_selections{};
-  UCTConfig& config;
+  std::shared_ptr<UCTConfig> config;
 
   std::vector<UCTNode> actions;
   std::vector<size_t> untried_action_ids;
@@ -140,7 +133,7 @@ public:
     UCT uct;
     int64_t plan_id = 0;
     for (auto& plan : plans) {
-      util::object_ptr<UCTNode> parent(&uct.root);
+      util::object_ptr parent(&uct.root);
       for (auto& step : plan.steps) {
         auto it = nodes.find(step.id);
 
@@ -172,20 +165,15 @@ public:
     root.update_path(selection.path, reward, implicit_tries);
   }
 
-  void for_each_action(const std::function<void(UCTNode&)>& fun) {
-    root.for_each_action(fun);
-  }
+  void for_each_action(const std::function<void(UCTNode&)>& fun) { root.for_each_action(fun); }
 
-  void update_exp_weight(double weight) {
-    config.exploration_weight = weight;
-  }
+  void update_exp_weight(double weight) { config->exploration_weight = weight; }
 
-  void reset() {
-    root.reset();
-  }
+  void reset() { root.reset(); }
 
 private:
-  UCTConfig config;
+  // a reasonable estimated upper bound for avg. reward * sqrt(2)
+  std::shared_ptr<UCTConfig> config = std::make_shared<UCTConfig>(std::sqrt(2) * 1e-2);
   UCTNode root{config};
 };
 

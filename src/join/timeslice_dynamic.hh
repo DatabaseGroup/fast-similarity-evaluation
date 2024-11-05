@@ -361,10 +361,12 @@ private:
 template <int64_t MINIMAL_BATCH = 32>
 class DynamicTimeslicing {
 public:
-  explicit DynamicTimeslicing(int64_t dataset_size, double timeslice)
+  explicit DynamicTimeslicing(std::vector<ontology::QueryPlan>& plans, int64_t dataset_size, double timeslice)
       : reduction_cache(2 * dataset_size / MINIMAL_BATCH),
         probing_cache(2 * dataset_size / MINIMAL_BATCH),
-        timeslice(timeslice) {}
+        timeslice(timeslice),
+        plan_shared_states(plans.size()),
+        algorithm_cache(plans.size()) {}
 
   void execute_join(data::Dataset& dataset,
                     similarity::Similarity& similarity,
@@ -376,9 +378,8 @@ public:
     }
 
     BlockScheduler<MINIMAL_BATCH> scheduler(dataset.statistics->count);
-    BlockAlgorithmCache algorithm_cache(plans.size());
-    ontology::UCT uct = ontology::UCT::from_query_plans(plans);
-    std::vector<AlgorithmSharedState<>> plan_shared_states(plans.size());
+    // reset UCT
+    uct = ontology::UCT::from_query_plans(plans);
 
     constexpr int64_t HALFBATCH = MINIMAL_BATCH;
     double scaled_timeslice = timeslice;
@@ -902,7 +903,10 @@ private:
   ReductionCache reduction_cache;
   ProbingSignaturesCache probing_cache;
   const double timeslice;
-  const double INDEXING_BONUS = 2.;
+  std::vector<AlgorithmSharedState<>> plan_shared_states;
+  BlockAlgorithmCache algorithm_cache;
+  ontology::UCT uct;
+  const double INDEXING_BONUS = 4.;
 };
 
 // ReSharper restore CppDFANotInitializedField
