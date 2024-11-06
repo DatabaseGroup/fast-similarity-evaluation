@@ -125,6 +125,19 @@ public:
 
   void insert(ValueType value, KeyType key) { map[key].emplace_back(value); }
 
+  void merge(ComplexIndex& other, ValueType id_offset) {
+    for (auto& [key, value] : other.map) {
+      auto& list = map[key];
+      for (auto val : value) {
+        list.push_back(val + id_offset);
+      }
+    }
+  }
+
+  void clear() {
+    map.clear();
+  }
+
   static constexpr int32_t LEVEL() { return 0; }
 
 public:
@@ -154,6 +167,13 @@ public:
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
     map[key].insert(value, keys...);
+  }
+
+  void merge(ComplexIndex& other, ValueType id_offset) {
+    for (auto& [key, value] : other.map) {
+      auto& index = map[key];
+      index.merge(value, id_offset);
+    }
   }
 
   void clear() {
@@ -190,6 +210,12 @@ public:
 
   void insert(ValueType value, KeyType key) {
     map.emplace(key, value);
+  }
+
+  void merge(ComplexIndex& other, ValueType id_offset) {
+    for (auto& [key, value] : other.map) {
+      map.emplace(key, value + id_offset);
+    }
   }
 
   void clear() {
@@ -234,6 +260,13 @@ public:
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
     map[key].insert(value, keys...);
+  }
+
+  void merge(ComplexIndex& other, ValueType id_offset) {
+    for (auto& [key, value] : other.map) {
+      auto& index = map[key];
+      index.merge(value, id_offset);
+    }
   }
 
   void clear() {

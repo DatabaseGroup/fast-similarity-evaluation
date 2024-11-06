@@ -69,6 +69,20 @@ public:
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
+  bool supports_merge() override {
+    return true;
+  }
+
+  void merge(JoinAlgorithm<Handler>& o) override {
+    auto& other = dynamic_cast<PallocJoin&>(o);
+    this->index.merge(other.index, this->next_id);
+    for (auto [key, value] : other.small_index) {
+      this->small_index.emplace(key, this->next_id + value);
+    }
+    this->next_id += other.next_id;
+    this->resize_bitmap(this->next_id);
+  }
+
 private:
   template <class Filter>
   void _join_batch(types::Batch& indexed_data,

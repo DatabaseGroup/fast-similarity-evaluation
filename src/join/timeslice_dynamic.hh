@@ -5,6 +5,7 @@
 #include "../statistics/join_statistics.hh"
 #include "../timing/join_timing.hh"
 #include "../util/debug.hh"
+#include "../util/unstable_erase.hh"
 
 namespace join::timeslice {
 
@@ -241,6 +242,7 @@ struct VarSizeAlgIns {
   std::vector<similarity::Similarity> similarities;
   int64_t start{};
   int64_t end{};  // last usable data entry (index might contain later entries, but they should be ignored)
+  bool deleted = false;
 
   VarSizeAlgIns(ontology::QueryPlan& plan,
                 similarity::Similarity& similarity,
@@ -262,6 +264,8 @@ struct VarSizeAlgIns {
     end = other.end;
     return *this;
   };
+
+  [[nodiscard]] int64_t size() const { return end - start; }
 };
 
 class BlockAlgorithmCache {
@@ -333,16 +337,16 @@ public:
   }
 
   void print() const {
-    util::print_dbg("\t\tCurrent index cache: ", util::DEBUG, "");
+    util::print_dbg("\t\tCurrent index cache: ", util::INFO, "");
     for (size_t action = 0; action < algorithms.size(); ++action) {
       auto& map = algorithms[action];
       for (auto& it : map) {
         auto& alg = it;
         util::print_dbg(
-          absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), util::DEBUG, "");
+          absl::StrFormat("Algorithm %i with range (%i, %i); ", action, alg.start, alg.end), util::INFO, "");
       }
     }
-    util::print_dbg("", util::DEBUG);
+    util::print_dbg("", util::INFO);
   }
 
   [[nodiscard]] int64_t get_coverage(size_t algorithm_id) const {
@@ -354,6 +358,127 @@ public:
     return coverage;
   }
 
+  void consolidate() {
+    int32_t deduplicated_indexes = 0;
+    int32_t merged_indexes = 0;
+    print();
+
+    for (auto& alg : algorithms) {
+      if (alg.size() >= 2) {
+        std::ranges::sort(alg, [](auto& i1, auto& i2) {
+          if (i1.start == i2.start) {
+            return i2.end < i1.end;
+          } else {
+            return i1.start < i2.start;
+          }
+        });
+
+        // remove algorithms completely included in another algorithm
+        std::vector<VarSizeAlgIns> dedup_algs;
+        {
+          types::TreeSet<int64_t> range_ends;
+          for (auto& a : alg) {
+            auto it = range_ends.lower_bound(a.end);
+            if (it == range_ends.end()) {
+              dedup_algs.emplace_back(std::move(a));
+            } else {
+              ++deduplicated_indexes;
+            }
+            range_ends.insert(a.end);
+          }
+        }
+
+        // get mean algorithm instance size, only merge up to mean size
+        int64_t total_size = 0;
+        std::vector<int64_t> sizes;
+        std::ranges::for_each(alg, [&](auto& i) {
+          total_size += i.size();
+          sizes.push_back(i.size());
+        });
+
+        int64_t mean = total_size / static_cast<int64_t>(alg.size());
+        std::ranges::sort(sizes);
+        int64_t median = sizes[sizes.size() / 2];
+        int64_t merge_threshold = std::max(mean, median);
+        // blocks have unequal sizes due to rounding, so give this some amount of fuzz
+        merge_threshold += merge_threshold / 10;
+
+        util::print_dbg(absl::StrFormat("Merge Threshold: %f", merge_threshold));
+
+        // merge neighboring algorithms as long as they are small enough
+        bool merge_occured;
+
+        std::vector<VarSizeAlgIns> merged_algs = std::move(dedup_algs);
+        do {
+          merge_occured = false;
+          types::HashTable<int64_t, std::vector<size_t>> start_to_offset;
+
+          std::vector<VarSizeAlgIns> new_algs;
+
+          for (size_t i = 0; i < merged_algs.size(); ++i) {
+            auto& a = merged_algs[i];
+            start_to_offset[a.start].push_back(i);
+          }
+
+          for (auto& a : merged_algs) {
+            if (a.deleted) {
+              continue;
+            }
+
+            bool found_mergeable = false;
+            std::vector<size_t>::iterator found_offset;
+
+            auto it = start_to_offset.find(a.end);
+            if (it != start_to_offset.end()) {
+              auto& list = it->second;
+
+              for (auto off_it = list.begin(); off_it != list.end(); ++off_it) {
+                auto& b = merged_algs[*off_it];
+
+                if (a.algorithm->supports_merge() && b.algorithm->supports_merge() &&
+                    static_cast<int64_t>(a.size() + b.size()) <= merge_threshold) {
+                  found_mergeable = true;
+                  found_offset = off_it;
+                  break;
+                }
+              }
+            }
+
+            if (found_mergeable) {
+              auto& b = merged_algs[*found_offset];
+
+              // remove from list
+              util::unstable_erase(start_to_offset[a.end], found_offset);
+
+              for (size_t i = 0; i < a.owned_data.size(); ++i) {
+                auto& o1 = a.owned_data[i];
+                auto& o2 = b.owned_data[i];
+                types::dataset_append(o1, o2);
+              }
+              a.algorithm->merge(*b.algorithm);
+
+              a.end = b.end;
+              b.deleted = true;
+
+              new_algs.emplace_back(std::move(a));
+              merge_occured = true;
+              ++merged_indexes;
+            } else {
+              new_algs.emplace_back(std::move(a));
+            }
+          }
+
+          merged_algs = std::move(new_algs);
+        } while (merge_occured);
+
+        alg = std::move(merged_algs);
+      }
+    }
+
+    util::print_dbg(absl::StrFormat("Deduped %i and merged %i indexes", deduplicated_indexes, merged_indexes));
+    print();
+  }
+
 private:
   std::vector<std::vector<VarSizeAlgIns>> algorithms;
 };
@@ -362,8 +487,8 @@ template <int64_t MINIMAL_BATCH = 32>
 class DynamicTimeslicing {
 public:
   explicit DynamicTimeslicing(std::vector<ontology::QueryPlan>& plans, int64_t dataset_size, double timeslice)
-      : reduction_cache(2 * dataset_size / MINIMAL_BATCH),
-        probing_cache(2 * dataset_size / MINIMAL_BATCH),
+      : reduction_cache(2 * (dataset_size / MINIMAL_BATCH + 1)),
+        probing_cache(2 * (dataset_size / MINIMAL_BATCH + 1)),
         timeslice(timeslice),
         plan_shared_states(plans.size()),
         algorithm_cache(plans.size()) {}
@@ -427,7 +552,6 @@ public:
         int64_t left_id = block.start.x;
         int64_t right_id = block.start.y;
 
-        algorithm_cache.print();
         auto left_alg = algorithm_cache.find_covered_instance(selection.action, block.start.x, block.end.x);
         auto right_alg = algorithm_cache.find_covered_instance(selection.action, block.start.y, block.end.y);
 
@@ -692,6 +816,7 @@ public:
       statistic.indexed_ratio =
         static_cast<double>(algorithm_cache.get_coverage(i)) / static_cast<double>(dataset.statistics->count);
     }
+    algorithm_cache.consolidate();
     uct.for_each_action(
       [&](const ontology::detail::UCTNode& n) { all_statistics[n.get_action()].bandit_weight.record(n.get_mean()); });
   }

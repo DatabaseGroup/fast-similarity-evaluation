@@ -128,6 +128,12 @@ public:
     throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
   virtual void insert_batch(types::Batch& indexed_data, types::Batch& batch) = 0;
+  virtual bool supports_merge() {
+    return false;
+  }
+  virtual void merge([[maybe_unused]] JoinAlgorithm& o) {
+    throw std::invalid_argument("Cannot merge an unmergable algorithm.");
+  }
 
   virtual void join_batch(types::Batch& indexed_data,
                           types::Batch& batch,
