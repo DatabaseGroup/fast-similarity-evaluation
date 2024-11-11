@@ -25,7 +25,7 @@ def main():
     mongo_client, mongo_database, mongo_collection = connect_to_db(config.db_config)
 
     try:
-        results = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=60*60) # 1 hour timeout
+        results = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=2*60*60) # 2 hour timeout
         result = json_util.loads(results.stdout)
         write_to_db(mongo_collection, result)
     except subprocess.TimeoutExpired:
