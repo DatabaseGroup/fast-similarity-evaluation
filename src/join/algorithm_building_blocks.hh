@@ -14,7 +14,8 @@ namespace join {
 template <class Handler = MaterializeHandler>
 struct AlgorithmSharedState {
   typename PrefixSignatureJoin<Handler>::SharedState prefix;
-  typename PallocJoin<Handler>::SharedState palloc;
+  typename PallocJoin<Handler, true>::SharedState palloc;
+  typename PallocJoin<Handler, false>::SharedState partition;
 };
 
 inline std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(
@@ -32,7 +33,9 @@ inline std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(
   case TJOIN:
     return std::make_unique<TJoinLite<MaterializeHandler>>(similarity);
   case PALLOC:
-    return std::make_unique<PallocJoin<MaterializeHandler>>(similarity, shared_state.palloc);
+    return std::make_unique<PallocJoin<MaterializeHandler, true>>(similarity, shared_state.palloc);
+  case PARTITION:
+    return std::make_unique<PallocJoin<MaterializeHandler, false>>(similarity, shared_state.partition);
   }
   return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity, shared_state.prefix);
 }

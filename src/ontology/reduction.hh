@@ -64,25 +64,12 @@ public:
     assert(std::holds_alternative<types::StringBatch>(input_batch) &&
            std::holds_alternative<types::SetBatch>(output_batch));
     auto& in_strings = std::get<types::StringBatch>(input_batch);
-    auto& out_strings = std::get<types::SetBatch>(output_batch);
+    auto& out_sets = std::get<types::SetBatch>(output_batch);
     assert(in_strings.data.size() == out_strings.data.size());
-
-    auto in_iter = in_strings.data.begin();
-    auto in_iter_end = in_strings.data.end();
-    auto out_iter = out_strings.data.begin();
-    // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
-
-    while (in_iter != in_iter_end) {
-      auto& string = *in_iter;
-      auto& set = *out_iter;
-
-      set.id = string.id;
-      generate_qgrams(string, set);
-
-      std::sort(set.tokens.begin(), set.tokens.end());
-
-      ++in_iter;
-      ++out_iter;
+    if (in_strings.meta.alphabet_size <= std::numeric_limits<char>::max()) {
+      reduce<std::numeric_limits<char>::max()>(in_strings, out_sets);
+    } else {
+      reduce<std::numeric_limits<types::String::char_t>::max()>(in_strings, out_sets);
     }
   }
 
@@ -108,16 +95,58 @@ public:
   [[nodiscard]] std::string get_label() const override { return std::to_string(q) + "gram"; }
 
 protected:
+  template<int64_t ALPHABET>
+  void reduce(types::StringBatch& in_strings, types::SetBatch& out_sets) {
+    auto in_iter = in_strings.data.begin();
+    auto in_iter_end = in_strings.data.end();
+    auto out_iter = out_sets.data.begin();
+    // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
+
+    const util::RabinFingerprint<types::String::char_t, ALPHABET> rf{q};
+    constexpr int32_t hash_unused_lower_bits = 63 - rf.used_bits();
+
+    while (in_iter != in_iter_end) {
+      auto& string = *in_iter;
+      auto& set = *out_iter;
+
+      set.id = string.id;
+      generate_qgrams(string, set);
+
+      std::ranges::sort(set.tokens);
+
+      // somewhat more efficient counting of duplicates by keeping the order.
+      auto last_token = set.tokens.front() - 1;
+      uint64_t count = 0;
+      for (auto& token : set.tokens) {
+        if (token == last_token) {
+          ++count;
+          count &= (UINT64_C(1) << hash_unused_lower_bits) - 1;
+          token += count;
+        } else {
+          last_token = token;
+          count = 0;
+        }
+      }
+
+      ++in_iter;
+      ++out_iter;
+    }
+  }
+
   void generate_qgrams(types::String& string, types::Set& set) const {
-    util::RabinFingerprint<types::String::str_t::value_type> rf{q};
+    util::RabinFingerprint<types::String::char_t> rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
+    // highest bit has to be zero
+    constexpr int32_t hash_unused_upper_bits = 63 - rf.used_bits();
 
     for (int32_t i = 1; i < q; ++i) {
       rf.roll(PADDING);
     }
 
     for (int32_t i = 0; i < static_cast<int32_t>(string.str.size()); ++i) {
-      auto token = mask_highest_bit(rf.roll(string.str[i]));
+      auto token = rf.roll(string.str[i]);
+      token = token << hash_unused_upper_bits;
+      token = mask_highest_bit(token);
       set.tokens.push_back(token);
       if (i - rf.get_window() + 1 >= 0) {
         rf.remove(string.str[i - rf.get_window() + 1]);
@@ -127,13 +156,17 @@ protected:
     }
 
     for (int32_t i = q - 2; i >= 1; --i) {
-      int64_t token = mask_highest_bit(rf.roll(PADDING));
+      auto token = rf.roll(rf.roll(PADDING));
+      token = token << hash_unused_upper_bits;
+      token = mask_highest_bit(token);
       set.tokens.push_back(token);
 
       rf.remove(*(string.str.end() - i - 1));
     }
     if (q > 1) {
-      int64_t token = mask_highest_bit(rf.roll(PADDING));
+      auto token = rf.roll(rf.roll(PADDING));
+      token = token << hash_unused_upper_bits;
+      token = mask_highest_bit(token);
       set.tokens.push_back(token);
     }
   }
@@ -141,7 +174,7 @@ protected:
 private:
   int32_t q;
 
-  static const types::String::str_t::value_type PADDING = 0;
+  static constexpr types::String::char_t PADDING = 256;
 };
 
 class TraversalStringReduction : public Reduction {
@@ -152,6 +185,7 @@ public:
     auto& in_trees = std::get<types::TreeBatch>(input_batch);
     auto& out_strings = std::get<types::StringBatch>(output_batch);
     assert(in_trees.data.size() == out_strings.data.size());
+    out_strings.meta.alphabet_size = std::numeric_limits<types::String::char_t>::max();
 
     auto in_iter = in_trees.data.begin();
     auto in_iter_end = in_trees.data.end();

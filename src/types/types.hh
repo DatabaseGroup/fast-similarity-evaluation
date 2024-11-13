@@ -108,6 +108,7 @@ public:
   // we have to use "longer" strings here as a reduction to strings might result in requiring more than 8 bits for each
   // character
   using str_t = std::u32string;
+  using char_t = str_t::value_type;
   str_t str;
 
   String() : Data(INVALID) {}
@@ -123,7 +124,10 @@ public:
   }
 };
 template <>
-class Meta<String> {};
+class Meta<String> {
+public:
+  int64_t alphabet_size{};
+};
 using Strings = DataMeta<String>;
 using StringBatch = DataBatch<String>;
 

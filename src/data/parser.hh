@@ -56,6 +56,7 @@ public:
     dataset.data = types::Strings{};
     auto statistics = std::make_unique<StringStatistics>();
     auto& strings = std::get<types::Strings>(dataset.data);
+    strings.meta.alphabet_size = std::numeric_limits<char>::max();  // Assume 1 byte for each character
 
     std::ifstream file(filename);
 

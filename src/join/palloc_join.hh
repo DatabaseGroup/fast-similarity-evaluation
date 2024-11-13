@@ -8,7 +8,7 @@
 
 namespace join {
 
-template <class Handler>
+template <class Handler, bool ENABLE_DELETION=true>
 class PallocJoin : public SignatureJoin<Handler> {
 private:
   struct SizeGroup {
@@ -103,11 +103,20 @@ private:
   [[nodiscard]] int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
     int32_t max_probe = similarity.maximum_length_bound(partition_upper_bound);
     int32_t min_probe = similarity.minimum_length_bound(partition_lower_bound);
-    return similarity.max_hd_to(partition_lower_bound, partition_upper_bound, min_probe, max_probe) / 2 + 1;
+    auto hd = similarity.max_hd_to(partition_lower_bound, partition_upper_bound, min_probe, max_probe);
+    if constexpr (ENABLE_DELETION) {
+      hd = hd - hd / 3;
+    }
+    return static_cast<int32_t>(hd) + 1;
   }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
-    const auto step =
-      similarity.maximum_length_bound(std::floor(similarity.maximum_length_bound(current_size))) - current_size;
+    int64_t step;
+    if constexpr (ENABLE_DELETION) {
+      step = similarity.maximum_length_bound(std::floor(similarity.maximum_length_bound(current_size))) - current_size;
+    } else {
+      step = similarity.maximum_length_bound(current_size) - current_size;
+    }
+
     const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
     return current_size + scaled_step + 1;
   }
@@ -128,7 +137,8 @@ private:
   std::vector<SizeGroup>& size_groups;
 };
 
-template class PallocJoin<MaterializeHandler>;
+template class PallocJoin<MaterializeHandler, true>;
+template class PallocJoin<MaterializeHandler, false>;
 
 }  // namespace join
 

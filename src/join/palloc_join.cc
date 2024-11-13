@@ -2,13 +2,13 @@
 
 namespace join {
 
-template <class Handler>
-bool PallocJoin<Handler>::has_independent_probing_signatures() {
+template <class Handler, bool ENABLE_DELETION>
+bool PallocJoin<Handler, ENABLE_DELETION>::has_independent_probing_signatures() {
   return true;
 }
 
-template <class Handler>
-void PallocJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+template <class Handler, bool ENABLE_DELETION>
+void PallocJoin<Handler, ENABLE_DELETION>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
   auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
@@ -26,13 +26,15 @@ void PallocJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch&
 
     size_t group_idx = std::distance(size_groups.begin(), it);
     auto& group = size_groups[group_idx];
-    auto signatures = signature.indexing_signatures(set, group.partition_count);
+    auto signatures = signature.indexing_signatures(set, group.partition_count, ENABLE_DELETION);
 
     for (auto sig : signatures.normal_signatures) {
       index.insert(this->next_id, group_idx, sig);
     }
-    for (auto del_sig : signatures.deletion_signatures) {
-      index.insert(this->next_id, group_idx, del_sig);
+    if constexpr (ENABLE_DELETION) {
+      for (auto del_sig : signatures.deletion_signatures) {
+        index.insert(this->next_id, group_idx, del_sig);
+      }
     }
 
     if (static_cast<int64_t>(set_size) <= max_asbs) {
@@ -43,8 +45,8 @@ void PallocJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch&
   }
 }
 
-template <class Handler>
-std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
+template <class Handler, bool ENABLE_DELETION>
+std::any PallocJoin<Handler, ENABLE_DELETION>::get_probing_signatures(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<CachedSignatures> signatures(sets.data.size());
@@ -68,20 +70,20 @@ std::any PallocJoin<Handler>::get_probing_signatures(types::Batch& batch) {
     for (size_t grp = group_idx; grp < size_groups.size() && size_groups[grp].lower <= max_set_size; ++grp) {
       auto& e = sig_entry.group_signatures.emplace_back();
       e.group_id = grp;
-      e.signatures = signature.indexing_signatures(set, size_groups[grp].partition_count);
+      e.signatures = signature.indexing_signatures(set, size_groups[grp].partition_count, ENABLE_DELETION);
     }
   }
 
   return signatures;
 }
 
-template <class Handler>
-void PallocJoin<Handler>::join_batch(types::Batch& indexed_data,
-                                     types::Batch& batch,
-                                     Handler handler,
-                                     FilterConfig& filter_config,
-                                     statistics::JoinStatistics& statistics,
-                                     std::shared_ptr<std::any> probing_signatures) {
+template <class Handler, bool ENABLE_DELETION>
+void PallocJoin<Handler, ENABLE_DELETION>::join_batch(types::Batch& indexed_data,
+                                                      types::Batch& batch,
+                                                      Handler handler,
+                                                      FilterConfig& filter_config,
+                                                      statistics::JoinStatistics& statistics,
+                                                      std::shared_ptr<std::any> probing_signatures) {
   util::object_ptr<std::vector<CachedSignatures>> signatures;
   std::vector<CachedSignatures> local_signatures;
   if (probing_signatures) {
@@ -111,14 +113,14 @@ void PallocJoin<Handler>::join_batch(types::Batch& indexed_data,
   }
 }
 
-template <class Handler>
+template <class Handler, bool ENABLE_DELETION>
 template <class Filter>
-void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
-                                      types::Batch& batch,
-                                      std::vector<CachedSignatures>& signatures,
-                                      Handler& handler,
-                                      FilterConfig& filter_config,
-                                      statistics::JoinStatistics& statistics) {
+void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_data,
+                                                       types::Batch& batch,
+                                                       std::vector<CachedSignatures>& signatures,
+                                                       Handler& handler,
+                                                       FilterConfig& filter_config,
+                                                       statistics::JoinStatistics& statistics) {
   auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
@@ -206,9 +208,9 @@ void PallocJoin<Handler>::_join_batch(types::Batch& indexed_data,
   }
 }
 
-template <class Handler>
+template <class Handler, bool ENABLE_DELETION>
 template <class CandidateHandler>
-void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
+void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing_set,
                                             GroupSignatures& group_sigs,
                                             SizeGroup& size_group,
                                             indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
@@ -242,14 +244,14 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
   const int32_t hamming_distance = similarity.max_hd_to(size_group.lower, size_group.upper, probing_set_size) + 1;
   int32_t remaining = hamming_distance;
 
-  assert(hamming_distance <= 2 * size_group.partition_count);
+  assert(ENABLE_DELETION && hamming_distance <= 2 * size_group.partition_count || hamming_distance <= size_group.partition_count);
 
   while (0 < remaining) {
     std::pop_heap(costs.begin(), costs.end(), std::greater{});
     auto& entry = costs.back();
     auto partition = entry.partition_id;
 
-    if (entry.is_normal) {
+    if (!ENABLE_DELETION || entry.is_normal) {
       // 1. read normal il
       if (normal_ils[partition]) {
         for (auto id : *normal_ils[partition]) {
@@ -257,35 +259,40 @@ void PallocJoin<Handler>::_probe_size_group(types::Set& probing_set,
         }
       }
 
-      int64_t cost = 0;
-      // 2. get cost of probing normal signature against deletion index
-      {
-        auto sig = signature.select_other_index(nor_sig[partition]);
-        auto it = size_index.map.find(sig);
-        if (it != size_index.map.end()) {
-          auto& list = it->second;
-          cost += static_cast<int64_t>(list.size());
-          normal_ils[partition] = util::object_ptr(&list);
+      if constexpr (ENABLE_DELETION) {
+        int64_t cost = 0;
+        // 2. get cost of probing normal signature against deletion index
+        {
+          auto sig = signature.select_other_index(nor_sig[partition]);
+          auto it = size_index.map.find(sig);
+          if (it != size_index.map.end()) {
+            auto& list = it->second;
+            cost += static_cast<int64_t>(list.size());
+            normal_ils[partition] = util::object_ptr(&list);
+          }
         }
-      }
 
-      // 3. get cost of probing deletion signatures against normal index
-      for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
-        auto sig = signature.select_other_index(del_sig[i]);
+        // 3. get cost of probing deletion signatures against normal index
+        for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
+          auto sig = signature.select_other_index(del_sig[i]);
 
-        auto it = size_index.map.find(sig);
-        if (it != size_index.map.end()) {
-          auto& list = it->second;
-          cost += static_cast<int64_t>(list.size());
-          deletion_ils[i] = util::object_ptr(&list);
+          auto it = size_index.map.find(sig);
+          if (it != size_index.map.end()) {
+            auto& list = it->second;
+            cost += static_cast<int64_t>(list.size());
+            deletion_ils[i] = util::object_ptr(&list);
+          }
         }
+
+        // 4. update heap
+        entry.is_normal = false;
+        entry.cost = cost;
+
+        std::push_heap(costs.begin(), costs.end(), std::greater{});
+      } else {
+        // remove entry from heap
+        costs.pop_back();
       }
-
-      // 4. update heap
-      entry.is_normal = false;
-      entry.cost = cost;
-
-      std::push_heap(costs.begin(), costs.end(), std::greater{});
     } else {
       if (normal_ils[partition]) {
         for (auto id : *normal_ils[partition]) {

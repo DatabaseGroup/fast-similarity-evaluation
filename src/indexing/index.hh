@@ -118,7 +118,9 @@ public:
     if (iter != map.end()) {
       auto& vec = iter->second;
       for (auto entry : vec) {
-        callback(entry);
+        if (callback(entry)) {
+          break;
+        }
       }
     }
   }
@@ -201,8 +203,7 @@ public:
       if (iter->first > key_end) {
         break;
       }
-      bool should_break = callback(iter->second);
-      if (should_break) {
+      if (callback(iter->second)) {
         break;
       }
     }

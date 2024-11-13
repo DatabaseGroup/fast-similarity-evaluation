@@ -195,7 +195,7 @@ private:
 
 class StandardReductionGraph : public ReductionGraph {
 public:
-  StandardReductionGraph(std::vector<std::string>& additional_reductions) {
+  explicit StandardReductionGraph(const std::vector<std::string>& additional_reductions) {
     auto& traversal_string_reduction = *reductions.emplace_back(std::make_unique<TraversalStringReduction>());
     auto& q3gram_reduction = *reductions.emplace_back(std::make_unique<QGramReduction>(3));
     auto& label_set_reduction = *reductions.emplace_back(std::make_unique<LabelSetReduction>());
@@ -203,7 +203,7 @@ public:
 
     std::vector<std::unique_ptr<Reduction>*> additional_qram_reductions;
     for (auto& s : additional_reductions) {
-      if (s.size() > 0 && s[0] == 'q') {
+      if (!s.empty() && s[0] == 'q') {
         int64_t q = std::stoi(s.substr(1));
         additional_qram_reductions.emplace_back(&reductions.emplace_back(std::make_unique<QGramReduction>(q)));
       }
@@ -238,12 +238,15 @@ public:
     sed.algorithms.emplace_back(join::AlgorithmId::PASS_JOIN);
     struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PALLOC);
+    struct_set_sim.algorithms.emplace_back(join::AlgorithmId::PARTITION);
     set_hd.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     ted.algorithms.emplace_back(join::AlgorithmId::TJOIN);
     jaccard.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     jaccard.algorithms.emplace_back(join::AlgorithmId::PALLOC);
+    jaccard.algorithms.emplace_back(join::AlgorithmId::PARTITION);
     jaro_overlap.algorithms.emplace_back(join::AlgorithmId::PREFIX_SIGNATURE_JOIN);
     jaro_overlap.algorithms.emplace_back(join::AlgorithmId::PALLOC);
+    jaro_overlap.algorithms.emplace_back(join::AlgorithmId::PARTITION);
   }
 };
 

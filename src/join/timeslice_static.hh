@@ -67,9 +67,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   std::vector<AlgorithmInstance<MaterializeHandler>> algorithms;
   std::vector<AlgorithmSharedState<MaterializeHandler>> shared_states(plans.size());
 
-  // should be large enough to fit all index data of plans + one microbatch
-  // a plan has at most 3 steps and we have ~plans.size + 1 different "batches" at the same time
-  ReductionCache reduction_cache(3 * (plans.size() + 1));
+  constexpr int64_t HALFBATCH = 8;
+  ReductionCache reduction_cache(3 * (dataset.statistics->count / HALFBATCH + 1));
   std::vector<IndexedBatch> all_dataset_batches;
   all_dataset_batches.reserve(plans.size());
   for (size_t i = 0; i < plans.size(); ++i) {
@@ -85,8 +84,14 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
-      alg_instance.owned_data =
-        reduction_cache.reduce_data_to_end(all_dataset_batches[i], plan, all_statistics[i].rc_statistics);
+      alg_instance.owned_data = std::make_shared<types::Dataset>();
+      for (int64_t offset = 0; offset < dataset.statistics->count; offset += HALFBATCH) {
+        auto batch = get_batch_by_offset(dataset.data, offset, std::min(offset + HALFBATCH, dataset.statistics->count));
+        auto iibatch = IndexedBatch(offset, batch);
+        auto reduced_batch = reduction_cache.reduce_data_to_end(iibatch, plan, all_statistics[i].rc_statistics);
+
+        types::dataset_append(*alg_instance.owned_data, *reduced_batch);
+      }
       alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
     alg_instance.algorithm =
@@ -98,7 +103,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
   int64_t lp_id = 0;
   int64_t rp_id = dataset.statistics->count;
-  constexpr int64_t HALFBATCH = 8;
+  // rp_id is also HALFBATCH aligned
+  if (rp_id % HALFBATCH != 0) {
+    rp_id = (rp_id / HALFBATCH + 1) * HALFBATCH;
+  }
   double scaled_timeslice = timeslice;
 
   std::vector<types::ResultPair> result_pairs;
@@ -128,7 +136,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     while (lp_id < rp_id) {
       // do left batch
       {
-        size_t probing_batch_id = plans.size() + lp_id;
+        size_t probing_batch_id = lp_id;
         auto probing_batch = get_batch_by_offset(dataset.data, lp_id, std::min(lp_id + HALFBATCH, rp_id));
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (might be fixed in the future)
@@ -150,11 +158,10 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
       // do right batch
       if (lp_id < rp_id) {
-        int64_t tmp = rp_id;
-        rp_id = rp_id - HALFBATCH < lp_id ? lp_id : rp_id - HALFBATCH;
-        int64_t real_batch = tmp - rp_id;
+        rp_id = rp_id - HALFBATCH;
+        int64_t real_batch = std::min(rp_id + HALFBATCH, dataset.statistics->count);
 
-        size_t probing_batch_id = plans.size() + rp_id;
+        size_t probing_batch_id = rp_id;
         auto probing_batch = get_batch_by_offset(dataset.data, rp_id, rp_id + real_batch);
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
@@ -185,8 +192,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       }
     }
 
-    double unweighted_reward =
-      static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count);
+    double unweighted_reward = static_cast<double>(processed_ids) / static_cast<double>(dataset.statistics->count);
     total_unweighted_reward += unweighted_reward;
     double reward = unweighted_reward / (time_required / timeslice);
     max_reward = std::max(reward, max_reward);

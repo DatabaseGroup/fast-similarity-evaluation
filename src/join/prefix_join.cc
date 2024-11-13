@@ -160,11 +160,13 @@ void PrefixSignatureJoin<Handler>::_join_batch(CachedSignatures& signatures,
 
     auto it = prefix_signature.begin_probing_signatures(set);
     auto it_end = prefix_signature.end_probing_signatures(set);
+    int64_t pos = 0;
 
     for (; it != it_end; ++it) {
       auto signature = *it;
+      auto maximum_candidate_size_pel = similarity.maximum_length_pel(set_size, pos);
 
-      indexing::StaticRangeIterator length_iter{std::make_pair(minimum_candidate_size, maximum_candidate_size)};
+      indexing::StaticRangeIterator length_iter{std::make_pair(minimum_candidate_size, maximum_candidate_size_pel)};
       index.query(
         signature,
         [&](RecordId set_id) {
@@ -178,6 +180,7 @@ void PrefixSignatureJoin<Handler>::_join_batch(CachedSignatures& signatures,
           return false;
         },
         length_iter);
+      ++pos;
     }
 
     // candidate_id != candidate_set.id

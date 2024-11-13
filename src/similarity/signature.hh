@@ -12,17 +12,17 @@ namespace similarity {
 
 class SetQuasiSuffix {
 public:
-  void update_occurences(const types::SetBatch& batch) {
-    update_occurences(batch.data.begin(), batch.data.end());
+  void update_occurrences(const types::SetBatch& batch) {
+    update_occurrences(batch.data.begin(), batch.data.end());
   }
 
   template<class It1, class It2>
-  void update_occurences(It1 begin, It2 end) {
-    // take a sample of only every 10-th set (for performance reasons)
-    for (; begin != end; advance_iterator_bounded(begin, end, 10)) {
+  void update_occurrences(It1 begin, It2 end) {
+    // take a sample of only every 4-th set (for performance reasons)
+    for (; begin != end; advance_iterator_bounded(begin, end, 4)) {
       auto set = *begin;
       for (auto token : set.tokens) {
-        if (occurences[token]++ == 0) {
+        if (occurrences[token]++ == 0) {
           all_tokens.push_back(token);
         }
       }
@@ -32,16 +32,15 @@ public:
 
   void build_token_mapping(int64_t budget = std::numeric_limits<int64_t>::max()) {
     std::vector<std::pair<types::Set::Token, int64_t>> sorted_pairs;
-    sorted_pairs.reserve(occurences.size());
+    sorted_pairs.reserve(occurrences.size());
 
-    int64_t avg_token_count = total_token_count / static_cast<int64_t>(occurences.size());
+    int64_t avg_token_count = total_token_count / static_cast<int64_t>(occurrences.size());
 
-    auto begin = all_tokens.begin() + (avg_token_count % 10);
+    auto begin = all_tokens.begin();
     auto end = all_tokens.end();
-    // take a sample of only every 10-th list (for performance reasons)
-    for (; begin != end; advance_iterator_bounded(begin, end, 10)) {
-      // only consider the at most 10% of lists larger than 10 * avg
-      if (auto& entry = occurences[*begin]; entry >= 10 * avg_token_count) {
+    for (; begin != end; advance_iterator_bounded(begin, end, 1)) {
+      // only consider the tokens with at least double the occurrences count
+      if (auto& entry = occurrences[*begin]; entry >= 2 * avg_token_count) {
         sorted_pairs.emplace_back(*begin, entry);
       }
     }
@@ -82,7 +81,7 @@ private:
 
 private:
   std::vector<types::Set::Token> all_tokens;
-  types::HashTable<types::Set::Token, int64_t> occurences;
+  types::HashTable<types::Set::Token, int64_t> occurrences;
   types::HashTable<types::Set::Token, types::Set::Token> heavy_tokens;
   int64_t next_token = std::numeric_limits<int64_t>::max();
   int64_t total_token_count = 0;
@@ -98,7 +97,7 @@ public:
 public:
   void update_frequencies(const types::span<types::Set> sets) const {
     if (token_budget != 0) {
-      sqs.update_occurences(sets.begin(), sets.end());
+      sqs.update_occurrences(sets.begin(), sets.end());
     }
   }
 
@@ -177,7 +176,7 @@ public:
 
     for (int32_t partition = 0; partition < partition_count(); ++partition) {
       int32_t part_size = partition_size(string.size(), partition);
-      util::RabinFingerprint<std::u32string::value_type> fp(part_size);
+      util::RabinFingerprint<types::String::char_t> fp(part_size);
 
       for (int32_t i = offset; i < offset + part_size; ++i) {
         fp.roll(string[i]);
@@ -201,7 +200,7 @@ public:
       int32_t offset = 0;
       for (int32_t partition = 0; partition < partition_count(); ++partition) {
         int32_t part_size = partition_size(index_string_size, partition);
-        util::RabinFingerprint<std::u32string::value_type> fp(part_size);
+        util::RabinFingerprint<types::String::char_t> fp(part_size);
 
         int32_t start_pos = probe_start_pos(partition, offset);
         int32_t end_pos = probe_end_pos(partition, offset, part_size, string_size);
@@ -273,7 +272,7 @@ public:
       : partition_hash(std::seed_seq{0x42424242, 0x1337}),
         deletion_hash(util::TabulationHash(std::seed_seq{0x3133735}).get(0)) {}
 
-  Signatures indexing_signatures(types::Set& set, int32_t partition_count) {
+  Signatures indexing_signatures(types::Set& set, int32_t partition_count, bool enable_deletion) {
     Signatures signatures;
 
     std::vector<int32_t> partition_size(partition_count + 1, 0);
@@ -288,18 +287,20 @@ public:
       signatures.normal_signatures[part] ^= hash_token(token);
       ++partition_size[part + 1];
     }
-    std::partial_sum(partition_size.begin(), partition_size.end(), partition_size.begin());
+    if (enable_deletion) {
+      std::partial_sum(partition_size.begin(), partition_size.end(), partition_size.begin());
 
-    for (auto i = 0; i < partition_count; ++i) {
-      signatures.deletion_partition_offsets.emplace_back(partition_size[i], partition_size[i + 1]);
-    }
+      for (auto i = 0; i < partition_count; ++i) {
+        signatures.deletion_partition_offsets.emplace_back(partition_size[i], partition_size[i + 1]);
+      }
 
-    signatures.deletion_signatures.resize(set.tokens.size());
-    for (auto token : set.tokens) {
-      auto part = partition(token, partition_count);
-      signatures.deletion_signatures[partition_size[part]] =
-        signatures.normal_signatures[part] ^ hash_token(token) ^ deletion_hash;
-      ++partition_size[part];
+      signatures.deletion_signatures.resize(set.tokens.size());
+      for (auto token : set.tokens) {
+        auto part = partition(token, partition_count);
+        signatures.deletion_signatures[partition_size[part]] =
+          signatures.normal_signatures[part] ^ hash_token(token) ^ deletion_hash;
+        ++partition_size[part];
+      }
     }
 
     return signatures;

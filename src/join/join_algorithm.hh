@@ -6,7 +6,7 @@
 
 namespace join {
 
-enum AlgorithmId { FALLBACK, PREFIX_SIGNATURE_JOIN, PASS_JOIN, TJOIN, PALLOC };
+enum AlgorithmId { FALLBACK, PREFIX_SIGNATURE_JOIN, PASS_JOIN, TJOIN, PALLOC, PARTITION };
 
 // there are better ways to do this, but they aren't worth it here
 inline std::string algorithm_to_string(AlgorithmId id) {
@@ -21,6 +21,8 @@ inline std::string algorithm_to_string(AlgorithmId id) {
     return "tjoin";
   case PALLOC:
     return "palloc";
+  case PARTITION:
+    return "partition";
   }
   return "fallback";
 }
@@ -30,7 +32,8 @@ inline AlgorithmId string_to_algorithm(const std::string& algorithm) {
     {"prefix-signature", AlgorithmId::PREFIX_SIGNATURE_JOIN},
     {"pass-join", AlgorithmId::PASS_JOIN},
     {"tjoin", AlgorithmId::TJOIN},
-    {"palloc", AlgorithmId::PALLOC}};
+    {"palloc", AlgorithmId::PALLOC},
+    {"partition", AlgorithmId::PARTITION}};
   auto it = map.find(algorithm);
 
   if (it != map.end()) {
@@ -128,9 +131,7 @@ public:
     throw std::invalid_argument("Cannot prepare a batch for an algorithm with dependent probing signatures.");
   }
   virtual void insert_batch(types::Batch& indexed_data, types::Batch& batch) = 0;
-  virtual bool supports_merge() {
-    return false;
-  }
+  virtual bool supports_merge() { return false; }
   virtual void merge([[maybe_unused]] JoinAlgorithm& o) {
     throw std::invalid_argument("Cannot merge an unmergable algorithm.");
   }

@@ -2,6 +2,7 @@
 #define SRC_HASHING_HH
 
 #include <absl/random/random.h>
+
 #include <boost/multiprecision/miller_rabin.hpp>
 
 namespace util {
@@ -44,7 +45,7 @@ private:
   absl::BitGen bitgen;
 };
 
-template <class INTEGER>
+template <class INTEGER, int64_t ALPHABET = std::numeric_limits<char>::max()>
 class RabinFingerprint {
 public:
   explicit RabinFingerprint(int32_t window) : window(window) {
@@ -76,47 +77,24 @@ public:
 
   [[nodiscard]] uint64_t get_state() const { return state; }
 
+  [[nodiscard]] static constexpr int32_t used_bits() { return cilog2(MODULO); }
+
 private:
   int32_t window;
   uint64_t state{0};
   uint64_t leftmost_base;
 
   // picking a prime here is reasonable
-  static constexpr uint64_t BASE_CONSTANT = 31;
-  // MODULO is the largest prime less than the 2^64 / maximum alphabet size (2^32)
+  static constexpr uint64_t BASE_CONSTANT = ALPHABET <= std::numeric_limits<char>::max() ? UINT64_C(31) : UINT64_C(53);
+  // MODULO is the largest prime less than the 2^64 / maximum alphabet size
   // we need this to support multiplying the leftmost base with a value in the alphabet
-  static constexpr uint64_t MODULO = UINT64_C(4294967291);
+  static constexpr uint64_t MODULO =
+    ALPHABET <= std::numeric_limits<char>::max() ? UINT64_C(72057594037927931) : UINT64_C(4294967291);
+
+  static constexpr int32_t cilog2(uint64_t val) {
+    return val > 1 ? 1 + cilog2(val >> 1) : val == 1 ? 0 : throw std::domain_error{"cilog2(0)"};
+  }
 };
-
-// todo: make this a real test
-inline void test_tab_hash() {
-  std::string test = "unconstitutionalities";
-  std::u32string u32test;
-  const int32_t window = 7;
-  u32test.insert(u32test.begin(), test.begin(), test.end());
-
-  std::vector<uint64_t> expected;
-  for (size_t start = 0; start < u32test.size() - window; ++start) {
-    RabinFingerprint<std::u32string::value_type> fp(window);
-    for (int32_t i = 0; i < window; ++i) {
-      fp.roll(u32test[start + i]);
-    }
-    expected.push_back(fp.get_state());
-  }
-
-  RabinFingerprint<std::u32string::value_type> fp(window);
-  for (int32_t i = 0; i < window; ++i) {
-    fp.roll(u32test[i]);
-  }
-  assert(fp.get_state() == expected.front());
-
-  for (int32_t i = 0; i < static_cast<int32_t>(u32test.size()) - window - 1; ++i) {
-    fp.remove(u32test[i]);
-    fp.roll(u32test[i + window]);
-
-    assert(fp.get_state() == expected[i + 1]);
-  }
-}
 
 }  // namespace util
 

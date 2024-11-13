@@ -136,6 +136,10 @@ public:
   virtual int64_t minimum_length_bound(int64_t size) = 0;
 
   virtual int64_t maximum_length_bound(int64_t size) = 0;
+
+  virtual int64_t maximum_length_pel(int64_t size, [[maybe_unused]] int64_t position) {
+    return maximum_length_bound(size);
+  }
 };
 using SetSimilarityPtr = std::unique_ptr<SetSimilarity>;
 
@@ -171,6 +175,9 @@ public:
   }
   int64_t minimum_length_bound(int64_t size) override { return std::ceil(static_cast<double>(size) * threshold); }
   int64_t maximum_length_bound(int64_t size) override { return std::floor(static_cast<double>(size) / threshold); }
+  int64_t maximum_length_pel(int64_t size, int64_t position) override {
+    return std::floor((static_cast<double>(size) - (1 + threshold) * static_cast<double>(position)) / threshold);
+  };
 };
 
 class StringEditDistance : public StringSimilarity {
@@ -289,7 +296,11 @@ public:
     return 0;
   }
 
-  int64_t max_asbs() override { return q * integer_threshold; };
+  int64_t max_asbs() override { return q * integer_threshold; }
+
+  int64_t maximum_length_pel(int64_t size, int64_t position) override {
+    return std::min(size + integer_threshold, size + integer_threshold - position / q);
+  }
 
 private:
   int32_t q;
@@ -317,6 +328,8 @@ public:
   double similarity(const types::Set& s1, const types::Set& s2) override {
     return static_cast<double>(s1.tokens.size() + s2.tokens.size() - 2 * overlap(s1, s2));
   }
+
+  // todo pel for Hamming
 
 protected:
   double equivalent_fractional_overlap(int64_t s1, int64_t s2) override {
@@ -352,8 +365,8 @@ public:
     {
       tsim::node::TreeIndexLGM ti_1;
       tsim::node::TreeIndexLGM ti_2;
-      tsim::node::index_tree(ti_1, o1.root, label_dictionary, cost_model);
-      tsim::node::index_tree(ti_2, o2.root, label_dictionary, cost_model);
+      index_tree(ti_1, o1.root, label_dictionary, cost_model);
+      index_tree(ti_2, o2.root, label_dictionary, cost_model);
 
       double ubted = lgm_algorithm.ted_k(ti_1, ti_2, integer_threshold);
 
@@ -397,6 +410,10 @@ public:
   int64_t maximum_length_bound(int64_t size) override {
     return static_cast<int64_t>(std::floor(static_cast<double>(size) / (3 * threshold - 2)));
   }
+  int64_t maximum_length_pel(int64_t size, int64_t position) override {
+    return std::floor(static_cast<double>(size * size - position * size) /
+                      (static_cast<double>(position) + static_cast<double>(size) * (3 * threshold - 2)));
+  }
   int64_t max_hd_to(int64_t index_lower, int64_t index_upper, int64_t probe_lower, int64_t probe_upper) override {
     return equivalent_hd(std::min(index_lower, probe_lower), std::max(index_upper, probe_upper));
   }
@@ -415,7 +432,7 @@ public:
 private:
   static int get_transpositions(const types::String::str_t& match_string,
                                 const std::vector<bool>& matched_in_query_string,
-                                const std::vector<types::String::str_t::value_type>& common_chars) {
+                                const std::vector<types::String::char_t>& common_chars) {
     int32_t curr_common_char_pos{};
     int32_t transpositions{};
 
@@ -455,14 +472,13 @@ private:
     const auto query_string_length = static_cast<int32_t>(query_string.length());
     const auto match_string_length = static_cast<int32_t>(match_string.length());
     const auto max_char_distance = std::max(std::max(query_string_length, match_string_length) / 2 - 1, 0);
-    std::vector<bool> matched_match(match_string.length(), false);
+    std::vector matched_match(match_string.length(), false);
     int max_query_matches;
-    std::vector<types::String::str_t::value_type> common_chars{};
+    std::vector<types::String::char_t> common_chars{};
     common_chars.reserve(match_string_length);
 
     int requiredMatches = jaro_lookup_matches(query_string_length, match_string_length, jaro_threshold);
     int matches{};
-    types::String::str_t::value_type curr_char_query;
 
     for (int queryPos = 0; queryPos < query_string_length; queryPos++)  // query string
     {
@@ -471,7 +487,7 @@ private:
         return 0.0;
       }
 
-      curr_char_query = query_string[queryPos];
+      types::String::char_t curr_char_query = query_string[queryPos];
       int jaro_window_end = std::min(queryPos + max_char_distance, match_string_length - 1);
       for (int match_pos = std::max(0, queryPos - max_char_distance); match_pos <= jaro_window_end;
            match_pos++) {  // lookup string
