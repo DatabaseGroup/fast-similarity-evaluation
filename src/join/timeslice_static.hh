@@ -159,10 +159,9 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       // do right batch
       if (lp_id < rp_id) {
         rp_id = rp_id - HALFBATCH;
-        int64_t real_batch = std::min(rp_id + HALFBATCH, dataset.statistics->count);
 
         size_t probing_batch_id = rp_id;
-        auto probing_batch = get_batch_by_offset(dataset.data, rp_id, rp_id + real_batch);
+        auto probing_batch = get_batch_by_offset(dataset.data, rp_id, std::min(rp_id + HALFBATCH, dataset.statistics->count));
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
 
