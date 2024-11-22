@@ -65,7 +65,7 @@ public:
            std::holds_alternative<types::SetBatch>(output_batch));
     auto& in_strings = std::get<types::StringBatch>(input_batch);
     auto& out_sets = std::get<types::SetBatch>(output_batch);
-    assert(in_strings.data.size() == out_strings.data.size());
+    assert(in_strings.data.size() == out_sets.data.size());
     if (in_strings.meta.alphabet_size <= std::numeric_limits<char>::max()) {
       reduce<std::numeric_limits<char>::max()>(in_strings, out_sets);
     } else {

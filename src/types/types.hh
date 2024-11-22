@@ -4,7 +4,6 @@
 #include <absl/container/btree_map.h>
 #include <absl/container/btree_set.h>
 #include <absl/container/flat_hash_map.h>
-#include <ankerl/unordered_dense.h>
 #include <tsim/cost_model/unit_cost_model.h>
 #include <tsim/label/label_dictionary.h>
 #include <tsim/label/string_label.h>

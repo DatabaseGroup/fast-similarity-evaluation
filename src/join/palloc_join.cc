@@ -28,12 +28,14 @@ void PallocJoin<Handler, ENABLE_DELETION>::insert_batch(types::Batch& indexed_da
     auto& group = size_groups[group_idx];
     auto signatures = signature.indexing_signatures(set, group.partition_count, ENABLE_DELETION);
 
+    auto& index_group = index.map[static_cast<int64_t>(group_idx)];
+
     for (auto sig : signatures.normal_signatures) {
-      index.insert(this->next_id, group_idx, sig);
+      index_group.insert(this->next_id, sig);
     }
     if constexpr (ENABLE_DELETION) {
       for (auto del_sig : signatures.deletion_signatures) {
-        index.insert(this->next_id, group_idx, del_sig);
+        index_group.insert(this->next_id, del_sig);
       }
     }
 
@@ -147,18 +149,12 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
                               already_seen);
 
     auto candidate_handler = [&](RecordId set_id) {
-      // todo this could be optimized (actually perform the break instead of skipping); lists are maybe short enough
-      if (!Filter::scan_skip_cond(indexed_sets[set_id], probing_set, filter_config) &&
-          !Filter::scan_break_cond(indexed_sets[set_id], probing_set, filter_config)) {
-        if (!already_seen[set_id]) {
-          const auto index_size = static_cast<int64_t>(indexed_sets[set_id].tokens.size());
-          if (minimum_size <= index_size && index_size <= maximum_size) {
-            already_seen[set_id] = true;
-            candidates.push_back(set_id);
-          }
+      if (!already_seen[set_id]) {
+        const auto index_size = static_cast<int64_t>(indexed_sets[set_id].tokens.size());
+        if (minimum_size <= index_size && index_size <= maximum_size) {
+          already_seen[set_id] = true;
+          candidates.push_back(set_id);
         }
-      } else {
-        statistics.index_skips.inc();
       }
     };
 
@@ -180,8 +176,15 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
         ++sig_iter;
       }
 
-      _probe_size_group(
-        probing_set, *sig_iter, size_groups[sig_iter->group_id], size_index.second, candidate_handler, statistics);
+      _probe_size_group(indexed_sets,
+                        probing_set,
+                        *sig_iter,
+                        size_groups[sig_iter->group_id],
+                        size_index.second,
+                        minimum_size,
+                        maximum_size,
+                        candidate_handler,
+                        statistics);
       ++index_iter;
       ++sig_iter;
     }
@@ -210,12 +213,16 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
 
 template <class Handler, bool ENABLE_DELETION>
 template <class CandidateHandler>
-void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing_set,
-                                            GroupSignatures& group_sigs,
-                                            SizeGroup& size_group,
-                                            indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
-                                            CandidateHandler& handler,
-                                            [[maybe_unused]] statistics::JoinStatistics& statistics) {
+void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
+  types::span<types::Set> indexed_sets,
+  types::Set& probing_set,
+  GroupSignatures& group_sigs,
+  SizeGroup& size_group,
+  indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
+  int64_t min_size,
+  int64_t max_size,
+  CandidateHandler& handler,
+  [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
   std::vector<util::object_ptr<std::vector<RecordId>>> normal_ils(size_group.partition_count, nullptr);
@@ -241,10 +248,14 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing
   std::make_heap(costs.begin(), costs.end(), std::greater{});
 
   const auto probing_set_size = static_cast<int32_t>(probing_set.tokens.size());
-  const int32_t hamming_distance = similarity.max_hd_to(size_group.lower, size_group.upper, probing_set_size) + 1;
+  const int32_t hamming_distance =
+    similarity.max_hd_to(
+      std::max<int64_t>(size_group.lower, min_size), std::min<int64_t>(size_group.upper, max_size), probing_set_size) +
+    1;
   int32_t remaining = hamming_distance;
 
-  assert(ENABLE_DELETION && hamming_distance <= 2 * size_group.partition_count || hamming_distance <= size_group.partition_count);
+  assert(ENABLE_DELETION && hamming_distance <= 2 * size_group.partition_count ||
+         hamming_distance <= size_group.partition_count);
 
   while (0 < remaining) {
     std::pop_heap(costs.begin(), costs.end(), std::greater{});
@@ -255,6 +266,13 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing
       // 1. read normal il
       if (normal_ils[partition]) {
         for (auto id : *normal_ils[partition]) {
+
+          // todo implement this as function + use filter class
+          auto& index_set = indexed_sets[id];
+          if (index_set.id >= probing_set.id) {
+            break;
+          }
+
           handler(id);
         }
       }
@@ -296,6 +314,11 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing
     } else {
       if (normal_ils[partition]) {
         for (auto id : *normal_ils[partition]) {
+          auto& index_set = indexed_sets[id];
+          if (index_set.id >= probing_set.id) {
+            break;
+          }
+
           handler(id);
         }
       }
@@ -303,6 +326,11 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(types::Set& probing
       for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
         if (deletion_ils[i]) {
           for (auto id : *deletion_ils[i]) {
+            auto& index_set = indexed_sets[id];
+            if (index_set.id >= probing_set.id) {
+              break;
+            }
+
             handler(id);
           }
         }

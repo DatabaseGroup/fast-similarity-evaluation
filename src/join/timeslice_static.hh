@@ -139,7 +139,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         size_t probing_batch_id = lp_id;
         auto probing_batch = get_batch_by_offset(dataset.data, lp_id, std::min(lp_id + HALFBATCH, rp_id));
         auto ipbatch = IndexedBatch(
-          probing_batch_id, probing_batch);  // the first ids are used for indexing (might be fixed in the future)
+          probing_batch_id, probing_batch);
 
         evaluate_microbatch(dataset.data,
                             similarity,

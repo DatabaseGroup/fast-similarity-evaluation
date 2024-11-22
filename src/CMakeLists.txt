@@ -10,7 +10,7 @@ include(GetGitRevisionDescription)
 add_compile_options(-Wall -Wextra)
 check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT error)
 if (LTO_SUPPORTED)
-    message("Using Link-Time Optimization for release-builds only")
+    message(STATUS "Using Link-Time Optimization for release-builds only")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     # set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
 endif ()
@@ -18,8 +18,8 @@ endif ()
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
 if (COMPILER_SUPPORTS_MARCH_NATIVE)
-    message("Building for native architecture (binary might be non-portable)")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    message(STATUS "Building for native architecture (binary might be non-portable)")
+    add_compile_options(-march=native)
 endif ()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -46,14 +46,14 @@ ExternalProject_Add(tree-similarity
 ExternalProject_Get_property(tree-similarity INSTALL_DIR)
 set(TREE_SIMILARITY_INCLUDE "${INSTALL_DIR}/include")
 
-ExternalProject_Add(ankerl-unordered-dense
-        GIT_REPOSITORY https://github.com/martinus/unordered_dense.git
-        GIT_TAG origin/main
-        INSTALL_DIR external/ankerl-unordered-dense
-        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/ankerl-unordered-dense
-)
-ExternalProject_Get_property(ankerl-unordered-dense INSTALL_DIR)
-set(ANKERL_UNORDERED_DENSE_INCLUDE "${INSTALL_DIR}/include")
+# ExternalProject_Add(ankerl-unordered-dense
+#        GIT_REPOSITORY https://github.com/martinus/unordered_dense.git
+#        GIT_TAG origin/main
+#        INSTALL_DIR external/ankerl-unordered-dense
+#        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/ankerl-unordered-dense
+# )
+# ExternalProject_Get_property(ankerl-unordered-dense INSTALL_DIR)
+# set(ANKERL_UNORDERED_DENSE_INCLUDE "${INSTALL_DIR}/include")
 
 set(SOURCES
         cmdline/cmdline.cc
@@ -75,26 +75,38 @@ set(LINK_LIBS
 
 set(INCLUDE_LIBS
         ${TREE_SIMILARITY_INCLUDE}
-        ${ANKERL_UNORDERED_DENSE_INCLUDE}
+        # ${ANKERL_UNORDERED_DENSE_INCLUDE}
 )
-message("Include paths: ${INCLUDE_LIBS}")
+# message("Include paths: ${INCLUDE_LIBS}")
 
 add_executable(fast
         ${SOURCES})
-add_dependencies(fast tree-similarity ankerl-unordered-dense)
+add_dependencies(fast
+        tree-similarity
+        # ankerl-unordered-dense
+)
 target_link_libraries(fast PRIVATE ${LINK_LIBS})
 target_include_directories(fast SYSTEM PRIVATE ${INCLUDE_LIBS})
 
 add_executable(fast_stats
         ${SOURCES})
-add_dependencies(fast_stats tree-similarity ankerl-unordered-dense)
+add_dependencies(fast_stats
+        tree-similarity
+        # ankerl-unordered-dense
+)
 target_link_libraries(fast_stats PRIVATE ${LINK_LIBS})
 target_include_directories(fast_stats SYSTEM PRIVATE ${INCLUDE_LIBS})
 target_compile_definitions(fast_stats PRIVATE STATISTICS TIMING)
 
 add_executable(fast_dbg
         ${SOURCES})
-add_dependencies(fast_dbg tree-similarity ankerl-unordered-dense)
+add_dependencies(fast_dbg
+        tree-similarity
+        # ankerl-unordered-dense
+)
 target_link_libraries(fast_dbg PRIVATE ${LINK_LIBS})
 target_include_directories(fast_dbg SYSTEM PRIVATE ${INCLUDE_LIBS})
 target_compile_definitions(fast_dbg PRIVATE STATISTICS TIMING FAST_DEBUG)
+
+get_target_property(compile_options fast_stats COMPILE_OPTIONS)
+message(STATUS "Compile options: ${compile_options}")

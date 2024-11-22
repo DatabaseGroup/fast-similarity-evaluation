@@ -8,7 +8,7 @@
 
 namespace join {
 
-template <class Handler, bool ENABLE_DELETION=true>
+template <class Handler, bool ENABLE_DELETION = true>
 class PallocJoin : public SignatureJoin<Handler> {
 private:
   struct SizeGroup {
@@ -69,9 +69,7 @@ public:
                   statistics::JoinStatistics& statistics,
                   std::shared_ptr<std::any> probing_signatures) override;
 
-  bool supports_merge() override {
-    return true;
-  }
+  bool supports_merge() override { return true; }
 
   void merge(JoinAlgorithm<Handler>& o) override {
     auto& other = dynamic_cast<PallocJoin&>(o);
@@ -93,10 +91,12 @@ private:
                    statistics::JoinStatistics& statistics);
 
   template <class CandidateHandler>
-  void _probe_size_group(types::Set& probing_set,
+  void _probe_size_group(types::span<types::Set> indexed_sets, types::Set& probing_set,
                          GroupSignatures& group_sigs,
                          SizeGroup& size_group,
                          indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
+                         int64_t min_size,
+                         int64_t max_size,
                          CandidateHandler& handler,
                          statistics::JoinStatistics& statistics);
 
@@ -105,7 +105,7 @@ private:
     int32_t min_probe = similarity.minimum_length_bound(partition_lower_bound);
     auto hd = similarity.max_hd_to(partition_lower_bound, partition_upper_bound, min_probe, max_probe);
     if constexpr (ENABLE_DELETION) {
-      hd = hd - hd / 3;
+      hd = hd / 2;
     }
     return static_cast<int32_t>(hd) + 1;
   }
