@@ -90,14 +90,16 @@ private:
                    FilterConfig& filter_config,
                    statistics::JoinStatistics& statistics);
 
-  template <class CandidateHandler>
-  void _probe_size_group(types::span<types::Set> indexed_sets, types::Set& probing_set,
+  template <class Filter, class CandidateHandler>
+  void _probe_size_group(types::span<types::Set> indexed_sets,
+                         types::Set& probing_set,
                          GroupSignatures& group_sigs,
                          SizeGroup& size_group,
                          indexing::ComplexIndex<RecordId, indexing::IndexType::HASH>& size_index,
                          int64_t min_size,
                          int64_t max_size,
                          CandidateHandler& handler,
+                         FilterConfig& filter_config,
                          statistics::JoinStatistics& statistics);
 
   [[nodiscard]] int32_t get_partition_count(int32_t partition_lower_bound, int32_t partition_upper_bound) const {
@@ -126,6 +128,25 @@ private:
     auto upper_bound = next_size_lb(lower_bound) - 1;
     int32_t partition_count = get_partition_count(lower_bound, upper_bound);
     size_groups.emplace_back(lower_bound, upper_bound, partition_count);
+  }
+
+  template <class Filter, class Callback>
+  void read_filtered(types::span<types::Set> indexed_sets,
+                     types::Set& probing_set,
+                     std::vector<RecordId>& index_ids,
+                     Callback& handler,
+                     FilterConfig& filter_config) {
+    for (auto id : index_ids) {
+      auto& index_set = indexed_sets[id];
+      if (Filter::scan_skip_cond(index_set, probing_set, filter_config)) {
+        continue;
+      }
+      if (Filter::scan_break_cond(index_set, probing_set, filter_config)) {
+        break;
+      }
+
+      handler(id);
+    }
   }
 
 private:

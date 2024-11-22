@@ -176,7 +176,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
         ++sig_iter;
       }
 
-      _probe_size_group(indexed_sets,
+      _probe_size_group<Filter>(indexed_sets,
                         probing_set,
                         *sig_iter,
                         size_groups[sig_iter->group_id],
@@ -184,6 +184,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
                         minimum_size,
                         maximum_size,
                         candidate_handler,
+                        filter_config,
                         statistics);
       ++index_iter;
       ++sig_iter;
@@ -212,7 +213,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
 }
 
 template <class Handler, bool ENABLE_DELETION>
-template <class CandidateHandler>
+template <class Filter, class CandidateHandler>
 void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
   types::span<types::Set> indexed_sets,
   types::Set& probing_set,
@@ -222,6 +223,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
   int64_t min_size,
   int64_t max_size,
   CandidateHandler& handler,
+  FilterConfig& filter_config,
   [[maybe_unused]] statistics::JoinStatistics& statistics) {
   std::vector<PartitionCostEntry> costs;
   costs.reserve(size_group.partition_count);
@@ -265,16 +267,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
     if (!ENABLE_DELETION || entry.is_normal) {
       // 1. read normal il
       if (normal_ils[partition]) {
-        for (auto id : *normal_ils[partition]) {
-
-          // todo implement this as function + use filter class
-          auto& index_set = indexed_sets[id];
-          if (index_set.id >= probing_set.id) {
-            break;
-          }
-
-          handler(id);
-        }
+        read_filtered<Filter>(indexed_sets, probing_set, *normal_ils[partition], handler, filter_config);
       }
 
       if constexpr (ENABLE_DELETION) {
@@ -313,26 +306,12 @@ void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
       }
     } else {
       if (normal_ils[partition]) {
-        for (auto id : *normal_ils[partition]) {
-          auto& index_set = indexed_sets[id];
-          if (index_set.id >= probing_set.id) {
-            break;
-          }
-
-          handler(id);
-        }
+        read_filtered<Filter>(indexed_sets, probing_set, *normal_ils[partition], handler, filter_config);
       }
 
       for (size_t i = del_offset[partition].begin_offset; i < del_offset[partition].end_offset; ++i) {
         if (deletion_ils[i]) {
-          for (auto id : *deletion_ils[i]) {
-            auto& index_set = indexed_sets[id];
-            if (index_set.id >= probing_set.id) {
-              break;
-            }
-
-            handler(id);
-          }
+          read_filtered<Filter>(indexed_sets, probing_set, *deletion_ils[i], handler, filter_config);
         }
       }
 
