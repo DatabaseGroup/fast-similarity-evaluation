@@ -26,4 +26,4 @@ for threshold in 10 15 20 25 30 35 40; do
 done
 
 export BINARY
-parallel -S cluster02,cluster04 --workdir "${WORKING_DIR}" -j 1 --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"
+parallel -S cluster02,cluster04 --workdir "${WORKING_DIR}" -j "${JOBS}" --memfree "${REQUIRED_MEMORY}" --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"

@@ -2,7 +2,7 @@
 
 source global.sh
 
-BINARY="./venv/bin/python3 run.py"
+BINARY="./venv/bin/python3 run.py ../fast_stats"
 DATASET_DIR="/root/dschmitt/datasets"
 ARGS=()
 
@@ -61,4 +61,4 @@ for threshold in 5 10 15 20 25 30 35 40 45 50; do
 done
 
 export BINARY
-parallel -S cluster02,cluster04 --workdir "${WORKING_DIR}" -j 1 --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"
+parallel -S cluster02,cluster04 --workdir "${WORKING_DIR}" -j "${JOBS}" --memfree "${REQUIRED_MEMORY}" --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"

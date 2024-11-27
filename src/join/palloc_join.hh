@@ -112,12 +112,7 @@ private:
     return static_cast<int32_t>(hd) + 1;
   }
   [[nodiscard]] int32_t next_size_lb(int32_t current_size) const {
-    int64_t step;
-    if constexpr (ENABLE_DELETION) {
-      step = similarity.maximum_length_bound(std::floor(similarity.maximum_length_bound(current_size))) - current_size;
-    } else {
-      step = similarity.maximum_length_bound(current_size) - current_size;
-    }
+    int64_t step = similarity.maximum_length_bound(current_size) - current_size;
 
     const auto scaled_step = static_cast<int32_t>(static_cast<double>(step) * 1);
     return current_size + scaled_step + 1;
