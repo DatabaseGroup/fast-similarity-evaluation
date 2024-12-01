@@ -2,7 +2,7 @@
 
 source global.sh
 
-BINARY="./venv/bin/python3 run.py"
+BINARY="./venv/bin/python3 run.py ../fast_stats"
 DATASET_DIR="/root/dschmitt/datasets"
 ARGS=()
 
@@ -86,5 +86,11 @@ for threshold in 5 10 15 20 25 30 35 40 45 50; do
     generate_args "trees/shuf/swissprot" "tree" "ted" "$threshold"
 done
 
-export BINARY
-parallel -S "${REMOTE_SERVERS}" --workdir "${WORKING_DIR}" -j "${JOBS}" --memfree "${REQUIRED_MEMORY}" --shuf --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"
+parallel -S "${REMOTE_SERVERS}" \
+  --controlmaster \
+  --progress \
+  --workdir "${WORKING_DIR}" \
+  -j "${JOBS}" \
+  --shuf \
+  --colsep ' ' \
+  "$BINARY {}" ::: "${ARGS[@]}"

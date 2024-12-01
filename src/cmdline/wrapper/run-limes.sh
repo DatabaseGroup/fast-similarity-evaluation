@@ -22,5 +22,11 @@ for threshold in 0.85 0.88 0.91 0.94 0.97; do
     generate_args word "${threshold}"
 done
 
-export BINARY
-parallel -S "${REMOTE_SERVERS}" --workdir "${WORKING_DIR}" -j "${JOBS}" --memfree "${REQUIRED_MEMORY}" --shuf --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"
+parallel -S "${REMOTE_SERVERS}" \
+  --controlmaster \
+  --progress \
+  --workdir "${WORKING_DIR}" \
+  -j "${JOBS}" \
+  --shuf \
+  --colsep ' ' \
+  "$BINARY {}" ::: "${ARGS[@]}"

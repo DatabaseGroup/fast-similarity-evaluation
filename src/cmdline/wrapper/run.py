@@ -1,5 +1,5 @@
 #!/bin/env python3
-
+import json.decoder
 import logging
 import sys
 import subprocess
@@ -30,6 +30,9 @@ def main():
         write_to_db(mongo_collection, result)
     except subprocess.TimeoutExpired:
         logger.info("Timeout for {}".format(" ".join(sys.argv[1:])))
+    except json.decoder.JSONDecodeError:
+        logger.warning("Could not decode executable output {}".format(sys.argv[:1]))
+        logger.warning("{}".format(results.stdout))
 
 
 if __name__ == "__main__":

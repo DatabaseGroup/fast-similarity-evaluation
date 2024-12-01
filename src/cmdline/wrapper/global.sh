@@ -1,5 +1,4 @@
-export REMOTE_SERVERS="cluster02,cluster04"
+export REMOTE_SERVERS="cluster02,cluster04,cluster05,cluster06"
 export LABEL_PREFIX="final-v9-"
 export WORKING_DIR="/root/dschmitt/experiments/wrapper"
-export JOBS="25%"
-export REQUIRED_MEMORY="100G"
+export JOBS="4"

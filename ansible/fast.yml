@@ -24,10 +24,22 @@
           - "pkg-config"
           - "zip"
 
-    - name: Create home directory
+    - name: Create home
+      ansible.builtin.file:
+        path: "/home/dschmitt"
+        mode: "0750"
+        state: directory
+
+    - name: Create symlink to home
+      ansible.builtin.file:
+        src: "/home/dschmitt"
+        dest: "/root/dschmitt"
+        state: link
+
+    - name: Create home directories
       ansible.builtin.file:
         path: "{{ home_dir }}/{{ item }}"
-        mode: "0755"
+        mode: "0750"
         state: directory
       loop:
         - "bin"
@@ -35,6 +47,7 @@
         - "download"
         - "experiments"
         - "fast"
+        -
         - ".vcpkg"
 
     - name: Copy datasets
@@ -111,7 +124,7 @@
         cmd: "{{ item }}"
       loop:
         - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
 
     - name: Setup venv
@@ -128,7 +141,7 @@
         cmd: "{{ item }}"
       loop:
         - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j ted"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 ted"
         - "cp build/ted {{ home_dir }}/experiments/syncsignature"
 
     - name: Compile Limes-Light
@@ -138,7 +151,7 @@
         cmd: "{{ item }}"
       loop:
         - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j limes-light"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 limes-light"
         - "cp build/limes-light {{ home_dir }}/experiments/limes-light"
 
     - name: Compile MinJoin
@@ -148,7 +161,7 @@
         cmd: "{{ item }}"
       loop:
         - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j minsimjoin"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 minsimjoin"
         - "cp build/minsimjoin {{ home_dir }}/experiments/minjoin"
 
     - name: Compile TwoL
@@ -158,5 +171,5 @@
         cmd: "{{ item }}"
       loop:
         - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j cluster"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 cluster"
         - "cp build/cluster {{ home_dir }}/experiments/twol"

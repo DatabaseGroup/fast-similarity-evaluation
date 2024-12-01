@@ -21,4 +21,11 @@ for threshold in 0.75 0.8 0.85 0.9 0.95; do
 done
 
 export BINARY
-parallel -S "${REMOTE_SERVERS}" --workdir "${WORKING_DIR}" -j "${JOBS}" --memfree "${REQUIRED_MEMORY}" --shuf --colsep ' ' "$BINARY {}" ::: "${ARGS[@]}"
+parallel -S "${REMOTE_SERVERS}" \
+  --controlmaster \
+  --progress \
+  --workdir "${WORKING_DIR}" \
+  -j "${JOBS}" \
+  --shuf \
+  --colsep ' ' \
+  "$BINARY {}" ::: "${ARGS[@]}"
