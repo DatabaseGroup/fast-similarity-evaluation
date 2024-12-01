@@ -31,7 +31,7 @@ def main():
     except subprocess.TimeoutExpired:
         logger.info("Timeout for {}".format(" ".join(sys.argv[1:])))
     except json.decoder.JSONDecodeError:
-        logger.warning("Could not decode executable output {}".format(sys.argv[:1]))
+        logger.warning("Could not decode executable output {}".format(sys.argv[1:]))
         logger.warning("{}".format(results.stdout))
 
 
