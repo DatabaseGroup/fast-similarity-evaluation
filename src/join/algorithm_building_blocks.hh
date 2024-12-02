@@ -156,6 +156,7 @@ inline types::Batch get_batch_by_id(types::Dataset& dataset, const int64_t batch
 inline int64_t get_offset_into_batch(int64_t batch_idx, int64_t batch_size) { return batch_idx * batch_size; }
 
 inline void verify_pairs_for_plan(types::Dataset& dataset,
+                                  std::vector<std::shared_ptr<types::Dataset>>& reduced_datasets,
                                   similarity::Similarity& similarity,
                                   ontology::QueryPlan& plan,
                                   types::ResultPairs& result_pairs,
@@ -169,9 +170,8 @@ inline void verify_pairs_for_plan(types::Dataset& dataset,
     auto similarities = reduction_cache.get_all_reduced_similarities(similarity, plan);
 
     for (int32_t level = 1; level < static_cast<int32_t>(plan.steps.size()); ++level) {
-      auto reduced_index =
-        reduction_cache.reduce_data_to_level(index_batch, plan, level, plan_statistics.rc_statistics);
-      auto reduced_index_batch = dataset_to_batch(*reduced_index);
+      auto reduced_index = *reduced_datasets[level];
+      auto reduced_index_batch = dataset_to_batch(reduced_index);
       auto reduced_probe =
         reduction_cache.reduce_data_to_level(probe_batch, plan, level, plan_statistics.rc_statistics);
       auto reduced_probe_batch = dataset_to_batch(*reduced_probe);

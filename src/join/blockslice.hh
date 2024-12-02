@@ -73,12 +73,12 @@ public:
         alg_instance.algorithm->insert_batch(index_batch.batch, index_batch.batch);
       } else {
         // the dataset and similarity are owned by the AlgorithmInstance
-        auto reduced = reduction_cache.reduce_data_to_end(index_batch, plan, statistics.rc_statistics);
+        auto reduced = reduction_cache.get_all_reduced_data(index_batch, plan, statistics.rc_statistics);
         alg_instance.owned_data = reduced;
         alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
         alg_instance.algorithm = resolve_algorithmid(plan.algorithm_id, alg_instance.similarity, shared_state);
 
-        auto batch = dataset_to_batch(*alg_instance.owned_data);
+        auto batch = dataset_to_batch(*alg_instance.owned_data.front());
         alg_instance.algorithm->insert_batch(batch, batch);
       }
 
@@ -104,14 +104,15 @@ public:
       } else {
         config.type = FilterType::NOP;
       }
-      alg_instance.algorithm->join_batch(index_batch.batch, probe_batch.batch, handler, config, statistics, cached_probing_signatures);
+      alg_instance.algorithm->join_batch(
+        index_batch.batch, probe_batch.batch, handler, config, statistics, cached_probing_signatures);
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     } else {
       batch_cost.probing_preprocessing.start = timing::start_cost_measurement();
       // reduce first, this function is temporary owner of the data
       auto reduced_probe = reduction_cache.reduce_data_to_end(probe_batch, plan, statistics.rc_statistics);
       auto batch = dataset_to_batch(*reduced_probe);
-      auto indexed_data = dataset_to_batch(*alg_instance.owned_data);
+      auto indexed_data = dataset_to_batch(*alg_instance.owned_data.front());
 
       if (alg_instance.algorithm->has_independent_probing_signatures()) {
         cached_probing_signatures = probing_signatures_cache.get_cached_probing_signatures(
@@ -130,6 +131,8 @@ public:
       batch_cost.candidate_generation.end = timing::end_cost_measurement();
     }
   }
+
+  AlgorithmInstance<>& get_algorithm_instance(int64_t plan_idx) { return algorithms[plan_idx]; }
 
 private:
   IndexedBatch& index_batch;
@@ -189,6 +192,7 @@ public:
 
         batch_cost.verification.start = timing::start_cost_measurement();
         verify_pairs_for_plan(dataset.data,
+                              algorithm_cache.get_algorithm_instance(plan_id).owned_data,
                               similarity,
                               plan,
                               result_pairs,

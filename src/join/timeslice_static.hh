@@ -30,7 +30,7 @@ inline void evaluate_microbatch(types::Dataset& data,
   } else {
     auto reduced = reduction_cache.reduce_data_to_end(ipbatch, selected_plan, plan_statistics.rc_statistics);
     auto reduced_batch = dataset_to_batch(*reduced);
-    auto indexed_data = dataset_to_batch(*alg.owned_data);
+    auto indexed_data = dataset_to_batch(*alg.owned_data.front());
 
     alg.algorithm->join_batch(indexed_data, reduced_batch, handler, config, plan_statistics, null);
   }
@@ -39,6 +39,7 @@ inline void evaluate_microbatch(types::Dataset& data,
   std::erase_if(handler.results, [](const auto& o) { return o.first >= o.second; });
 
   verify_pairs_for_plan(data,
+                        alg.owned_data,
                         similarity,
                         selected_plan,
                         handler.results,
@@ -84,19 +85,24 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
 
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
-      alg_instance.owned_data = std::make_shared<types::Dataset>();
+      alg_instance.owned_data.reserve(plan.steps.size());
+      for (auto& _ : plan.steps) {
+        alg_instance.owned_data.emplace_back(std::make_shared<types::Dataset>());
+      }
       for (int64_t offset = 0; offset < dataset.statistics->count; offset += HALFBATCH) {
         auto batch = get_batch_by_offset(dataset.data, offset, std::min(offset + HALFBATCH, dataset.statistics->count));
         auto iibatch = IndexedBatch(offset, batch);
-        auto reduced_batch = reduction_cache.reduce_data_to_end(iibatch, plan, all_statistics[i].rc_statistics);
+        auto reduced_batch = reduction_cache.get_all_reduced_data(iibatch, plan, all_statistics[i].rc_statistics);
 
-        types::dataset_append(*alg_instance.owned_data, *reduced_batch);
+        for (size_t j = 0; j < reduced_batch.size(); ++j) {
+          types::dataset_append(*alg_instance.owned_data[j], *reduced_batch[j]);
+        }
       }
       alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
     alg_instance.algorithm =
       resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
-    auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data);
+    auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data.front());
     alg_instance.algorithm->insert_batch(index_batch, index_batch);
   }
   timing.build_time.stop();
@@ -138,8 +144,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       {
         size_t probing_batch_id = lp_id;
         auto probing_batch = get_batch_by_offset(dataset.data, lp_id, std::min(lp_id + HALFBATCH, rp_id));
-        auto ipbatch = IndexedBatch(
-          probing_batch_id, probing_batch);
+        auto ipbatch = IndexedBatch(probing_batch_id, probing_batch);
 
         evaluate_microbatch(dataset.data,
                             similarity,
@@ -161,7 +166,8 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         rp_id = rp_id - HALFBATCH;
 
         size_t probing_batch_id = rp_id;
-        auto probing_batch = get_batch_by_offset(dataset.data, rp_id, std::min(rp_id + HALFBATCH, dataset.statistics->count));
+        auto probing_batch =
+          get_batch_by_offset(dataset.data, rp_id, std::min(rp_id + HALFBATCH, dataset.statistics->count));
         auto ipbatch = IndexedBatch(
           probing_batch_id, probing_batch);  // the first ids are used for indexing (should be fixed in the future)
 

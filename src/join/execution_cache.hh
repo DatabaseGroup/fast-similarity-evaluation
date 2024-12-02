@@ -12,7 +12,7 @@ namespace join {
 template <class Handler = MaterializeHandler>
 struct AlgorithmInstance {
   std::unique_ptr<JoinAlgorithm<Handler>> algorithm{};
-  std::shared_ptr<types::Dataset> owned_data{};
+  std::vector<std::shared_ptr<types::Dataset>> owned_data{};
   similarity::Similarity similarity;
   bool initialized{false};
 };
@@ -115,6 +115,17 @@ public:
                                                      ontology::QueryPlan& plan,
                                                      statistics::ReductionCacheStatistics& statistics) {
     return reduce_data_to_level(batch, plan, 0, statistics);
+  }
+
+  std::vector<std::shared_ptr<types::Dataset>> get_all_reduced_data(IndexedBatch& batch,
+                                                     ontology::QueryPlan& plan,
+                                                     statistics::ReductionCacheStatistics& statistics) {
+    std::vector<std::shared_ptr<types::Dataset>> data;
+    data.reserve(plan.steps.size());
+    for (int32_t i = 0; i < static_cast<int32_t>(plan.steps.size()); ++i) {
+      data.emplace_back(reduce_data_to_level(batch, plan, i, statistics));
+    }
+    return data;
   }
 
   std::vector<similarity::Similarity> get_all_reduced_similarities(similarity::Similarity& similarity,
