@@ -10,8 +10,8 @@ generate_args() {
     local dataset=$1
     local threshold=$2
 
-    ARGS+=("../fast_stats -f ${DATASET_DIR}/${dataset} -t ${threshold} -d string -s sed -m time-static -i 0.2 -l ${LABEL_PREFIX}ts -x partition -y 3gram -a q6 q9 q12 q15")
-    ARGS+=("../fast_stats -f ${DATASET_DIR}/${dataset} -t ${threshold} -d string -s sed -m time-static -i 0.2 -l ${LABEL_PREFIX}ts-withpartition -y 3gram -a q6 q9 q12 q15")
+    ARGS+=("../fast_stats -f ${DATASET_DIR}/${dataset} -t ${threshold} -d string -s sed -m time-static -i 0.2 -l ${LABEL_PREFIX}minjoin-ts -x partition -y 3gram -a q6 q9 q12 q15")
+    ARGS+=("../fast_stats -f ${DATASET_DIR}/${dataset} -t ${threshold} -d string -s sed -m time-static -i 0.2 -l ${LABEL_PREFIX}minjoin-ts-withpartition -y 3gram -a q6 q9 q12 q15")
     ARGS+=("../minjoin    -f ${DATASET_DIR}/${dataset} -t ${threshold} -l ${LABEL_PREFIX}minjoin")
 }
 
