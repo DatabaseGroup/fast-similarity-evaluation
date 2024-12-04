@@ -34,23 +34,13 @@ generate_args() {
 }
 
 # For set datatype with jaccard similarity
-for threshold in 0.90 0.95; do
-    generate_args "sets/shuf/dblpv14" "set" "jaccard" "$threshold"
-done
-
-for threshold in 0.7 0.75 0.80 0.85 0.90 0.95; do
-    generate_args "sets/shuf/kosarak-dedup-raw.txt" "set" "jaccard" "$threshold"
-    generate_args "sets/shuf/bms-pos-dedup-raw.txt" "set" "jaccard" "$threshold"
-done
-
-# For set datatype with jaccard similarity
 
 for threshold in 0.75 0.80 0.85 0.90 0.95; do
     generate_args "sets/shuf/kosarak-dedup-raw.txt" "set" "jaccard" "$threshold"
     generate_args "sets/shuf/bms-pos-dedup-raw.txt" "set" "jaccard" "$threshold"
     generate_args "sets/shuf/livejournal-userswithgroups-raw.txt" "set" "jaccard" "$threshold"
     generate_args "sets/shuf/orkut-userswithgroups-dedup-raw.txt" "set" "jaccard" "$threshold"
-    generate_args "sets/shuf/dblp14" "set" "jaccard" "$threshold"
+    generate_args "sets/shuf/dblpv14" "set" "jaccard" "$threshold"
     generate_args "sets/shuf/lnonis1" "set" "jaccard" "$threshold"
 done
 
