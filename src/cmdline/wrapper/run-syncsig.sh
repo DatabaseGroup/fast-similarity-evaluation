@@ -12,6 +12,8 @@ generate_args() {
 
     ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-static -i 0.2 -l ${LABEL_PREFIX}ts -x partition")
     ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-static -i 0.2 -l ${LABEL_PREFIX}ts-withpartition")
+    ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-dynamic -i 0.2 -l ${LABEL_PREFIX}td-withpartition")
+    ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-dynamic -i 0.2 -l ${LABEL_PREFIX}tdw-withpartition -w")
     ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-static -i 0.2 -l ${LABEL_PREFIX}ts-withoutcostly -x tjoin                         -y traversal-strings")
     ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-static -i 0.2 -l ${LABEL_PREFIX}ts-lightweight   -x tjoin palloc                  -y traversal-strings")
     ARGS+=("../fast_stats    -f ${DATASET_DIR}/${dataset} -t ${threshold} -d tree -s ted -m time-static -i 0.2 -l ${LABEL_PREFIX}ts-partitiononly -x tjoin palloc prefix-signature -y traversal-strings")

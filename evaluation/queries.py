@@ -52,7 +52,10 @@ def algorithm_ratio(collection: pymongo.collection.Collection, label: str, datas
             }
         }, {
             '$group': {
-                '_id': '$threshold',
+                '_id': {
+                    'id': '$_id',
+                    'threshold': '$threshold'
+                },
                 'total_selection_count': {
                     '$sum': '$local_statistics.v.selection_count'
                 },
@@ -60,6 +63,48 @@ def algorithm_ratio(collection: pymongo.collection.Collection, label: str, datas
                     '$push': {
                         'algorithm': '$local_statistics.k',
                         'selection_count': '$local_statistics.v.selection_count'
+                    }
+                }
+            }
+        }, {
+            '$addFields': {
+                'algorithms': {
+                    '$map': {
+                        'input': '$algorithms',
+                        'as': 'algorithm',
+                        'in': {
+                            'algorithm': '$$algorithm.algorithm',
+                            'selection_count': '$$algorithm.selection_count',
+                            'relative_selection_count': {
+                                '$divide': [
+                                    '$$algorithm.selection_count', '$total_selection_count'
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }, {
+            '$unwind': {
+                'path': '$algorithms'
+            }
+        }, {
+            '$group': {
+                '_id': {
+                    'threshold': '$_id.threshold',
+                    'algorithm': '$algorithms.algorithm'
+                },
+                'average_relative_selection_count': {
+                    '$avg': '$algorithms.relative_selection_count'
+                }
+            }
+        }, {
+            '$group': {
+                '_id': '$_id.threshold',
+                'algorithms': {
+                    '$push': {
+                        'algorithm': '$_id.algorithm',
+                        'average_relative_selection_count': '$average_relative_selection_count'
                     }
                 }
             }
@@ -73,11 +118,9 @@ def algorithm_ratio(collection: pymongo.collection.Collection, label: str, datas
         doc = {
             'threshold': result['_id'],
         }
-        total = result['total_selection_count']
         for alg in result['algorithms']:
             name = alg['algorithm']
-            selection = alg['selection_count']
-            doc[name] = selection / total
+            doc[name] = alg['average_relative_selection_count']
 
         plain.append(doc)
 
@@ -115,5 +158,53 @@ def algorithm_ratio_twol(collection: pymongo.collection.Collection, label: str, 
         }
 
         plain.append(doc)
+
+    return plain
+
+def fast_index_redundancy(collection: pymongo.collection.Collection, static_label: str, dynamic_label: str, dataset: str, similarity: str):
+    pipeline = [
+        {
+            '$match': {
+                'meta.dataset': dataset,
+                'meta.similarity': similarity,
+                'meta.label': {
+                    '$in': [
+                        static_label, dynamic_label
+                    ]
+                }
+            }
+        }, {
+            '$project': {
+                'mode': '$meta.mode',
+                'threshold': '$meta.threshold',
+                'index_redundancy': '$global_statistics.indexed_ratio'
+            }
+        }, {
+            '$group': {
+                '_id': {
+                    'mode': '$mode',
+                    'threshold': '$threshold'
+                },
+                'avg_index_redundancy': {
+                    '$median': {
+                        'input': '$index_redundancy',
+                        'method': 'approximate'
+                    }
+                }
+            }
+        }
+    ]
+
+    results = collection.aggregate(pipeline)
+
+    plain = {}
+    for result in results:
+        mode = result['_id']['mode']
+        threshold = result['_id']['threshold']
+        index_redundancy = result['avg_index_redundancy']
+
+        if threshold not in plain:
+            plain[threshold] = {}
+        plain[threshold][mode] = index_redundancy
 
     return plain

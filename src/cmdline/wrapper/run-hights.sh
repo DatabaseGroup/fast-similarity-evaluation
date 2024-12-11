@@ -13,7 +13,7 @@ generate_args() {
     local threshold=$4
 
     ARGS+=("-f ${DATASET_DIR}/${dataset} -d ${datatype} -s ${similarity} -t ${threshold} -x partition -l ${LABEL_PREFIX}hights-td -m time-dynamic -i 1")
-    ARGS+=("-f ${DATASET_DIR}/${dataset} -d ${datatype} -s ${similarity} -t ${threshold} -x partition -l ${LABEL_PREFIX}hightst-dw -m time-dynamic -i 1 -w")
+    ARGS+=("-f ${DATASET_DIR}/${dataset} -d ${datatype} -s ${similarity} -t ${threshold} -x partition -l ${LABEL_PREFIX}hights-tdw -m time-dynamic -i 1 -w")
 }
 
 # For set datatype with jaccard similarity

@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import config
 import queries
 
@@ -26,10 +28,10 @@ def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[
             writer.writerow(row)
 
 
-def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
-    time_static_label = PREFIX + 'ts'
-    time_dynamic_label = PREFIX + 'td'
-    time_dynamic_warmup = PREFIX + 'tdw'
+def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, prefix=PREFIX, fileprefix='time'):
+    time_static_label = prefix + 'ts'
+    time_dynamic_label = prefix + 'td'
+    time_dynamic_warmup = prefix + 'tdw'
     labels = [time_static_label, time_dynamic_label, time_dynamic_warmup]
 
     for dataset in datasets:
@@ -48,7 +50,7 @@ def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.
                 if label == time_static_label:
                     data[threshold]['time-static-with-build'] = avg_join_time + avg_build_time
 
-        filename = f'time/{remove_extension(dataset)}-{similarity}.csv'
+        filename = f'{fileprefix}/{remove_extension(dataset)}-{similarity}.csv'
         headers = ['Threshold', 'time-static', 'time-dynamic', 'time-dynamic-warmup', 'time-static-with-build']
         keys = [time_static_label, time_dynamic_label, time_dynamic_warmup, 'time-static-with-build']
         write_to_csv(filename, headers, keys, data)
@@ -60,6 +62,10 @@ def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo
     string_baselines = ['baseline-qgram-prefix', 'baseline-qgram-palloc', 'baseline-passjoin']
     tree_baselines = ['baseline-tjoin', 'baseline-labelset-palloc', 'baseline-labelset-prefix',
                       'baseline-traversal-prefix', 'baseline-traversal-palloc', 'baseline-traversal-passjoin']
+
+    set_baselines = [PREFIX + s for s in set_baselines]
+    string_baselines = [PREFIX + s for s in string_baselines]
+    tree_baselines = [PREFIX + s for s in tree_baselines]
 
     for dataset in datasets:
         data = {}
@@ -81,9 +87,9 @@ def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo
 
             data[threshold][result['_id']['label']] = avg_join_time
 
-        filename = f'baseline/{remove_extension(dataset)}.csv'
+        filename = f'baseline/{remove_extension(dataset)}-{similarity}.csv'
         headers = ['Threshold', 'time-static']
-        headers.extend([s.removeprefix('baseline-') for s in baseline_labels])
+        headers.extend([s.removeprefix(f'{PREFIX}baseline-') for s in baseline_labels])
         keys = [time_static_label]
         keys.extend(baseline_labels)
         write_to_csv(filename, headers, keys, data)
@@ -170,6 +176,62 @@ def fast_vs_limes(collection: pymongo.collection.Collection):
         keys = ['time-static', 'limes']
         write_to_csv(filename, headers, keys, data)
 
+def index_redundancy(datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
+    time_static_label = PREFIX + 'ts'
+    time_dynamic_label = PREFIX + 'td'
+
+    for dataset in datasets:
+        result = queries.fast_index_redundancy(collection, time_static_label, time_dynamic_label, dataset, similarity)
+
+        filename = f'index_redundancy/{remove_extension(dataset)}-{similarity}.csv'
+        headers = ['Threshold', 'time-static', 'time-dynamic']
+        keys = ['time-static', 'time-dynamic']
+        write_to_csv(filename, headers, keys, result)
+
+
+def fast_vs_syncsignatures(collection: pymongo.collection.Collection):
+    ss_ejoin_label = PREFIX + 'syncsig-ejoin'
+    ss_bjoin_label = PREFIX + 'syncsig-bjoin'
+
+    time_static_label = PREFIX + 'ts'
+    time_static_partition_label = PREFIX + 'ts-partitiononly'
+
+    datasets = ['jscript1k', 'python1k', 'swissprot1k']
+
+    for dataset in datasets:
+        data = defaultdict(lambda: defaultdict(dict))
+        headers = ['Threshold']
+        keys = []
+
+        for label in (ss_ejoin_label, ss_bjoin_label):
+            alg = 'ejoin' if 'ejoin' in label else 'bjoin'
+            headers.append(alg)
+            keys.append(alg)
+            results = queries.average_time(collection, label, dataset, 'ted')
+
+            for result in results:
+                threshold = result['_id']['threshold']
+                avg_total_time = result['average_total_time']
+                data[threshold][alg] = avg_total_time
+
+        for label in (time_static_label, time_static_partition_label):
+            if 'partitiononly' in label:
+                alg = 'ts-partition'
+            else:
+                alg = 'time-static'
+            headers.append(alg)
+            keys.append(alg)
+            results = queries.average_time(collection, label, dataset, 'ted')
+
+            for result in results:
+                threshold = result['_id']['threshold']
+                avg_total_time = result['average_join_time'] + result['average_build_time']
+                data[threshold][alg] = avg_total_time
+
+        filename = f'syncsig/{remove_extension(dataset)}.csv'
+        write_to_csv(filename, headers, keys, data)
+
+
 def main():
     uri = config.db_config['connection_string']
 
@@ -183,16 +245,17 @@ def main():
     string_datasets = ['dblp', 'enron', 'trec', 'word']
     tree_datasets = ['sentiment', 'python', 'swissprot', 'synthetic', 'dblp']
 
-    static_vs_dynamic(set_datasets, 'jaccard', collection)
-    static_vs_dynamic(string_datasets, 'sed', collection)
-    static_vs_dynamic(tree_datasets, 'ted', collection)
+    fast_vs_syncsignatures(collection)
 
-    # static_vs_baseline(set_datasets, 'jaccard', collection)
-    # static_vs_baseline(set_datasets, 'sed', collection)
-    # static_vs_baseline(set_datasets, 'ted', collection)
+    for dataset, similarity in [(set_datasets, 'jaccard'), (string_datasets, 'sed'), (tree_datasets, 'ted')]:
+        static_vs_dynamic(dataset, similarity, collection)
+        static_vs_baseline(dataset, similarity, collection)
+        index_redundancy(dataset, similarity, collection)
+        static_vs_dynamic(dataset, similarity, collection, f'{PREFIX}hights-', 'hights')
 
     fast_vs_twol(collection)
     fast_vs_limes(collection)
+
 
 
 if __name__ == '__main__':
