@@ -3,7 +3,7 @@
 source global.sh
 
 BINARY="./venv/bin/python3 run.py"
-DATASET_DIR="/root/dschmitt/datasets/strings/"
+DATASET_DIR="/root/dschmitt/datasets/strings"
 ARGS=()
 
 generate_args() {
@@ -16,13 +16,13 @@ generate_args() {
 
 # our datasets
 for threshold in {1..6}; do
-    generate_args "shuf/dblp" "$threshold"
-    generate_args "shuf/word" "$threshold"
+    generate_args "minjoin/dblp" "$threshold"
+    generate_args "minjoin/word" "$threshold"
 done
 
 for threshold in 2 4 6 8 10 12; do
-    generate_args "shuf/enron" "$threshold"
-    generate_args "shuf/trec" "$threshold"
+    generate_args "minjoin/enron" "$threshold"
+    generate_args "minjoin/trec" "$threshold"
 done
 
 # their datasets
