@@ -57,9 +57,7 @@ struct ReductionStep {
   std::reference_wrapper<Reduction> reduction;
   ReductionStep(size_t id, Reduction& reduction) : id(id), reduction(reduction) {}
 
-  friend bool operator==(const ReductionStep& lhs, const ReductionStep& rhs) {
-    return lhs.id == rhs.id;
-  }
+  friend bool operator==(const ReductionStep& lhs, const ReductionStep& rhs) { return lhs.id == rhs.id; }
   friend bool operator!=(const ReductionStep& lhs, const ReductionStep& rhs) { return !(lhs == rhs); }
 
   friend std::size_t hash_value(const ReductionStep& obj) {
@@ -201,12 +199,17 @@ public:
     auto& label_set_reduction = *reductions.emplace_back(std::make_unique<LabelSetReduction>());
     auto& jaro_set_reduction = *reductions.emplace_back(std::make_unique<JaroSetReduction>(1));
 
-    std::vector<std::unique_ptr<Reduction>*> additional_qram_reductions;
+    size_t red_start = reductions.size();
     for (auto& s : additional_reductions) {
       if (!s.empty() && s[0] == 'q') {
         int64_t q = std::stoi(s.substr(1));
-        additional_qram_reductions.emplace_back(&reductions.emplace_back(std::make_unique<QGramReduction>(q)));
+        reductions.emplace_back(std::make_unique<QGramReduction>(q));
       }
+    }
+    std::vector<std::unique_ptr<Reduction>*> additional_qram_reductions;
+    additional_qram_reductions.reserve(reductions.size());
+    for (auto i = red_start; i < reductions.size(); ++i) {
+      additional_qram_reductions.emplace_back(&reductions[i]);
     }
 
     // insert nodes first (otherwise pointers might change)
