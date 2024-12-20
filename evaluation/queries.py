@@ -22,7 +22,8 @@ def average_time(collection: pymongo.collection.Collection, label: str, dataset:
                 },
                 'average_join_time': {'$median': {'input': '$timing.join_time', 'method': 'approximate'}},
                 'average_build_time': {'$median': {'input': '$timing.build_time', 'method': 'approximate'}},
-                'average_total_time': {'$median': {'input': '$timing.total_time', 'method': 'approximate'}}
+                'average_total_time': {'$median': {'input': '$timing.total_time', 'method': 'approximate'}},
+                'result_size': {'$avg': '$global_statistics.result_size'}
             }
         }
     ]
