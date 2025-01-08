@@ -9,11 +9,13 @@
 #include "../statistics/join_statistics.hh"
 #include "../timing/join_timing.hh"
 #include "../util/git_sha.hh"
+#include "../util/hw_cache.hh"
 
 struct Config {
   std::string input_file;
   bool shuffle{false};
   bool warmup{false};
+  bool warmup_flush_hwcache{false};
   int64_t read_file_until{};
   std::string datatype;
   std::string similarity;
@@ -38,6 +40,9 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "warmup,w",
     po::bool_switch(&config.warmup)->default_value(false),
     "Perform warmup by filling caches before execution (only affects time-dynamic)")(
+    "flush-hwcache",
+    po::bool_switch(&config.warmup_flush_hwcache)->default_value(false),
+    "Try to flush hardware (data-)caches between warmup and execution.")(
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
@@ -115,6 +120,8 @@ nlohmann::json get_metadata(Config& config) {
     json["probing_signatures_cache_size"] = config.probing_signatures_cache_size;
   } else {
     json["timeslice"] = config.timeslice;
+    json["warmup"] = config.warmup;
+    json["warmup_flush_hwcache"] = config.warmup_flush_hwcache;
   }
 
   return json;
@@ -287,6 +294,10 @@ int main(int argc, char** argv) {
       auto temp_lls = setup_statistics<StatClass>(plans);
       timing::TimeDynamicJoinTiming temp_timing;
       dts.execute_join(dataset, similarity, plans, temp_timing, temp_lls);
+
+      if (config.warmup_flush_hwcache) {
+        util::try_flush_cache();
+      }
     }
     dts.execute_join(dataset, similarity, plans, tdj_timing, lls);
     timing = std::make_unique<timing::TimeDynamicJoinTiming>(std::move(tdj_timing));
