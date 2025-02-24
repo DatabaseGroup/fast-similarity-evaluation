@@ -34,7 +34,20 @@ cd ${HOME}/experiments
 
 ### Run using Docker 
 
-To be added later...
+1. Build the docker image
+```
+docker build -t fast-similarity-evaluation:latest .
+```
+
+2. Run the docker image and mount datasets
+```
+docker run -it --rm  --volume /path/to/your/datasets/:/root/datasets fast-similarity-evaluation:latest
+```
+
+3. Executables are available at `/root/experiments`
+```
+cd /root/experiments
+```
 
 ## Usage
 

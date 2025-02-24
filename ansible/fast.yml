@@ -2,7 +2,7 @@
   hosts: all
   vars:
     home_dir: "/home/fast-bench"
-    fast_repo: "git@frosch.cosy.sbg.ac.at:dschmitt/fast.git"
+    fast_repo: "https://frosch.cosy.sbg.ac.at/dschmitt/fast.git"
   tasks:
     - name: Install dependencies
       ansible.builtin.apt:
@@ -13,18 +13,11 @@
           - "cmake"
           - "curl"
           - "git"
-          - "kitty-terminfo"
           - "lsb-release"
           - "man-db"
           - "ninja-build"
-          - "parallel"
-          - "python3"
-          - "python3-setuptools"
-          - "python3-venv"
           - "tar"
-          - "tmux"
           - "unzip"
-          - "parallel"
           - "pkg-config"
           - "zip"
 
@@ -41,7 +34,6 @@
         state: directory
       loop:
         - "datasets"
-        - "download"
         - "experiments"
         - "fast"
         - ".vcpkg"
@@ -69,12 +61,6 @@
         chdir: "{{ home_dir }}/.vcpkg"
         cmd: "./bootstrap-vcpkg.sh -disableMetrics"
 
-    - name: Add frosch host key
-      listen: compile_fast
-      ansible.builtin.known_hosts:
-        name: "frosch.cosy.sbg.ac.at"
-        key: "frosch.cosy.sbg.ac.at ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxKs9uYj98al1va+JGMQrJWAjHdU5o/X2ZyMX5Il2uv"
-
     - name: Compile FAST
       listen: compile_fast
       ansible.builtin.shell:
@@ -84,10 +70,3 @@
         - "mkdir -p build"
         - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
-
-    - name: Setup virtualenv for FAST wrapper
-      listen: compile_fast
-      ansible.builtin.pip:
-        name: pymongo
-        virtualenv: "{{ home_dir }}/experiments/wrapper/venv"
-        virtualenv_command: "python3 -m venv"
