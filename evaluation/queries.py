@@ -206,6 +206,6 @@ def fast_index_redundancy(collection: pymongo.collection.Collection, static_labe
 
         if threshold not in plain:
             plain[threshold] = {}
-        plain[threshold][mode] = index_redundancy
+        plain[threshold][mode] = index_redundancy - 1
 
     return plain

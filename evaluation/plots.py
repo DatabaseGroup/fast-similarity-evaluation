@@ -28,7 +28,34 @@ def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[
             writer.writerow(row)
 
 
-def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, prefix=PREFIX, fileprefix='time'):
+class GapStats:
+    def __init__(self):
+        self.sum_for_label = defaultdict(float)
+        self.count_for_label = defaultdict(int)
+
+    def record(self, labels: list[str], values: dict[str, float], expected_best: str):
+        if expected_best in values:
+            best = values[expected_best]
+            for label in labels:
+                if label in values:
+                    value = values[label] / best
+                    self.sum_for_label[label] += value
+                    self.count_for_label[label] += 1
+
+
+    def get_averages(self) -> list[tuple[str, float]]:
+        res = []
+        for label, value in self.sum_for_label.items():
+            res.append((label, value / self.count_for_label[label]))
+        res.sort(key=lambda k: k[1])
+        return res
+
+    def print(self):
+        avgs = self.get_averages()
+        for avg in avgs:
+            print(f'{avg[0]}: {avg[1]}')
+
+def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: GapStats, prefix=PREFIX, fileprefix='time'):
     time_static_label = prefix + 'ts'
     time_dynamic_label = prefix + 'td'
     time_dynamic_warmup = prefix + 'tdw'
@@ -54,6 +81,9 @@ def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.
         headers = ['Threshold', 'time-static', 'time-dynamic', 'time-dynamic-warmup', 'time-static-with-build']
         keys = [time_static_label, time_dynamic_label, time_dynamic_warmup, 'time-static-with-build']
         write_to_csv(filename, headers, keys, data)
+
+        for threshold in data.values():
+            stats.record(keys, threshold, time_static_label)
 
 
 class BaselineAccStats:
@@ -205,7 +235,7 @@ def fast_vs_limes(collection: pymongo.collection.Collection):
         keys = ['time-static', 'limes']
         write_to_csv(filename, headers, keys, data)
 
-def index_redundancy(datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
+def index_redundancy(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: GapStats):
     time_static_label = PREFIX + 'ts'
     time_dynamic_label = PREFIX + 'td'
 
@@ -216,6 +246,9 @@ def index_redundancy(datasets: list[str], similarity: str, collection: pymongo.c
         headers = ['Threshold', 'time-static', 'time-dynamic']
         keys = ['time-static', 'time-dynamic']
         write_to_csv(filename, headers, keys, result)
+
+        for threshold in result.values():
+            stats.record(keys, threshold, 'time-static')
 
 
 def fast_vs_syncsignatures(collection: pymongo.collection.Collection):
@@ -319,20 +352,29 @@ def main():
     database = client.get_database(config.db_config['database'])
     collection = database.get_collection(config.db_config['collection'])
 
-    set_datasets = ['bms-pos-dedup-raw.txt', 'kosarak-dedup-raw.txt', 'livejournal-userswithgroups-raw.txt',
-                    'orkut-userswithgroups-dedup-raw.txt', 'dblpv14', 'lnonis1']
+    set_datasets = ['bms-pos-dedup-raw.txt', 'kosarak-dedup-raw.txt', 'dblpv14', 'lnonis1']
     string_datasets = ['dblp', 'enron', 'trec', 'word']
-    tree_datasets = ['sentiment', 'python', 'swissprot', 'dblp', 'synthetic3']
+    tree_datasets = ['sentiment', 'python', 'swissprot', 'dblp']
 
+    static_dynamic_stats = GapStats()
+    hights_stats = GapStats()
     baseline_stats = BaselineAccStats()
+    index_redundancy_stats = GapStats()
 
     for dataset, similarity in [(set_datasets, 'jaccard'), (string_datasets, 'sed'), (tree_datasets, 'ted')]:
-        static_vs_dynamic(dataset, similarity, collection)
+        static_vs_dynamic(dataset, similarity, collection, static_dynamic_stats)
         static_vs_baseline(dataset, similarity, collection, baseline_stats)
-        index_redundancy(dataset, similarity, collection)
-        static_vs_dynamic(dataset, similarity, collection, f'{PREFIX}hights-', 'hights')
+        index_redundancy(dataset, similarity, collection, index_redundancy_stats)
+        print(f'index redundancy gap factors ({dataset}):')
+        index_redundancy_stats.print()
+        index_redundancy_stats = GapStats()
+
+        static_vs_dynamic(dataset, similarity, collection, hights_stats, f'{PREFIX}hights-', 'hights')
 
     print(f'avg ratio: {baseline_stats.avg_ratio()}')
+
+    print('dynamic gap factors:')
+    static_dynamic_stats.print()
 
     fast_vs_twol(collection)
     fast_vs_limes(collection)
