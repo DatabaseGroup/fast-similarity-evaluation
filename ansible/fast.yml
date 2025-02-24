@@ -16,6 +16,7 @@
           - "kitty-terminfo"
           - "lsb-release"
           - "man-db"
+          - "ninja-build"
           - "parallel"
           - "python3"
           - "python3-setuptools"
@@ -39,7 +40,6 @@
         mode: "0750"
         state: directory
       loop:
-        - "bin"
         - "datasets"
         - "download"
         - "experiments"
