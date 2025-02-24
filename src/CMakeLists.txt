@@ -37,7 +37,7 @@ find_package(Boost REQUIRED OPTIONAL_COMPONENTS program_options)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 ExternalProject_Add(tree-similarity
-        GIT_REPOSITORY ssh://git@kappa.gsk.moe:4950/patche/tree-similarity.git
+        GIT_REPOSITORY https://frosch.cosy.sbg.ac.at/dschmitt/tree-similarity.git
         GIT_TAG origin/master
         INSTALL_DIR external/tsim
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/tsim

@@ -1,0 +1,77 @@
+- name: Install and compile competitors
+  hosts: all
+  vars:
+    home_dir: "/home/fast-bench"
+  tasks:
+    - name: Clone SyncSignatures
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/syncsignature"
+        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/syncsignature.git"
+        version: main
+      notify: compile_syncsignature
+
+    - name: Clone LimesLight
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/limes-light"
+        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/limes-light.git"
+        version: master
+      notify: compile_limeslight
+
+    - name: Clone Minjoin
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/minjoin"
+        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/minsimjoin.git"
+        version: master
+      notify: compile_minjoin
+
+    - name: Clone TwoL
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/twol"
+        repo: "git@frosch.cosy.sbg.ac.at:dkocher/variant-clustering-code.git"
+        version: ds/alllsh-jaccard
+      notify: compile_twol
+
+  handlers:
+    - name: Compile SyncSignature
+      listen: compile_syncsignature
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/syncsignature"
+        cmd: "{{ item }}"
+      loop:
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 ted"
+        - "cp build/ted {{ home_dir }}/experiments/syncsignature"
+
+    - name: Compile Limes-Light
+      listen: compile_limeslight
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/limes-light/cpp"
+        cmd: "{{ item }}"
+      loop:
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 limes-light"
+        - "cp build/limes-light {{ home_dir }}/experiments/limes-light"
+
+    - name: Compile MinJoin
+      listen: compile_minjoin
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/minjoin/minjoinpp"
+        cmd: "{{ item }}"
+      loop:
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 minsimjoin"
+        - "cp build/minsimjoin {{ home_dir }}/experiments/minjoin"
+
+    - name: Compile TwoL
+      listen: compile_twol
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/twol"
+        cmd: "{{ item }}"
+      loop:
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 cluster"
+        - "cp build/cluster {{ home_dir }}/experiments/twol"

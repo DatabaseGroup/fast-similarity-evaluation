@@ -1,6 +1,8 @@
-- name: Install FAST
+- name: Install and compile FAST
   hosts: all
-
+  vars:
+    home_dir: "/home/fast-bench"
+    fast_repo: "git@frosch.cosy.sbg.ac.at:dschmitt/fast.git"
   tasks:
     - name: Install dependencies
       ansible.builtin.apt:
@@ -27,17 +29,11 @@
 
     - name: Create home
       ansible.builtin.file:
-        path: "/home/dschmitt"
+        path: "{{ home_dir }}"
         mode: "0750"
         state: directory
 
-    - name: Create symlink to home
-      ansible.builtin.file:
-        src: "/home/dschmitt"
-        dest: "/root/dschmitt"
-        state: link
-
-    - name: Create home directories
+    - name: Create subdirectories
       ansible.builtin.file:
         path: "{{ home_dir }}/{{ item }}"
         mode: "0750"
@@ -49,12 +45,6 @@
         - "experiments"
         - "fast"
         - ".vcpkg"
-
-    - name: Copy datasets
-      ansible.builtin.copy:
-        remote_src: true
-        src: "/mnt/dbgroup-share/dschmitt/datasets/"
-        dest: "{{ home_dir }}/datasets/"
 
     - name: Clone VCPKG
       ansible.builtin.git:
@@ -68,41 +58,9 @@
       ansible.builtin.git:
         accept_newhostkey: true
         dest: "{{ home_dir }}/fast"
-        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/fast.git"
+        repo: "{{ fast_repo }}"
         version: master
       notify: compile_fast
-
-    - name: Clone SyncSignatures
-      ansible.builtin.git:
-        accept_newhostkey: true
-        dest: "{{ home_dir }}/syncsignature"
-        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/syncsignature.git"
-        version: main
-      notify: compile_syncsignature
-
-    - name: Clone LimesLight
-      ansible.builtin.git:
-        accept_newhostkey: true
-        dest: "{{ home_dir }}/limes-light"
-        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/limes-light.git"
-        version: master
-      notify: compile_limeslight
-
-    - name: Clone Minjoin
-      ansible.builtin.git:
-        accept_newhostkey: true
-        dest: "{{ home_dir }}/minjoin"
-        repo: "git@frosch.cosy.sbg.ac.at:dschmitt/minsimjoin.git"
-        version: master
-      notify: compile_minjoin
-
-    - name: Clone TwoL
-      ansible.builtin.git:
-        accept_newhostkey: true
-        dest: "{{ home_dir }}/twol"
-        repo: "git@frosch.cosy.sbg.ac.at:dkocher/variant-clustering-code.git"
-        version: ds/alllsh-jaccard
-      notify: compile_twol
 
   handlers:
     - name: Bootstrap VCPKG
@@ -111,11 +69,11 @@
         chdir: "{{ home_dir }}/.vcpkg"
         cmd: "./bootstrap-vcpkg.sh -disableMetrics"
 
-    - name: Add kappa host key
+    - name: Add frosch host key
       listen: compile_fast
       ansible.builtin.known_hosts:
-        name: "[kappa.gsk.moe]:4950"
-        key: "[kappa.gsk.moe]:4950 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWfvuKpmpczMWqNXThSLlanYt3MDXXy1Ya87DABu0iHbajOLAUzCRbkw//JDWKmSVxb5U+pMq3qe6quyWvu+vsa/OH8rQHOoM/VL75YnjHaUqxA7TozADG3aLbm8J4VehGAvTC1JeK9JrUekAIV+0An7ey35uiCYelHMIk0HpCf/3+nfsk6mWMKPBbx2ahgGigkkPcLdadyY9QGz6JLocPTJmiJrq+wXf2iZwt6za+d+YBLV/fVi+A/o0l6ci4Wy2f9bsY9L1TB2HOyvbXpdDfiBGXRoEBo0xcojP5T7c3QspuChJ7Zv7MsmdNaZ9BdcGf8YcmZBuBywKJZq6pUhxJ"
+        name: "frosch.cosy.sbg.ac.at"
+        key: "frosch.cosy.sbg.ac.at ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxKs9uYj98al1va+JGMQrJWAjHdU5o/X2ZyMX5Il2uv"
 
     - name: Compile FAST
       listen: compile_fast
@@ -127,49 +85,9 @@
         - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
 
-    - name: Setup venv
+    - name: Setup virtualenv for FAST wrapper
       listen: compile_fast
       ansible.builtin.pip:
         name: pymongo
         virtualenv: "{{ home_dir }}/experiments/wrapper/venv"
         virtualenv_command: "python3 -m venv"
-
-    - name: Compile SyncSignature
-      listen: compile_syncsignature
-      ansible.builtin.shell:
-        chdir: "{{ home_dir }}/syncsignature"
-        cmd: "{{ item }}"
-      loop:
-        - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 ted"
-        - "cp build/ted {{ home_dir }}/experiments/syncsignature"
-
-    - name: Compile Limes-Light
-      listen: compile_limeslight
-      ansible.builtin.shell:
-        chdir: "{{ home_dir }}/limes-light/cpp"
-        cmd: "{{ item }}"
-      loop:
-        - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 limes-light"
-        - "cp build/limes-light {{ home_dir }}/experiments/limes-light"
-
-    - name: Compile MinJoin
-      listen: compile_minjoin
-      ansible.builtin.shell:
-        chdir: "{{ home_dir }}/minjoin/minjoinpp"
-        cmd: "{{ item }}"
-      loop:
-        - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 minsimjoin"
-        - "cp build/minsimjoin {{ home_dir }}/experiments/minjoin"
-
-    - name: Compile TwoL
-      listen: compile_twol
-      ansible.builtin.shell:
-        chdir: "{{ home_dir }}/twol"
-        cmd: "{{ item }}"
-      loop:
-        - "mkdir -p build"
-        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4 cluster"
-        - "cp build/cluster {{ home_dir }}/experiments/twol"
