@@ -72,3 +72,39 @@ USAGE:
     -i 0.2
 ```
 
+### Dataset Format
+
+FAST supports sets, strings, and trees.
+
+#### Sets
+
+A line corresponds to a set. Each set consists of numerical tokens separated by spaces.
+
+**Example** (3 sets): 
+```
+1 103 5 42
+2 3 1
+5 1 40 38
+```
+
+#### Strings
+
+A line corresponds to a string.
+
+**Example** (3 strings):
+```
+extensibility
+efficiency
+robustness
+```
+
+#### Trees
+
+A line corresponds to a tree. Trees are encoded in *bracket notation*. For example, `{A{B{X}{Y}{F}}{C}}` corresponds to
+```
+    A
+   / \
+  B   C
+ /|\
+X Y F
+```
