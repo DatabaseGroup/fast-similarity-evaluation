@@ -1,0 +1,72 @@
+- name: Install and compile FAST
+  hosts: all
+  vars:
+    home_dir: "/home/fast-bench"
+    fast_repo: "https://frosch.cosy.sbg.ac.at/dschmitt/fast.git"
+  tasks:
+    - name: Install dependencies
+      ansible.builtin.apt:
+        state: present
+        update_cache: true
+        pkg:
+          - "build-essential"
+          - "cmake"
+          - "curl"
+          - "git"
+          - "lsb-release"
+          - "man-db"
+          - "ninja-build"
+          - "tar"
+          - "unzip"
+          - "pkg-config"
+          - "zip"
+
+    - name: Create home
+      ansible.builtin.file:
+        path: "{{ home_dir }}"
+        mode: "0750"
+        state: directory
+
+    - name: Create subdirectories
+      ansible.builtin.file:
+        path: "{{ home_dir }}/{{ item }}"
+        mode: "0750"
+        state: directory
+      loop:
+        - "datasets"
+        - "experiments"
+        - "fast"
+        - ".vcpkg"
+
+    - name: Clone VCPKG
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/.vcpkg"
+        repo: "https://github.com/microsoft/vcpkg.git"
+        version: master
+      notify: bootstrap_vcpkg
+
+    - name: Clone FAST
+      ansible.builtin.git:
+        accept_newhostkey: true
+        dest: "{{ home_dir }}/fast"
+        repo: "{{ fast_repo }}"
+        version: master
+      notify: compile_fast
+
+  handlers:
+    - name: Bootstrap VCPKG
+      listen: bootstrap_vcpkg
+      ansible.builtin.command:
+        chdir: "{{ home_dir }}/.vcpkg"
+        cmd: "./bootstrap-vcpkg.sh -disableMetrics"
+
+    - name: Compile FAST
+      listen: compile_fast
+      ansible.builtin.shell:
+        chdir: "{{ home_dir }}/fast/src"
+        cmd: "{{ item }}"
+      loop:
+        - "mkdir -p build"
+        - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4"
+        - "cp -rf build/bin/* {{ home_dir }}/experiments"

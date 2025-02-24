@@ -40,12 +40,22 @@
 
 \section{SED}
 
+\subsection{Approximations}
+
 \begin{small}
     \begin{longtable}[c]{p{0.085\linewidth}p{0.05\linewidth}p{0.035\linewidth}p{0.43\linewidth}p{0.05\linewidth}p{0.1\linewidth}p{0.15\linewidth}}
         \toprule
         Name    &   Assum.  & Red.  &   Description  &   T-Time   &   B-Time    &   Approximation   \tabularnewline
         \midrule\endhead
         SED &   ---     &   --- & --- &   ---  &   $O(n^2)$    &   1   \tabularnewline
+        Method of the Four Russians~\cite{DBLP:journals/jcss/MasekP80}&
+        finite alphabet, rational costs&
+        ---&
+        If the alphabet is finite and the costs are discrete (e.g., unit cost in the simplest case), we can precompute partial matrixes of the full matrix used in the DP approach and use them as a lookup table. For a smart selection of partial matrix size ($=O(\log (max\{|A|, |B|\}))$), we can achieve a speedup.&
+        ---&
+        $O(\frac{n^2}{\log n})$&
+        1
+        \tabularnewline
         bSED~\cite{DBLP:journals/siamcomp/LandauMS98} &   bound.  &   --- & Smart navigation through the DP matrix using an approach similar to Dijkstra. &   --- &   $O(n + d_{max}^2)$    &   1   \tabularnewline
         bSED-Approx&
         ---&
@@ -59,7 +69,79 @@
     \end{longtable}
 \end{small}
 
+\subsection{Indexing Techniques}
+
+\begin{footnotesize}
+    \begin{longtable}[c]{p{0.1\linewidth}p{0.05\linewidth}p{0.1\linewidth}p{0.5\linewidth}p{0.2\linewidth}}
+        \toprule
+        Name  & Red.  &   Signature   &   Description  &   Complexity   \tabularnewline
+        \midrule\endhead
+        $q$-Grams~\cite{DBLP:conf/vldb/GravanoIJKMS01}&
+        Sets&
+        (a)symmetric&
+        Substrings of size $q$ form $q$-grams. Similar pairs of sets have at least some $q$-grams in common. Hence, $q$-grams reduce the problem to a set similarity problem with an overlap dependent on the string length ($\approx$ set size), $d$, and $q$. Additional filtering on length and position is used. This results in an asymmetric signature scheme.&
+        indexing: $O(dn)$ or $O(n)$
+        \tabularnewline
+        Ed-Join~\cite{DBLP:journals/pvldb/XiaoWL08}&
+        Sets?&
+        symmetric?&
+        Extends upon using AllPairs to solve the $q$-grams overlap problem: (1) The prefix size can be decreased if the $q$-grams that are in the prefix do not overlap in the original string (\textit{mismatch filter}). This is due to the fact that non-overlapping $q$-grams that do not match correspond to exactly one edit operation. Previously, up to $q$ $q$-grams could correspond to one edit operation. (2) If we know the mismatched $q$-grams, we can compute a better bound on the SED based on the position of the mismatches. Additionally, some histograms are used to speed up falsification.&
+        indexing and probing: between $O(d + 1)$ and $O(qd + 1)$
+        \tabularnewline
+        $q$-chunk~\cite{DBLP:conf/sigmod/QinWLXL11}&
+        Sets&
+        asymmetric&
+        Two very similar approaches are proposed: (1) IndexChunk and (2) IndexGram. In general, strings are partitioned into $k>d$ parts (\textit{$q$-chunks}, non-overlapping $q$-grams). Then, any similar pair of strings has the property that the $q$-grams of one string and the $q$-chunks of the other share a $q$-thing. The methods now differ in which parts is indexed and which part is probed. IndexChunk indexes the chunks and probes the grams and IndexGrams indexes the grams and probes the chunks. If the grams are indexed, the index can become rather chunky. This is essentially the count filter for grams adapted for chunks and grams. As there are more grams than chunks, the number of signatures is reduced by quite some grams. To further reduce the chunkiness, the prefix filter is used to reduce the number of required $q$-things in the overlap to be about a gram. A filter based on the matching $q$-things in addition to an estimator for the edit distance is also proposed and used.&
+        indexing: $O(n - (\frac{n-d}{q} - d) + 1)$ or $O(d + 1)$
+        probing: $O(d + 1)$ or $O(n - (\frac{n-d}{q} - d) + 1)$
+        \tabularnewline
+        Pivotal~\cite{DBLP:conf/sigmod/DengLF14}&
+        Sets?&
+        symmetric?&
+        Extends Ed-Join by reducing the used prefix sizes. This approach distinguishes \textit{prefix signatures} (first (according to some global order, e.g., ascending frequency) up to $qd+1$ $q$-grams of a string, already filtered by the mismatch filter) and \textit{pivotal prefix signatures} (a selection of exactly $d+1$ prefix signatures that do not overlap). We have the property that similar sets have some cross-signature in common (pivotal to prefix and vice versa). There might be multiple choices of pivotal prefix signatures. A DP algorithm selects the pivotal prefix signatures with least summed up weight. Based on the edit distance of the pivotal to some parts of the other string, additional strings can be filtered (\textit{alignment filter}).&
+        indexing and probing: between $O(d + 1)$ and $O(qd + 1)$
+        \tabularnewline
+        FastSS~\cite{DBLP:conf/noms/BocekHHS08}&
+        Sets (in the broadest sense)&
+        symmetric&
+        Only works for small strings. For a string, all possible ways of deleting $d$ characters are indexed. To probe, we enumerate all ways of deleting $d$ characters and look them up.&
+        $O(n^d)$ for indexing, probing, and space
+        \tabularnewline
+        Trie-Join~\cite{DBLP:journals/pvldb/WangLF10}&
+        ---&
+        ---&
+        Assume that the strings of one collection are indexed in a trie. Given a query string $s$ and some node $n$ in the trie, if all prefixes of $s$ are not similar to the string represented by $n$, then the descendants of $n$ cannot be similar to $s$. For joins, the \enquote{query strings} can also be indexed inside a trie. In this case, all prefixes of $s$ are all ancestors of the node that represents $s$ and we have the following property: For two trie nodes $u$ and $v$, if $u$ is not similar to all ancestors of $v$ and $v$ is not similar to all ancestors of $u$, then the descendants of $u$ and $v$ are not similar. The rest of the paper is about traversing the trie and filtering branches, e.g., by storing additional information in the nodes.&
+        \textbf{TODO}
+        \tabularnewline
+        Pass-Join~\cite{DBLP:journals/pvldb/LiDWF11}&
+        ---&
+        asymmetric&
+        This uses a signature scheme. An indexing string is partitioned into $d+1$ parts of (approximately) equal size. Similar pairs of strings now have the property that one string has to have one of the parts of the others as a substring. Hence, the probing signatures are all substrings of the other string. To avoid actually doing it like this, the number of possibly matching substrings of similar pairs of strings can be reduced by leveraging (1) the equal size of all substrings in the partition ($O(|s|^2)\rightarrow O(d|s|)$), (2) the possible starting positions of matching substrings that cannot be too far from the starting position in the partition $O(O(d^2))$, and (3) the observation that some matches would still require an additional match at another position to allow both strings to be similar $O(O(d))$.&
+        indexing: $O(n)$, probing $(O(n))$
+        \tabularnewline
+        MinJoin~\cite{DBLP:conf/kdd/Zhang019}&
+        Sets&
+        symmetric&
+        This is an approximation with guarantees. It achieves total recall with probability $1-\frac{1}{n}^c$. There is also an adaption for range lookups and top-$k$ lookups~\cite{DBLP:conf/kdd/Zhang020}. The algorithm works as follows: We compute $q$-grams ($q$ depends on the alphabet size, maximum string length, and number of aimed for partitions) for the strings, hash them to a value between $0$ and $1$, concatenate the hashes, and store them in an array. Using this array, we find \textit{anchors} in the original string that split the string into substrings. Those substrings form the signatures. A position in the array is an anchor, if it is a minimum in its neighborhood ($r$ values to the left and right).
+
+        For the analysis, we can first show that we can set the numbers of partitions (in expectation) for a good choice of $q$ and $r$. The number of partitions is also concentrated around the mean. Then, if two strings are similar, they have to share a common substring of some minimum length. Due to that minimum length, the common substring has at least four anchors with constant probability ($0.99$). The value chosen for $r$ might be different for the two strings (depending on their sizes). If they are identical, the anchors will also be identical and hence that substring of the common substring will be a shared signature. If the window size is not identical, it can only differ by at most $1$ due to the fact that both strings are similar and similar strings have bounded size differences. Then, the probability of the anchors of the longer string to be the same is slightly lower, but still high ($0.98$).
+        
+        It is noteworthy that this algorithm was only evaluated on datasets with large strings (average string length 445-20000). On those datasets, it outperformed PassJoin significantly.&
+        indexing, probing, and space: $O(n\log n)$\footnote{The log-factor is due to repetition to achieve an arbitrarily small failure probability. The authors claim that in practice a single pass is enough. They achieve total recall using one pass in their experiments.} in expectation
+        \tabularnewline
+        minIL~\cite{DBLP:conf/icde/YangZWLZ22}&
+        possibly sets&
+        possibly symmetric&
+        This has similar ideas compared to MinJoin~\cite{DBLP:conf/kdd/Zhang019}, but has significantly worse presentation. Select any random hash function $h$ from the string's alphabet to $(0,1)$. Strings are \textit{compacted} recursively: Consider a neighborhood around the middle of the string and select the character with minimal value according to $h$. Recurse on both sides until some depth limit is reached. The authors claim that similar strings must have similar compacted strings with \enquote{no more than $\alpha$ different pivots}. The selection of $\alpha$ is kind of left open.&
+        \textbf{TODO}
+        \tabularnewline
+        \bottomrule
+    \end{longtable}
+\end{footnotesize}
+
 \section{TED}
+
+\subsection{Approximations}
 
 \begin{footnotesize}
     \begin{longtable}[c]{p{0.085\linewidth}p{0.05\linewidth}p{0.035\linewidth}p{0.43\linewidth}p{0.05\linewidth}p{0.1\linewidth}p{0.15\linewidth}}
@@ -75,10 +157,10 @@
         $O(n^{2.9546})$, $O(n^{2.9639})$    &
         1
         \tabularnewline
-        bTED~\cite{DBLP:conf/cpm/Touzet05}&
+        bTED~\cite{DBLP:conf/cpm/Touzet05,DBLP:conf/cikm/0001A20}&
         bound.&
         ---&
-        Smart navigation through the DP matrix, based on the approach for SED~\cite{DBLP:journals/siamcomp/LandauMS98}.&
+        Smart navigation through the DP matrix, based on the approach for SED~\cite{DBLP:journals/siamcomp/LandauMS98}. An empirically faster method is given by Pawlik et al.~\cite{DBLP:conf/cikm/0001A20}.&
         ---&
         $O(nd_{max}^3)$&
         1
@@ -115,6 +197,14 @@
         $O(n^2)$&
         $ED_T\leq \widetilde{ED_T}$
         \tabularnewline
+        Thomas-HUB~\cite{DBLP:conf/icde/Hutter0LA19}&
+        ---&
+        ---&
+        This is a fully heuristic approach that finds empirically good edit mappings in linear time. It proceeds in three steps: (1) Map nodes with the same labels between the trees while considering the position, (2) remove mapped nodes that violate the ancestor/sibling order condiiton, and (3) map the rest of the nodes with differing labels.&
+        ---&
+        $O(dn)$&
+        trivial: $ED_T\leq \widetilde{ED_T}$
+        \tabularnewline
         Euler Strings~\cite{DBLP:journals/ipl/Akutsu06}&
         ---&
         SED&
@@ -150,24 +240,6 @@
         $O(n\log n)$&
         $O(n)$&
         $\widetilde{ED_T}\leq (4(q-1) + 1)ED_T$
-        \tabularnewline
-        Subgraphs~\cite{DBLP:journals/pvldb/TangCM15}&
-        better if unw.?&
-        maybe sets&
-        This is an indexing technique and not an approximation. In a sense, this is a(n asymmetric) signature scheme for trees based on partitioning. For a given threshold $d$, the indexing trees are transformed into LC-RS trees and (approximately evenly) partitioned into $2d+1$ subgraphs by removing $2d$ edges. Those subgraphs are indexed (see later). We now have the property that any probing tree similar to an indexing tree has to have a subgraph (in its LC-RS representation) that is isomorphic to one of the indexing tree's partitions (subgraphs). In a sense, we enumerate all subgraphs and probe them against the index. To avoid actually doing this, the partitions are indexed using two methods: (1) If the match would be too far away in postorder, the match can safely be ignored. To this end, partitioned are put into buckets based on their postorder number. (2) For a given node in the query tree, it can only match a subgraph in the index if its label is equal to the label of the root in the index. Similarly, if the root in the index has a left (right) child, the query node also has to share the label of its left (right) child with the index's child. Subgraphs are indexed by their root and the root's two children (if they exist). Method (1) and (2) are used as a two-level index.
-
-        This method outperforms both binary branches and reference sets (with traversal strings) significantly. According to Thomas~\cite{DBLP:conf/icde/Hutter0LA19}, this is wrong.&
-        indexing: $O(n\log n)$ for a single tree&
-        sig. gen.: $O(n)$&
-        ---
-        \tabularnewline
-        Thomas~\cite{DBLP:conf/icde/Hutter0LA19}&
-        better if unw.?&
-        Sets&
-        This is an indexing technique and not an approximation. The whole paper consists of three ways of speeding up TED joins: (1) Indexing the globally least common labels of a tree, (2) efficiently and heuristically finding a \textit{good enough} TED mapping that allows for fast verification (inclusion into the result set), and (3) using the bounded TED algorithm of Touzet~\cite{DBLP:conf/cpm/Touzet05} to falsify candidates in \enquote{linear time} (in the tree size). Step (1) indexes the globally least common $d+1$ labels of each tree. Probing additionally keeps track of the intersection of labels that are not \enquote{too far away} to not be matchable.&
-        indexing: $O(n\log n)$ for a single tree&
-        sig. gen.: $O(d)$&
-        ---        
         \tabularnewline
         FEDDS+Spines~\cite{DBLP:conf/stoc/BoroujeniGHS19}&
         ---&
@@ -217,6 +289,32 @@
     \end{longtable}
 \end{footnotesize}
 
+\subsection{Indexing Techniques}
+
+\begin{footnotesize}
+    \begin{longtable}[c]{p{0.1\linewidth}p{0.075\linewidth}p{0.05\linewidth}p{0.05\linewidth}p{0.45\linewidth}p{0.2\linewidth}}
+        \toprule
+        Name    &   Assum.  & Red.  &   Signature   &   Description  &   Complexity   \tabularnewline
+        \midrule\endhead
+        Subgraphs~\cite{DBLP:journals/pvldb/TangCM15}&
+        better if unw.?&
+        maybe sets&
+        asymm.&
+        In a sense, this is a(n asymmetric) signature scheme for trees based on partitioning. For a given threshold $d$, the indexing trees are transformed into LC-RS trees and (approximately evenly) partitioned into $2d+1$ subgraphs by removing $2d$ edges. Those subgraphs are indexed (see later). We now have the property that any probing tree similar to an indexing tree has to have a subgraph (in its LC-RS representation) that is isomorphic to one of the indexing tree's partitions (subgraphs). In a sense, we enumerate all subgraphs and probe them against the index. To avoid actually doing this, the partitions are indexed using two methods: (1) If the match would be too far away in postorder, the match can safely be ignored. To this end, partitioned are put into buckets based on their postorder number. (2) For a given node in the query tree, it can only match a subgraph in the index if its label is equal to the label of the root in the index. Similarly, if the root in the index has a left (right) child, the query node also has to share the label of its left (right) child with the index's child. Subgraphs are indexed by their root and the root's two children (if they exist). Method (1) and (2) are used as a two-level index.
+
+        This method outperforms both binary branches and reference sets (with traversal strings) significantly. According to Thomas~\cite{DBLP:conf/icde/Hutter0LA19}, this is wrong, but it might have to do with different preprocessing used in the papers~\cite{DBLP:journals/dbsk/PawlikHKMA19}.&
+        indexing: $O(n\log n)$ for a single tree, sig. gen.: $O(n)$
+        \tabularnewline
+        Thomas~\cite{DBLP:conf/icde/Hutter0LA19}&
+        better if unw.?&
+        Sets&
+        symm.&
+        The whole paper consists of three ways of speeding up TED joins: (1) Indexing the globally least common labels of a tree, (2) efficiently and heuristically finding a \textit{good enough} TED mapping that allows for fast verification (inclusion into the result set), and (3) using the bounded TED algorithm of Touzet~\cite{DBLP:conf/cpm/Touzet05} to falsify candidates in \enquote{linear time} (in the tree size). Step (1) indexes the globally least common $d+1$ labels of each tree. Probing additionally keeps track of the intersection of labels that are not \enquote{too far away} to not be matchable.&
+        indexing: $O(n\log n)$ for a single tree, sig. gen.: $O(d)$
+        \tabularnewline
+        \bottomrule
+    \end{longtable}
+\end{footnotesize}
 
 \clearpage
 \printbibliography
