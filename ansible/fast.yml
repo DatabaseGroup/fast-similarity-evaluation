@@ -51,7 +51,7 @@
         accept_newhostkey: true
         dest: "{{ home_dir }}/fast"
         repo: "{{ fast_repo }}"
-        version: master
+        version: squashed
       notify: compile_fast
 
   handlers:
