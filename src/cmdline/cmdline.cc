@@ -1,5 +1,7 @@
 #include <boost/program_options.hpp>
 #include <variant>
+#include <iostream>
+#include <sys/ioctl.h>
 
 #include "../data/parser.hh"
 #include "../indexing/index.hh"
@@ -31,10 +33,19 @@ struct Config {
   std::vector<std::string> additional_reductions;
 };
 
+uint16_t get_terminal_width() {
+  winsize ws{};
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col != 0) {
+    return ws.ws_col;
+  }
+  // fallback
+  return 80;
+}
+
 bool process_program_options(int argc, char** argv, Config& config) {
   namespace po = boost::program_options;
 
-  po::options_description optdesc{"USAGE"};
+  po::options_description optdesc{"USAGE", get_terminal_width()};
   optdesc.add_options()("input-file,f", po::value(&config.input_file)->required(), "Specify input file")(
     "shuffle,h", po::bool_switch(&config.shuffle)->default_value(false), "Shuffle the dataset after parsing")(
     "warmup,w",
@@ -42,7 +53,7 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "Perform warmup by filling caches before execution (only affects time-dynamic)")(
     "flush-hwcache",
     po::bool_switch(&config.warmup_flush_hwcache)->default_value(false),
-    "Try to flush hardware (data-)caches between warmup and execution.")(
+    "Try to flush hardware (data-)caches between warmup and execution (only affects time-dynamic)")(
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity function (jaccard, sed, ted, jaro)")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold of the similarity join")(
