@@ -198,7 +198,6 @@ public:
                               result_pairs,
                               index_offset,
                               probe_offset,
-                              index_batch,
                               probe_batch,
                               reduction_cache,
                               plan_statistics);

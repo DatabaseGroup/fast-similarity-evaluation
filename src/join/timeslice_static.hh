@@ -13,14 +13,12 @@ namespace join {
 inline void evaluate_microbatch(types::Dataset& data,
                                 similarity::Similarity& similarity,
                                 IndexedBatch& ipbatch,
-                                ontology::UCT::Selection& action,
                                 ontology::QueryPlan& selected_plan,
                                 AlgorithmInstance<MaterializeHandler>& alg,
                                 types::Batch& probing_batch,
                                 int64_t probing_offset,
                                 ReductionCache& reduction_cache,
                                 MaterializeHandler& handler,
-                                std::vector<IndexedBatch>& all_dataset_batches,
                                 statistics::LocalJoinStatistics& plan_statistics) {
   std::shared_ptr<std::any> null;
   FilterConfig config{FilterType::SYMMETRIC_PAIRS};
@@ -45,7 +43,6 @@ inline void evaluate_microbatch(types::Dataset& data,
                         handler.results,
                         0,
                         probing_offset,
-                        all_dataset_batches[action.action],
                         ipbatch,
                         reduction_cache,
                         plan_statistics);
@@ -69,7 +66,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
   std::vector<AlgorithmSharedState<MaterializeHandler>> shared_states(plans.size());
 
   constexpr int64_t HALFBATCH = 8;
-  ReductionCache reduction_cache(3 * (dataset.statistics->count / HALFBATCH + 1));
+  ReductionCache reduction_cache(2 * (dataset.statistics->count / HALFBATCH + 1));
   std::vector<IndexedBatch> all_dataset_batches;
   all_dataset_batches.reserve(plans.size());
   for (size_t i = 0; i < plans.size(); ++i) {
@@ -86,7 +83,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
     alg_instance.initialized = true;
     if (!plan.steps.empty()) {
       alg_instance.owned_data.reserve(plan.steps.size());
-      for (auto& _ : plan.steps) {
+      for ([[maybe_unused]] auto& _ : plan.steps) {
         alg_instance.owned_data.emplace_back(std::make_shared<types::Dataset>());
       }
       for (int64_t offset = 0; offset < dataset.statistics->count; offset += HALFBATCH) {
@@ -149,14 +146,12 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         evaluate_microbatch(dataset.data,
                             similarity,
                             ipbatch,
-                            action,
                             selected_plan,
                             alg,
                             probing_batch,
                             lp_id,
                             reduction_cache,
                             handler,
-                            all_dataset_batches,
                             plan_statistics);
         lp_id += HALFBATCH;
       }
@@ -174,14 +169,12 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
         evaluate_microbatch(dataset.data,
                             similarity,
                             ipbatch,
-                            action,
                             selected_plan,
                             alg,
                             probing_batch,
                             rp_id,
                             reduction_cache,
                             handler,
-                            all_dataset_batches,
                             plan_statistics);
       }
 

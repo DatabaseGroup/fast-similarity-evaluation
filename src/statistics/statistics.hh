@@ -39,9 +39,9 @@ struct RealIncreaser {
   template <class T>
   inline static void add(T, T) {}
   template <class T>
-  inline static void set(T& val, T a) {}
+  inline static void set([[maybe_unused]] T& val, [[maybe_unused]] T a) {}
   template <class F>
-  inline static void update(const F& update_function) {}
+  inline static void update([[maybe_unused]] const F& update_function) {}
 };
 #else
 struct RealIncreaser {

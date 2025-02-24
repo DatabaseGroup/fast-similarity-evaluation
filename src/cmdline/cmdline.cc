@@ -34,7 +34,7 @@ struct Config {
 bool process_program_options(int argc, char** argv, Config& config) {
   namespace po = boost::program_options;
 
-  po::options_description optdesc{"DESCRIPTION"};
+  po::options_description optdesc{"USAGE"};
   optdesc.add_options()("input-file,f", po::value(&config.input_file)->required(), "Specify input file")(
     "shuffle,h", po::bool_switch(&config.shuffle)->default_value(false), "Shuffle the dataset after parsing")(
     "warmup,w",
@@ -44,20 +44,20 @@ bool process_program_options(int argc, char** argv, Config& config) {
     po::bool_switch(&config.warmup_flush_hwcache)->default_value(false),
     "Try to flush hardware (data-)caches between warmup and execution.")(
     "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
-    "similarity,s", po::value(&config.similarity)->required(), "Specify similarity measure")(
-    "threshold,t", po::value(&config.threshold)->required(), "Threshold")(
-    "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into")(
-    "label,l", po::value(&config.label), "label for the run (printed in json)")(
-    "exclude-algorithm,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms")(
-    "exclude-reduction,y", po::value(&config.excluded_reductions)->multitoken(), "Excluded reductions")(
+    "similarity,s", po::value(&config.similarity)->required(), "Specify similarity function (jaccard, sed, ted, jaro)")(
+    "threshold,t", po::value(&config.threshold)->required(), "Threshold of the similarity join")(
+    "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into, only affects block mode")(
+    "label,l", po::value(&config.label), "Label for the run (printed in json)")(
+    "exclude-algorithm,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms in the reduction graph")(
+    "exclude-reduction,y", po::value(&config.excluded_reductions)->multitoken(), "Excluded reductions in the reduction graph")(
     "probe-cache-size,p",
     po::value(&config.probing_signatures_cache_size)->default_value(20),
-    "Probing signatures cache size")(
-    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size")(
+    "Probing signatures cache size, only affects block mode")(
+    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size, only affects block mode")(
     "read-until,u",
     po::value(&config.read_file_until)->default_value(std::numeric_limits<int64_t>::max()),
-    "Read the first X lines of the input")(
-    "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static")(
+    "Read the first X lines of the input, skipping the rest")(
+    "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static, time-dynamic")(
     "time-slice,i", po::value(&config.timeslice)->default_value(0.3), "Timeslice in seconds")(
     "additional-reductions,a",
     po::value(&config.additional_reductions)->multitoken(),
