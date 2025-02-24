@@ -17,7 +17,7 @@ The following assumptions are made on the machine:
 
 1. Clone the repository
 ```
-git clone https://frosch.cosy.sbg.ac.at/dschmitt/fast.git fast-src
+git clone https://frosch.cosy.sbg.ac.at/dschmitt/fast-similarity-evaluation.git fast-src
 cd fast-src
 ```
 
