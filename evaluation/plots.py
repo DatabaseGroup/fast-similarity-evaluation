@@ -12,8 +12,24 @@ from pymongo.server_api import ServerApi
 
 PREFIX = 'final-v9-'
 
+
 def remove_extension(filename):
     return os.path.splitext(filename)[0]
+
+
+from typing import List, Dict, Any
+
+
+def list_to_nested_dict(items: List[Dict[str, Any]], key: str = "threshold") -> Dict[Any, Dict[str, Any]]:
+    nested = {}
+    for item in items:
+        if key not in item:
+            raise KeyError(f"Key {key!r} not found in item {item}")
+        k = item[key]
+        # copy all other fields except the key
+        inner = {field: val for field, val in item.items() if field != key}
+        nested[k] = inner
+    return nested
 
 
 def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[str, dict[str, any]]):
@@ -42,7 +58,6 @@ class GapStats:
                     self.sum_for_label[label] += value
                     self.count_for_label[label] += 1
 
-
     def get_averages(self) -> list[tuple[str, float]]:
         res = []
         for label, value in self.sum_for_label.items():
@@ -55,7 +70,9 @@ class GapStats:
         for avg in avgs:
             print(f'{avg[0]}: {avg[1]}')
 
-def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: GapStats, prefix=PREFIX, fileprefix='time'):
+
+def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: GapStats,
+                      prefix=PREFIX, fileprefix='time'):
     time_static_label = prefix + 'ts'
     time_dynamic_label = prefix + 'td'
     time_dynamic_warmup = prefix + 'tdw'
@@ -102,7 +119,9 @@ class BaselineAccStats:
     def avg_ratio(self) -> float:
         return self.total_ratio / self.ratio_count
 
-def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: BaselineAccStats):
+
+def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo.collection.Collection,
+                       stats: BaselineAccStats):
     time_static_label = PREFIX + 'ts'
     set_baselines = ['baseline-prefix', 'baseline-palloc']
     string_baselines = ['baseline-qgram-prefix', 'baseline-qgram-palloc', 'baseline-passjoin']
@@ -154,6 +173,21 @@ def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo
             stats.record(max_ratio, dataset)
 
 
+def plan_ratios(datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
+    time_static_label = PREFIX + 'ts'
+
+    for dataset in datasets:
+        data = queries.algorithm_ratio(collection, time_static_label, dataset, similarity)
+        print(data)
+
+        all_keys = ['Threshold'] + sorted(set().union(*(d.keys() for d in data)) - {'threshold'})
+        keyed_data = list_to_nested_dict(data)
+
+        filename = f'baseline/{remove_extension(dataset)}-{similarity}-ratios.csv'
+        write_to_csv(filename, [s.replace('-signature', '') for s in all_keys],
+                     [k for k in all_keys if k != 'Threshold'], keyed_data)
+
+
 def fast_vs_twol(collection: pymongo.collection.Collection):
     time_static_label = PREFIX + 'ts'
     time_dynamic_label = PREFIX + 'td'
@@ -172,7 +206,7 @@ def fast_vs_twol(collection: pymongo.collection.Collection):
                 data[threshold] = {}
             data[threshold]['time-static'] = avg_join_time
             data[threshold]['time-static-with-build'] = avg_join_time + avg_build_time
-        
+
         ts_ratio = queries.algorithm_ratio(collection, time_static_label, dataset, 'jaccard')
         for result in ts_ratio:
             data[result['threshold']]['time-static-palloc-ratio'] = result['palloc']
@@ -199,8 +233,10 @@ def fast_vs_twol(collection: pymongo.collection.Collection):
             data[result['threshold']]['twol-palloc-ratio'] = result['palloc']
 
         filename = f'vstwol/{remove_extension(dataset)}-jaccard.csv'
-        headers = ['Threshold', 'time-static', 'time-static-with-build', 'time-static-palloc-ratio', 'time-dynamic', 'twol', 'twol-palloc-ratio']
-        keys = ['time-static', 'time-static-with-build', 'time-static-palloc-ratio', 'time-dynamic', 'twol', 'twol-palloc-ratio']
+        headers = ['Threshold', 'time-static', 'time-static-with-build', 'time-static-palloc-ratio', 'time-dynamic',
+                   'twol', 'twol-palloc-ratio']
+        keys = ['time-static', 'time-static-with-build', 'time-static-palloc-ratio', 'time-dynamic', 'twol',
+                'twol-palloc-ratio']
         write_to_csv(filename, headers, keys, data)
 
 
@@ -234,6 +270,7 @@ def fast_vs_limes(collection: pymongo.collection.Collection):
         headers = ['Threshold', 'time-static', 'limes']
         keys = ['time-static', 'limes']
         write_to_csv(filename, headers, keys, data)
+
 
 def index_redundancy(datasets: list[str], similarity: str, collection: pymongo.collection.Collection, stats: GapStats):
     time_static_label = PREFIX + 'ts'
@@ -293,11 +330,38 @@ def fast_vs_syncsignatures(collection: pymongo.collection.Collection):
 
             for result in results:
                 threshold = result['_id']['threshold']
-                avg_total_time = result['average_join_time'] + (result['average_build_time'] if result['average_build_time'] else 0)
+                avg_total_time = result['average_join_time'] + (
+                    result['average_build_time'] if result['average_build_time'] else 0)
                 data[threshold][alg] = avg_total_time
 
         filename = f'syncsig/{remove_extension(dataset)}.csv'
         write_to_csv(filename, headers, keys, data)
+
+
+def jaro_baselines(collection: pymongo.collection.Collection):
+    ts_label = PREFIX + 'jaro-hybrid'
+    prefix_label = PREFIX + 'jaro-prefix'
+    palloc_label = PREFIX + 'jaro-palloc'
+    datasets = ['company_names', 'dblp', 'enron', 'trec', 'word']
+    labels = [ts_label, prefix_label, palloc_label]
+
+    for dataset in datasets:
+        data = {}
+
+        for label in labels:
+            query_result = queries.average_time(collection, label, dataset, 'jaro')
+            for result in query_result:
+                threshold = result['_id']['threshold']
+                avg_join_time = result['average_join_time']
+                avg_build_time = result.get('average_build_time', 0)
+
+                if threshold not in data:
+                    data[threshold] = {}
+                data[threshold][label] = avg_join_time + avg_build_time
+
+        filename = f'jaro-baselines/{remove_extension(dataset)}.csv'
+        headers = ['Threshold', 'time-static', 'prefix', 'palloc']
+        write_to_csv(filename, headers, labels, data)
 
 
 def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Collection):
@@ -321,12 +385,12 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
             for result in results:
                 threshold = result['_id']['threshold']
                 if 'time-static-min' not in data[threshold]:
-                    data[threshold]['time-static-min'] = 10**10
+                    data[threshold]['time-static-min'] = 10 ** 10
                 data[threshold][alg] = result['average_join_time']
                 data[threshold]['time-static-min'] = min(data[threshold]['time-static-min'], data[threshold][alg])
                 data[threshold]['result_size'] = result['result_size']
 
-        for label in (minjoin_label, ):
+        for label in (minjoin_label,):
             alg = 'minjoin'
             keys.append(alg)
             headers.append(alg)
@@ -336,7 +400,8 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
                 threshold = result['_id']['threshold']
                 data[threshold][alg] = result['average_total_time']
                 data[threshold]['minjoin_result'] = result['result_size']
-                data[threshold]['minjoin_recall'] = round(data[threshold]['minjoin_result'] / data[threshold]['result_size'] * 100, 1)
+                data[threshold]['minjoin_recall'] = round(
+                    data[threshold]['minjoin_result'] / data[threshold]['result_size'] * 100, 1)
                 if data[threshold]['minjoin_recall'] >= 99.9999:
                     data[threshold]['minjoin_recall'] = 100
 
@@ -354,7 +419,9 @@ def main():
 
     set_datasets = ['bms-pos-dedup-raw.txt', 'kosarak-dedup-raw.txt', 'dblpv14', 'lnonis1']
     string_datasets = ['dblp', 'enron', 'trec', 'word']
-    tree_datasets = ['sentiment', 'python', 'swissprot', 'dblp']
+    tree_datasets = ['sentiment', 'python', 'swissprot', 'dblp', 'synthetic']
+
+    jaro_baselines(collection)
 
     static_dynamic_stats = GapStats()
     hights_stats = GapStats()
@@ -365,6 +432,7 @@ def main():
         static_vs_dynamic(dataset, similarity, collection, static_dynamic_stats)
         static_vs_baseline(dataset, similarity, collection, baseline_stats)
         index_redundancy(dataset, similarity, collection, index_redundancy_stats)
+        plan_ratios(dataset, similarity, collection)
         print(f'index redundancy gap factors ({dataset}):')
         index_redundancy_stats.print()
         index_redundancy_stats = GapStats()
