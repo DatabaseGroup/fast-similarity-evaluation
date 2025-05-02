@@ -193,7 +193,7 @@ public:
     auto key_begin = key_range.first;
     auto key_end = key_range.second;
 
-    auto iter = std::lower_bound(map.begin(), map.end(), std::make_pair(key_begin, 0));
+    auto iter = find(key_begin);
 
     for (; iter != map.end(); ++iter) {
       if (iter->first > key_end) {
@@ -222,6 +222,11 @@ public:
 
 public:
   std::vector<std::pair<KeyType, ValueType>> map;
+
+private:
+  typename decltype(map)::iterator find(KeyType key) {
+    return std::lower_bound(map.begin(), map.end(), key, [](const auto& p, int key) -> bool { return p.first < key; });
+  }
 };
 
 template <class ValueType>

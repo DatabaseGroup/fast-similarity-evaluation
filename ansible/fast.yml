@@ -70,3 +70,10 @@
         - "mkdir -p build"
         - "cd build && cmake -DCMAKE_TOOLCHAIN_FILE={{ home_dir }}/.vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=release .. && make -j 4"
         - "cp -rf build/bin/* {{ home_dir }}/experiments"
+
+    - name: Setup virtualenv for FAST wrapper
+      listen: compile_fast
+      ansible.builtin.pip:
+        name: pymongo
+        virtualenv: "{{ home_dir }}/experiments/wrapper/venv"
+        virtualenv_command: "python3 -m venv"
