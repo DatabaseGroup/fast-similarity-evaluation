@@ -55,6 +55,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
                                        similarity::Similarity& similarity,
                                        std::vector<ontology::QueryPlan>& plans,
                                        double timeslice,
+                                       bool prefer_presorted,
                                        timing::TimeStaticJoinTiming& timing,
                                        std::vector<statistics::LocalTimeSliceStatistics>& all_statistics) {
   for (size_t action = 0; action < plans.size(); ++action) {
@@ -98,7 +99,7 @@ inline void execute_timeslice_prebuilt(data::Dataset& dataset,
       alg_instance.similarity = reduction_cache.reduce_similarity_to_end(similarity, plan);
     }
     alg_instance.algorithm =
-      resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state);
+      resolve_algorithmid(plan.algorithm_id, plan.steps.empty() ? similarity : alg_instance.similarity, shared_state, prefer_presorted);
     auto index_batch = dataset_to_batch(plan.steps.empty() ? dataset.data : *alg_instance.owned_data.front());
     alg_instance.algorithm->insert_batch(index_batch, index_batch);
   }

@@ -8,7 +8,7 @@
 
 namespace join {
 
-template <class Handler, bool ENABLE_DELETION = true>
+template <class Handler, bool ENABLE_DELETION = true, bool PRESORTED = false>
 class PallocJoin : public SignatureJoin<Handler> {
 private:
   struct SizeGroup {
@@ -145,16 +145,24 @@ private:
   }
 
 private:
+  using IndexType = std::conditional_t<
+    PRESORTED,
+    indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_PRESORTED, indexing::IndexType::HASH>,
+    indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH>>;
+
+private:
   similarity::SetSimilarity& similarity;
   SharedState& shared_state;
   similarity::PallocSignature signature;
-  indexing::ComplexIndex<RecordId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
+  IndexType index;
   types::TreeMTable<int32_t, int32_t> small_index;
   std::vector<SizeGroup>& size_groups;
 };
 
-template class PallocJoin<MaterializeHandler, true>;
-template class PallocJoin<MaterializeHandler, false>;
+template class PallocJoin<MaterializeHandler, true, true>;
+template class PallocJoin<MaterializeHandler, false, true>;
+template class PallocJoin<MaterializeHandler, true, false>;
+template class PallocJoin<MaterializeHandler, false, false>;
 
 }  // namespace join
 

@@ -2,39 +2,47 @@
 
 namespace join {
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+template <class Handler, bool PRESORTED>
+void PrefixSignatureJoin<Handler, PRESORTED>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
   auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
-  // the frequencies might become biased if the same set is indexed multiple times
-  prefix_signature.update_frequencies(sets.data);
+  if constexpr (!PRESORTED) {
+    // the frequencies might become biased if the same set is indexed multiple times
+    prefix_signature.update_frequencies(sets.data);
 
-  std::for_each(sets.data.begin(), sets.data.end(), [&](const auto& set) {
-    shared_state.totally_indexed_tokens += set.tokens.size();
-  });
-  if (shared_state.totally_indexed_tokens > shared_state.next_reindexing) {
-    shared_state.sqs.build_token_mapping();
-    ++shared_state.sqs_version;
-    shared_state.next_reindexing = shared_state.totally_indexed_tokens * 4;
-  }
-  if (local_sqs_version < shared_state.sqs_version) {
-    update_index(indexed_sets);
+    std::for_each(sets.data.begin(), sets.data.end(), [&](const auto& set) {
+      shared_state.totally_indexed_tokens += set.tokens.size();
+    });
+    if (shared_state.totally_indexed_tokens > shared_state.next_reindexing) {
+      shared_state.sqs.build_token_mapping();
+      ++shared_state.sqs_version;
+      shared_state.next_reindexing = shared_state.totally_indexed_tokens * 4;
+    }
+    if (local_sqs_version < shared_state.sqs_version) {
+      update_index(indexed_sets);
+    } else {
+      // preprocessing "consumes" the data, take copy
+      preprocessed_sets.insert(preprocessed_sets.end(), sets.data.begin(), sets.data.end());
+
+      types::span<types::Set> new_sets = types::span<types::Set>(
+        preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
+      prefix_signature.convert_tokens(new_sets);
+      insert_into_index(new_sets);
+    }
   } else {
-    // preprocessing "consumes" the data, take copy
+    // sets are already sorted by size, tokens are already correct
     preprocessed_sets.insert(preprocessed_sets.end(), sets.data.begin(), sets.data.end());
-
     types::span<types::Set> new_sets = types::span<types::Set>(
-      preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
-    prefix_signature.convert_tokens(new_sets);
+        preprocessed_sets.end() - static_cast<int64_t>(sets.data.size()), preprocessed_sets.end());
     insert_into_index(new_sets);
   }
 
   this->resize_bitmap(preprocessed_sets.size());
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::insert_into_index(types::span<types::Set> sets) {
+template <class Handler, bool PRESORTED>
+void PrefixSignatureJoin<Handler, PRESORTED>::insert_into_index(types::span<types::Set> sets) {
   int64_t max_asbs = similarity.max_asbs();
 
   for (auto& set : sets) {
@@ -57,8 +65,8 @@ void PrefixSignatureJoin<Handler>::insert_into_index(types::span<types::Set> set
   }
 }
 
-template <class Handler>
-std::any PrefixSignatureJoin<Handler>::get_probing_signatures(types::Batch& batch) {
+template <class Handler, bool PRESORTED>
+std::any PrefixSignatureJoin<Handler, PRESORTED>::get_probing_signatures(types::Batch& batch) {
   CachedSignatures cs;
 
   auto& set_batch = std::get<types::SetBatch>(batch);
@@ -70,8 +78,8 @@ std::any PrefixSignatureJoin<Handler>::get_probing_signatures(types::Batch& batc
   return cs;
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::update_index(types::span<types::Set>& indexed_sets) {
+template <class Handler, bool PRESORTED>
+void PrefixSignatureJoin<Handler, PRESORTED>::update_index(types::span<types::Set>& indexed_sets) {
   index.clear();
   small_index.clear();
   preprocessed_sets.clear();
@@ -84,8 +92,8 @@ void PrefixSignatureJoin<Handler>::update_index(types::span<types::Set>& indexed
   insert_into_index(preprocessed_sets);
 }
 
-template <class Handler>
-void PrefixSignatureJoin<Handler>::join_batch(types::Batch& indexed_data,
+template <class Handler, bool PRESORTED>
+void PrefixSignatureJoin<Handler, PRESORTED>::join_batch(types::Batch& indexed_data,
                                               types::Batch& batch,
                                               Handler handler,
                                               FilterConfig& filter_config,
@@ -130,9 +138,9 @@ void PrefixSignatureJoin<Handler>::join_batch(types::Batch& indexed_data,
   }
 }
 
-template <class Handler>
+template <class Handler, bool PRESORTED>
 template <class Filter>
-void PrefixSignatureJoin<Handler>::_join_batch(CachedSignatures& signatures,
+void PrefixSignatureJoin<Handler, PRESORTED>::_join_batch(CachedSignatures& signatures,
                                                Handler handler,
                                                FilterConfig& filter_config,
                                                statistics::JoinStatistics& statistics) {
