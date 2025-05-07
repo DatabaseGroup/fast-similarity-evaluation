@@ -7,7 +7,7 @@
 
 namespace join {
 
-template <class Handler>
+template <class Handler, bool PRESORTED = false>
 class PassJoin : public SignatureJoin<Handler> {
 private:
   using StringId = int64_t;
@@ -73,7 +73,7 @@ private:
 
 public:
   // assume PassJoin gets a SEDSimilarity (nothing else works anyway)
-  explicit PassJoin(similarity::Similarity& similarity)
+  explicit PassJoin(const similarity::Similarity& similarity)
       : similarity(
           dynamic_cast<similarity::StringEditDistance&>(*std::get<similarity::StringSimilarityPtr>(similarity))),
         passjoin_signature(this->similarity) {}
@@ -110,12 +110,19 @@ private:
                    statistics::JoinStatistics& statistics);
 
 private:
+  using IndexType = std::conditional_t<
+    PRESORTED,
+    indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED_PRESORTED, indexing::IndexType::HASH>,
+    indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH>>;
+
+private:
   similarity::StringEditDistance& similarity;
   similarity::PassJoinSignature passjoin_signature;
-  indexing::ComplexIndex<StringId, indexing::IndexType::ORDERED_RANDOM, indexing::IndexType::HASH> index;
+  IndexType index;
 };
 
-template class PassJoin<MaterializeHandler>;
+template class PassJoin<MaterializeHandler, true>;
+template class PassJoin<MaterializeHandler, false>;
 
 }  // namespace join
 

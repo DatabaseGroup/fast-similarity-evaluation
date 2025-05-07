@@ -39,7 +39,11 @@ inline std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(
     // todo implement comparing all pairs as obvious fallback
     break;
   case PASS_JOIN:
-    return std::make_unique<PassJoin<MaterializeHandler>>(similarity);
+    if (prefer_presorted) {
+      return std::make_unique<PassJoin<MaterializeHandler, true>>(similarity);
+    } else {
+      return std::make_unique<PassJoin<MaterializeHandler, false>>(similarity);
+    }
   case TJOIN:
     return std::make_unique<TJoinLite<MaterializeHandler>>(similarity);
   case PALLOC:

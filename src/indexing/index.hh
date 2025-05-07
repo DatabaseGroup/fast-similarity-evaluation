@@ -243,17 +243,19 @@ public:
       if (iter->first > key_end) {
         break;
       }
-      if (callback(iter->second)) {
-        break;
+      for (auto& val : iter->second) {
+        if (callback(val)) {
+          break;
+        }
       }
     }
   }
 
-  void insert(ValueType value, KeyType key) { map.emplace(key, value); }
+  void insert(ValueType value, KeyType key) { map[key].emplace_back(value); }
 
   void merge(ComplexIndex& other, ValueType id_offset) {
     for (auto& [key, value] : other.map) {
-      map.emplace(key, value + id_offset);
+      insert(key, value + id_offset);
     }
   }
 
@@ -262,7 +264,7 @@ public:
   static constexpr int32_t LEVEL() { return 0; }
 
 public:
-  absl::btree_multimap<KeyType, ValueType> map;
+  absl::btree_map<KeyType, std::vector<ValueType>> map;
 };
 
 template <class ValueType, IndexType... TailIndexes>
@@ -308,9 +310,9 @@ public:
   template <class... Keys>
   void insert(ValueType value, KeyType key, Keys... keys) {
     if (map.empty() || map.back().first < key) {
-      map.emplace_back();
+      map.emplace_back(key, ComplexIndex<ValueType, TailIndexes...>{});
     }
-    map.back().insert(value, keys...);
+    map.back().second.insert(value, keys...);
   }
 
   void merge([[maybe_unused]] ComplexIndex& other, [[maybe_unused]] ValueType id_offset) {
