@@ -1,4 +1,4 @@
-- name: Install and compile FAST
+- name: Setup Experiments
   hosts: all
   vars:
     home_dir: "/home/fast-bench"

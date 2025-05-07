@@ -3,7 +3,7 @@
 source global.sh
 
 BINARY="./venv/bin/python3 run.py"
-DATASET_DIR="/root/dschmitt/datasets/trees/syncsig"
+DATASET_DIR="/home/fast-bench/datasets/trees/syncsig"
 ARGS=()
 
 generate_args() {

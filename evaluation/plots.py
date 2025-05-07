@@ -17,7 +17,7 @@ def remove_extension(filename):
     return os.path.splitext(filename)[0]
 
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Iterable
 
 
 def list_to_nested_dict(items: List[Dict[str, Any]], key: str = "threshold") -> Dict[Any, Dict[str, Any]]:
@@ -32,7 +32,7 @@ def list_to_nested_dict(items: List[Dict[str, Any]], key: str = "threshold") -> 
     return nested
 
 
-def write_to_csv(filepath: str, headers: list[str], keys: list[str], data: dict[str, dict[str, any]]):
+def write_to_csv(filepath: str, headers: Iterable[str], keys: Iterable[str], data: dict[str, dict[str, any]]):
     with open(filepath, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(headers)
@@ -83,7 +83,7 @@ def static_vs_dynamic(datasets: list[str], similarity: str, collection: pymongo.
         for label in labels:
             results = queries.average_time(collection, label, dataset, similarity)
             for result in results:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 avg_join_time = result['average_join_time']
                 avg_build_time = result.get('average_build_time', 0)
 
@@ -135,7 +135,7 @@ def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo
     for dataset in datasets:
         data = {}
         results = list(queries.average_time(collection, time_static_label, dataset, similarity))
-        similarity = results[0]['_id']['similarity']
+        similarity = results[0]['similarity']
         baseline_labels = set_baselines if similarity in ['jaccard'] else string_baselines if similarity in [
             'sed'] else tree_baselines
         all_results = []  # type: list[pymongo.collection.Mapping]
@@ -144,15 +144,15 @@ def static_vs_baseline(datasets: list[str], similarity: str, collection: pymongo
             all_results.extend(queries.average_time(collection, label, dataset, similarity))
 
         for result in all_results:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             avg_join_time = result['average_join_time']
             avg_build_time = result['average_build_time']
 
             if threshold not in data:
                 data[threshold] = {}
 
-            data[threshold][result['_id']['label']] = avg_join_time
-            data[threshold][result['_id']['label'] + '-with-build'] = avg_join_time + avg_build_time
+            data[threshold][result['label']] = avg_join_time
+            data[threshold][result['label'] + '-with-build'] = avg_join_time + avg_build_time
 
         filename = f'baseline/{remove_extension(dataset)}-{similarity}.csv'
         headers = ['Threshold', 'time-static']
@@ -198,7 +198,7 @@ def fast_vs_twol(collection: pymongo.collection.Collection):
         data = {}
         ts_result = queries.average_time(collection, time_static_label, dataset, 'jaccard')
         for result in ts_result:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             avg_join_time = result['average_join_time']
             avg_build_time = result.get('average_build_time', 0)
 
@@ -213,7 +213,7 @@ def fast_vs_twol(collection: pymongo.collection.Collection):
 
         td_result = queries.average_time(collection, time_dynamic_label, dataset, 'jaccard')
         for result in td_result:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             average_total_time = result['average_join_time']
 
             if threshold not in data:
@@ -222,7 +222,7 @@ def fast_vs_twol(collection: pymongo.collection.Collection):
 
         twol_result = queries.average_time(collection, twol_label, dataset, 'jaccard')
         for result in twol_result:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             average_total_time = result['average_total_time']
 
             if threshold not in data:
@@ -249,7 +249,7 @@ def fast_vs_limes(collection: pymongo.collection.Collection):
         data = {}
         ts_result = queries.average_time(collection, time_static_label, dataset, 'jaro')
         for result in ts_result:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             avg_join_time = result['average_join_time']
             avg_build_time = result.get('average_build_time', 0)
 
@@ -259,7 +259,7 @@ def fast_vs_limes(collection: pymongo.collection.Collection):
 
         limes_result = queries.average_time(collection, limes_label, dataset, 'jaro')
         for result in limes_result:
-            threshold = result['_id']['threshold']
+            threshold = result['threshold']
             average_join_time = result['average_join_time']
 
             if threshold not in data:
@@ -311,7 +311,7 @@ def fast_vs_syncsignatures(collection: pymongo.collection.Collection):
             results = queries.average_time(collection, label, dataset, 'ted')
 
             for result in results:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 avg_total_time = result['average_total_time']
                 data[threshold][alg] = avg_total_time
 
@@ -329,7 +329,7 @@ def fast_vs_syncsignatures(collection: pymongo.collection.Collection):
             results = queries.average_time(collection, label, dataset, 'ted')
 
             for result in results:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 avg_total_time = result['average_join_time'] + (
                     result['average_build_time'] if result['average_build_time'] else 0)
                 data[threshold][alg] = avg_total_time
@@ -351,7 +351,7 @@ def jaro_baselines(collection: pymongo.collection.Collection):
         for label in labels:
             query_result = queries.average_time(collection, label, dataset, 'jaro')
             for result in query_result:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 avg_join_time = result['average_join_time']
                 avg_build_time = result.get('average_build_time', 0)
 
@@ -383,7 +383,7 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
 
             results = queries.average_time(collection, label, dataset, 'sed')
             for result in results:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 if 'time-static-min' not in data[threshold]:
                     data[threshold]['time-static-min'] = 10 ** 10
                 data[threshold][alg] = result['average_join_time']
@@ -397,7 +397,7 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
 
             results = queries.average_time(collection, label, dataset, 'sed')
             for result in results:
-                threshold = result['_id']['threshold']
+                threshold = result['threshold']
                 data[threshold][alg] = result['average_total_time']
                 data[threshold]['minjoin_result'] = result['result_size']
                 data[threshold]['minjoin_recall'] = round(
@@ -407,6 +407,39 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
 
         filename = f'minjoin/{remove_extension(dataset)}-sed.csv'
         write_to_csv(filename, headers, keys, data)
+
+
+def preprocessing_vs_otf(collection: pymongo.collection.Collection):
+    otf_prefix = PREFIX + 'pre-otf-prefix'
+    otf_palloc = PREFIX + 'pre-otf-palloc'
+    pre_prefix = PREFIX + 'pre-pre-prefix'
+    pre_palloc = PREFIX + 'pre-pre-palloc'
+
+    datasets = ['bms-pos-dedup-raw.txt', 'dblpv14', 'kosarak-dedup-raw.txt', 'lnonis1']
+    similarity = 'jaccard'
+
+    labels = (otf_prefix, otf_palloc, pre_prefix, pre_palloc)
+    res_labels = ("prefix-otf", "palloc-otf", "prefix-pre", "palloc-pre")
+
+    for dataset in datasets:
+        res = defaultdict(dict)
+        preprocessing_time = queries.preprocessing_time(collection, dataset).next()['avg_time']
+        for label, res_label in zip(labels, res_labels):
+            results = queries.average_time(collection, label, dataset, similarity)
+            for result in results:
+
+                if ('pre-pre-' in label):
+                    result['average_preprocessing_time'] = preprocessing_time
+                else:
+                    result['average_preprocessing_time'] = 0.
+
+                result['average_total_time'] = result['average_preprocessing_time'] + result['average_join_time'] + \
+                                               result['average_build_time']
+                res[result['threshold']][res_label] = result['average_total_time']
+                res[result['threshold']]['preprocessing'] = preprocessing_time
+
+        filename = f'preprocessing/{remove_extension(dataset)}-{similarity}.csv'
+        write_to_csv(filename, ['Threshold', *res_labels, 'preprocessing'], [*res_labels, 'preprocessing'], res)
 
 
 def main():
@@ -422,6 +455,7 @@ def main():
     tree_datasets = ['sentiment', 'python', 'swissprot', 'dblp', 'synthetic']
 
     jaro_baselines(collection)
+    preprocessing_vs_otf(collection)
 
     static_dynamic_stats = GapStats()
     hights_stats = GapStats()

@@ -3,7 +3,7 @@
 source global.sh
 
 BINARY="./venv/bin/python3 run.py ../fast_stats"
-DATASET_DIR="/root/dschmitt/datasets"
+DATASET_DIR="/home/fast-bench/datasets"
 ARGS=()
 
 generate_args() {
