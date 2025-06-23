@@ -10,7 +10,7 @@ import pymongo.collection
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
-PREFIX = 'final-v9-'
+PREFIX = 'final-v10-'
 
 
 def remove_extension(filename):
@@ -30,6 +30,11 @@ def list_to_nested_dict(items: List[Dict[str, Any]], key: str = "threshold") -> 
         inner = {field: val for field, val in item.items() if field != key}
         nested[k] = inner
     return nested
+
+def normalize(d: dict[str, float], normalizer: str, normalized: str):
+    if normalizer in d and normalized in d:
+        d[normalized] = d[normalized] / d[normalizer] - 1
+    d[normalizer] = 0
 
 
 def write_to_csv(filepath: str, headers: Iterable[str], keys: Iterable[str], data: dict[str, dict[str, any]]):
@@ -409,26 +414,24 @@ def fast_vs_minjoin(our_datasets: list[str], collection: pymongo.collection.Coll
         write_to_csv(filename, headers, keys, data)
 
 
-def preprocessing_vs_otf(collection: pymongo.collection.Collection):
-    otf_prefix = PREFIX + 'pre-otf-prefix'
-    otf_palloc = PREFIX + 'pre-otf-palloc'
-    pre_prefix = PREFIX + 'pre-pre-prefix'
-    pre_palloc = PREFIX + 'pre-pre-palloc'
+def preproc_for_labels(labels: list[str], datasets: list[str], similarity: str, collection: pymongo.collection.Collection):
 
-    datasets = ['bms-pos-dedup-raw.txt', 'dblpv14', 'kosarak-dedup-raw.txt', 'lnonis1']
-    similarity = 'jaccard'
-
-    labels = (otf_prefix, otf_palloc, pre_prefix, pre_palloc)
-    res_labels = ("prefix-otf", "palloc-otf", "prefix-pre", "palloc-pre")
+    if similarity == "jaccard":
+        res_labels = ("prefix-otf", "palloc-otf", "prefix-pre", "palloc-pre")
+    else:
+        res_labels = ("passjoin-otf", "passjoin-pre")
 
     for dataset in datasets:
         res = defaultdict(dict)
-        preprocessing_time = queries.preprocessing_time(collection, dataset).next()['avg_time']
+        if similarity == "jaccard":
+            preprocessing_time = queries.preprocessing_time(collection, dataset).next()['avg_time']
+        else:
+            preprocessing_time = 0
         for label, res_label in zip(labels, res_labels):
             results = queries.average_time(collection, label, dataset, similarity)
             for result in results:
 
-                if ('pre-pre-' in label):
+                if 'pre-pre-' in label:
                     result['average_preprocessing_time'] = preprocessing_time
                 else:
                     result['average_preprocessing_time'] = 0.
@@ -436,10 +439,33 @@ def preprocessing_vs_otf(collection: pymongo.collection.Collection):
                 result['average_total_time'] = result['average_preprocessing_time'] + result['average_join_time'] + \
                                                result['average_build_time']
                 res[result['threshold']][res_label] = result['average_total_time']
-                res[result['threshold']]['preprocessing'] = preprocessing_time
+
+        if similarity == "jaccard":
+            for d in res.values():
+                normalize(d, 'prefix-otf', 'prefix-pre')
+                normalize(d, 'palloc-otf', 'palloc-pre')
+        else:
+            for d in res.values():
+                normalize(d, 'passjoin-otf', 'passjoin-pre')
 
         filename = f'preprocessing/{remove_extension(dataset)}-{similarity}.csv'
-        write_to_csv(filename, ['Threshold', *res_labels, 'preprocessing'], [*res_labels, 'preprocessing'], res)
+        write_to_csv(filename, ['Threshold', *res_labels], res_labels, res)
+
+def preprocessing_vs_otf(collection: pymongo.collection.Collection):
+    otf_prefix = PREFIX + 'pre-otf-prefix'
+    otf_palloc = PREFIX + 'pre-otf-palloc'
+    pre_prefix = PREFIX + 'pre-pre-prefix'
+    pre_palloc = PREFIX + 'pre-pre-palloc'
+    datasets = ['bms-pos-dedup-raw.txt', 'dblpv14', 'kosarak-dedup-raw.txt', 'lnonis1']
+    labels = [otf_prefix, otf_palloc, pre_prefix, pre_palloc]
+    preproc_for_labels(labels, datasets, "jaccard", collection)
+
+    otf_passjoin = PREFIX + 'pre-otf-passjoin'
+    pre_passjoin = PREFIX + 'pre-pre-passjoin'
+    labels = [otf_passjoin, pre_passjoin]
+    datasets = ['dblp', 'enron', 'trec', 'word']
+    datasets = [s + "-presorted" for s in datasets]
+    preproc_for_labels(labels, datasets, "sed", collection)
 
 
 def main():
