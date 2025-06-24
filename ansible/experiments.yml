@@ -1,4 +1,4 @@
-- name: Install and compile FAST
+- name: Setup Experiments
   hosts: all
   vars:
     home_dir: "/home/fast-bench"
@@ -21,10 +21,3 @@
         remote_src: true
         src: "/mnt/dbgroup-share/dschmitt/datasets/"
         dest: "{{ home_dir }}/datasets/"
-
-    - name: Setup virtualenv for FAST wrapper
-      listen: compile_fast
-      ansible.builtin.pip:
-        name: pymongo
-        virtualenv: "{{ home_dir }}/experiments/wrapper/venv"
-        virtualenv_command: "python3 -m venv"

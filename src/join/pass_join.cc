@@ -4,8 +4,8 @@
 
 namespace join {
 
-template <class Handler>
-void PassJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+template <class Handler, bool PRESORTED>
+void PassJoin<Handler, PRESORTED>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
   auto& indexed_strings = std::get<types::StringBatch>(indexed_data).data;
   auto& strings = std::get<types::StringBatch>(batch);
   this->resize_bitmap(indexed_strings.size());
@@ -20,13 +20,13 @@ void PassJoin<Handler>::insert_batch(types::Batch& indexed_data, types::Batch& b
   }
 }
 
-template <class Handler>
-bool PassJoin<Handler>::has_independent_probing_signatures() {
+template <class Handler, bool PRESORTED>
+bool PassJoin<Handler, PRESORTED>::has_independent_probing_signatures() {
   return true;
 }
 
-template <class Handler>
-std::any PassJoin<Handler>::get_probing_signatures([[maybe_unused]] types::Batch& batch) {
+template <class Handler, bool PRESORTED>
+std::any PassJoin<Handler, PRESORTED>::get_probing_signatures([[maybe_unused]] types::Batch& batch) {
   auto strings = std::get<types::StringBatch>(batch);
 
   std::vector<CachedSignatures> signatures;
@@ -39,8 +39,8 @@ std::any PassJoin<Handler>::get_probing_signatures([[maybe_unused]] types::Batch
   return signatures;
 }
 
-template <class Handler>
-void PassJoin<Handler>::join_batch(types::Batch& indexed_data,
+template <class Handler, bool PRESORTED>
+void PassJoin<Handler, PRESORTED>::join_batch(types::Batch& indexed_data,
                                   types::Batch& batch,
                                    Handler handler,
                                    FilterConfig& filter_config,
@@ -76,9 +76,9 @@ void PassJoin<Handler>::join_batch(types::Batch& indexed_data,
   }
 }
 
-template <class Handler>
+template <class Handler, bool PRESORTED>
 template <class Filter>
-void PassJoin<Handler>::_join_batch(types::Batch& indexed_data, types::Batch& batch,
+void PassJoin<Handler, PRESORTED>::_join_batch(types::Batch& indexed_data, types::Batch& batch,
                                     std::vector<CachedSignatures>& cached_probing_signatures,
                                     Handler handler,
                                     FilterConfig& filter_config,

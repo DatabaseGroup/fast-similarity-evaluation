@@ -4,7 +4,7 @@
   "builtin-baseline" : "0da40a8b53f67f98b0e210a581b82b26947ac97c",
   "dependencies" : [ {
     "name" : "abseil",
-    "version>=" : "20230802.1"
+    "version>=" : "20240722.0"
   }, {
     "name" : "vcpkg-cmake-config",
     "version>=" : "2022-02-06#1"

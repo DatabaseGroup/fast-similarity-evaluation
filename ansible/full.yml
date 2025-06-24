@@ -1,3 +1,4 @@
 - import_playbook: fast.yml
+- import_playbook: tools.yml
 - import_playbook: experiments.yml
-- import_playbook: others.yml
+- import_playbook: competitors.yml

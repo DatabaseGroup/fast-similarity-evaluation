@@ -1,7 +1,8 @@
-#include <boost/program_options.hpp>
-#include <variant>
-#include <iostream>
 #include <sys/ioctl.h>
+
+#include <boost/program_options.hpp>
+#include <iostream>
+#include <variant>
 
 #include "../data/parser.hh"
 #include "../indexing/index.hh"
@@ -18,6 +19,7 @@ struct Config {
   bool shuffle{false};
   bool warmup{false};
   bool warmup_flush_hwcache{false};
+  bool prefer_presorted{false};
   int64_t read_file_until{};
   std::string datatype;
   std::string similarity;
@@ -54,21 +56,32 @@ bool process_program_options(int argc, char** argv, Config& config) {
     "flush-hwcache",
     po::bool_switch(&config.warmup_flush_hwcache)->default_value(false),
     "Try to flush hardware (data-)caches between warmup and execution (only affects time-dynamic)")(
-    "datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
+    "prefer-presorted,e",
+    po::bool_switch(&config.prefer_presorted)->default_value(false),
+    "Try to avoid preprocessing for some algorithms. Requires already preprocessed data. Only supported for "
+    "time-static.")("datatype,d", po::value(&config.datatype)->required(), "Specify datatype (set, string, tree)")(
     "similarity,s", po::value(&config.similarity)->required(), "Specify similarity function (jaccard, sed, ted, jaro)")(
     "threshold,t", po::value(&config.threshold)->required(), "Threshold of the similarity join")(
-    "batch-count,b", po::value(&config.batch_count)->default_value(20), "Number of batches to split the data into, only affects block mode")(
+    "batch-count,b",
+    po::value(&config.batch_count)->default_value(20),
+    "Number of batches to split the data into, only affects block mode")(
     "label,l", po::value(&config.label), "Label for the run (printed in json)")(
-    "exclude-algorithm,x", po::value(&config.excluded_algorithms)->multitoken(), "Excluded algorithms in the reduction graph")(
-    "exclude-reduction,y", po::value(&config.excluded_reductions)->multitoken(), "Excluded reductions in the reduction graph")(
+    "exclude-algorithm,x",
+    po::value(&config.excluded_algorithms)->multitoken(),
+    "Excluded algorithms in the reduction graph")("exclude-reduction,y",
+                                                  po::value(&config.excluded_reductions)->multitoken(),
+                                                  "Excluded reductions in the reduction graph")(
     "probe-cache-size,p",
     po::value(&config.probing_signatures_cache_size)->default_value(20),
     "Probing signatures cache size, only affects block mode")(
-    "reduction-cache-size,r", po::value(&config.reduction_cache_size)->default_value(20), "Reduction Cache Size, only affects block mode")(
+    "reduction-cache-size,r",
+    po::value(&config.reduction_cache_size)->default_value(20),
+    "Reduction Cache Size, only affects block mode")(
     "read-until,u",
     po::value(&config.read_file_until)->default_value(std::numeric_limits<int64_t>::max()),
-    "Read the first X lines of the input, skipping the rest")(
-    "mode,m", po::value(&config.mode)->default_value("block"), "Mode of interleaving: block, time-static, time-dynamic")(
+    "Read the first X lines of the input, skipping the rest")("mode,m",
+                                                              po::value(&config.mode)->default_value("block"),
+                                                              "Mode of interleaving: block, time-static, time-dynamic")(
     "time-slice,i", po::value(&config.timeslice)->default_value(0.3), "Timeslice in seconds")(
     "additional-reductions,a",
     po::value(&config.additional_reductions)->multitoken(),
@@ -130,6 +143,9 @@ nlohmann::json get_metadata(Config& config) {
     json["reduction_cache_size"] = config.reduction_cache_size;
     json["probing_signatures_cache_size"] = config.probing_signatures_cache_size;
   } else {
+    if (config.mode == "time-static") {
+      json["prefer_presorted"] = config.prefer_presorted;
+    }
     json["timeslice"] = config.timeslice;
     json["warmup"] = config.warmup;
     json["warmup_flush_hwcache"] = config.warmup_flush_hwcache;
@@ -287,7 +303,8 @@ int main(int argc, char** argv) {
 
     auto lls = setup_statistics<StatClass>(plans);
     global_statistics = std::make_unique<statistics::GlobalTimeSliceStatistics>();
-    join::execute_timeslice_prebuilt(dataset, similarity, plans, config.timeslice, tsj_timing, lls);
+    join::execute_timeslice_prebuilt(
+      dataset, similarity, plans, config.timeslice, config.prefer_presorted, tsj_timing, lls);
     timing = std::make_unique<timing::TimeStaticJoinTiming>(std::move(tsj_timing));
     std::for_each(
       lls.begin(), lls.end(), [&](auto& s) { local_statistics.emplace_back(std::make_unique<StatClass>(s)); });

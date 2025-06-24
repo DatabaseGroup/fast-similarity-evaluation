@@ -25,6 +25,19 @@ def average_time(collection: pymongo.collection.Collection, label: str, dataset:
                 'average_total_time': {'$median': {'input': '$timing.total_time', 'method': 'approximate'}},
                 'result_size': {'$avg': '$global_statistics.result_size'}
             }
+        }, {
+            '$project': {
+                'dataset': '$_id.dataset',
+                'similarity': '$_id.similarity',
+                'threshold': '$_id.threshold',
+                'label': '$_id.label',
+                'average_join_time': 1,
+                'average_build_time': 1,
+                'average_total_time': 1,
+                'average_result_size': 1,
+                'result_size': 1,
+                '_id': 0
+            }
         }
     ]
 
@@ -209,3 +222,28 @@ def fast_index_redundancy(collection: pymongo.collection.Collection, static_labe
         plain[threshold][mode] = index_redundancy - 1
 
     return plain
+
+def preprocessing_time(collection: pymongo.collection.Collection, dataset: str):
+    pipeline = [
+        {
+            '$match': {
+                'meta.label': 'preprocessing',
+                'meta.dataset': dataset
+            }
+        }, {
+            '$group': {
+                '_id': 'meta.dataset',
+                'avg_time': {
+                    '$avg': '$timing.preprocessing'
+                }
+            }
+        }, {
+            '$project': {
+                'dataset': '$_id',
+                'avg_time': '$avg_time'
+            }
+        }
+    ]
+
+    results = collection.aggregate(pipeline)
+    return results

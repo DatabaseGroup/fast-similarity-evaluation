@@ -15,7 +15,10 @@ namespace join {
 
 template <class Handler = MaterializeHandler>
 struct AlgorithmSharedState {
+  typename PrefixSignatureJoin<Handler, true>::SharedState prefix_presorted;
   typename PrefixSignatureJoin<Handler>::SharedState prefix;
+  typename PallocJoin<Handler, true, true>::SharedState palloc_presorted;
+  typename PallocJoin<Handler, false, true>::SharedState partition_presorted;
   typename PallocJoin<Handler, true>::SharedState palloc;
   typename PallocJoin<Handler, false>::SharedState partition;
 };
@@ -23,21 +26,38 @@ struct AlgorithmSharedState {
 inline std::unique_ptr<JoinAlgorithm<MaterializeHandler>> resolve_algorithmid(
   AlgorithmId id,
   similarity::Similarity& similarity,
-  AlgorithmSharedState<MaterializeHandler>& shared_state) {
+  AlgorithmSharedState<MaterializeHandler>& shared_state,
+  bool prefer_presorted = false) {
   switch (id) {
   case PREFIX_SIGNATURE_JOIN:
-    return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity, shared_state.prefix);
+    if (prefer_presorted) {
+      return std::make_unique<PrefixSignatureJoin<MaterializeHandler, true>>(similarity, shared_state.prefix_presorted);
+    } else {
+      return std::make_unique<PrefixSignatureJoin<MaterializeHandler, false>>(similarity, shared_state.prefix);
+    }
   case FALLBACK:
     // todo implement comparing all pairs as obvious fallback
     break;
   case PASS_JOIN:
-    return std::make_unique<PassJoin<MaterializeHandler>>(similarity);
+    if (prefer_presorted) {
+      return std::make_unique<PassJoin<MaterializeHandler, true>>(similarity);
+    } else {
+      return std::make_unique<PassJoin<MaterializeHandler, false>>(similarity);
+    }
   case TJOIN:
     return std::make_unique<TJoinLite<MaterializeHandler>>(similarity);
   case PALLOC:
-    return std::make_unique<PallocJoin<MaterializeHandler, true>>(similarity, shared_state.palloc);
+    if (prefer_presorted) {
+      return std::make_unique<PallocJoin<MaterializeHandler, true, true>>(similarity, shared_state.palloc_presorted);
+    } else {
+      return std::make_unique<PallocJoin<MaterializeHandler, true, false>>(similarity, shared_state.palloc);
+    }
   case PARTITION:
-    return std::make_unique<PallocJoin<MaterializeHandler, false>>(similarity, shared_state.partition);
+    if (prefer_presorted) {
+      return std::make_unique<PallocJoin<MaterializeHandler, false, true>>(similarity, shared_state.partition_presorted);
+    } else {
+      return std::make_unique<PallocJoin<MaterializeHandler, false, false>>(similarity, shared_state.partition);
+    }
   }
   return std::make_unique<PrefixSignatureJoin<MaterializeHandler>>(similarity, shared_state.prefix);
 }

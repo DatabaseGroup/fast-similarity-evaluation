@@ -3,13 +3,12 @@
 
 #include "../similarity/similarity.hh"
 #include "../util/object_ptr.hh"
-
 #include "result_handler.hh"
 #include "signature_join.hh"
 
 namespace join {
 
-template <class Handler>
+template <class Handler, bool PRESORTED = false>
 class PrefixSignatureJoin : public SignatureJoin<Handler> {
 public:
   struct SharedState {
@@ -50,16 +49,23 @@ private:
   void update_index(types::span<types::Set>& indexed_sets);
 
 private:
+  using IndexType = std::conditional_t<
+    PRESORTED,
+    indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_PRESORTED>,
+    indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM>>;
+
+private:
   similarity::SetSimilarity& similarity;
   SharedState& shared_state;
   int64_t local_sqs_version = 0;
   similarity::SetPrefixSignature prefix_signature;
-  indexing::ComplexIndex<RecordId, indexing::IndexType::HASH, indexing::IndexType::ORDERED_RANDOM> index{};
+  IndexType index{};
   types::TreeMTable<int32_t, int32_t> small_index;
   std::vector<types::Set> preprocessed_sets;
 };
 
-template class PrefixSignatureJoin<MaterializeHandler>;
+template class PrefixSignatureJoin<MaterializeHandler, false>;
+template class PrefixSignatureJoin<MaterializeHandler, true>;
 
 }  // namespace join
 

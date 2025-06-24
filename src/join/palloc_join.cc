@@ -2,13 +2,13 @@
 
 namespace join {
 
-template <class Handler, bool ENABLE_DELETION>
-bool PallocJoin<Handler, ENABLE_DELETION>::has_independent_probing_signatures() {
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
+bool PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::has_independent_probing_signatures() {
   return true;
 }
 
-template <class Handler, bool ENABLE_DELETION>
-void PallocJoin<Handler, ENABLE_DELETION>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
+void PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::insert_batch(types::Batch& indexed_data, types::Batch& batch) {
   auto& indexed_sets = std::get<types::SetBatch>(indexed_data).data;
   auto& sets = std::get<types::SetBatch>(batch);
 
@@ -28,7 +28,7 @@ void PallocJoin<Handler, ENABLE_DELETION>::insert_batch(types::Batch& indexed_da
     auto& group = size_groups[group_idx];
     auto signatures = signature.indexing_signatures(set, group.partition_count, ENABLE_DELETION);
 
-    auto& index_group = index.map[static_cast<int64_t>(group_idx)];
+    auto& index_group = index.get(static_cast<int64_t>(group_idx));
 
     for (auto sig : signatures.normal_signatures) {
       index_group.insert(this->next_id, sig);
@@ -47,8 +47,8 @@ void PallocJoin<Handler, ENABLE_DELETION>::insert_batch(types::Batch& indexed_da
   }
 }
 
-template <class Handler, bool ENABLE_DELETION>
-std::any PallocJoin<Handler, ENABLE_DELETION>::get_probing_signatures(types::Batch& batch) {
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
+std::any PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::get_probing_signatures(types::Batch& batch) {
   auto& sets = std::get<types::SetBatch>(batch);
 
   std::vector<CachedSignatures> signatures(sets.data.size());
@@ -79,8 +79,8 @@ std::any PallocJoin<Handler, ENABLE_DELETION>::get_probing_signatures(types::Bat
   return signatures;
 }
 
-template <class Handler, bool ENABLE_DELETION>
-void PallocJoin<Handler, ENABLE_DELETION>::join_batch(types::Batch& indexed_data,
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
+void PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::join_batch(types::Batch& indexed_data,
                                                       types::Batch& batch,
                                                       Handler handler,
                                                       FilterConfig& filter_config,
@@ -115,9 +115,9 @@ void PallocJoin<Handler, ENABLE_DELETION>::join_batch(types::Batch& indexed_data
   }
 }
 
-template <class Handler, bool ENABLE_DELETION>
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
 template <class Filter>
-void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_data,
+void PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::_join_batch(types::Batch& indexed_data,
                                                        types::Batch& batch,
                                                        std::vector<CachedSignatures>& signatures,
                                                        Handler& handler,
@@ -212,9 +212,9 @@ void PallocJoin<Handler, ENABLE_DELETION>::_join_batch(types::Batch& indexed_dat
   }
 }
 
-template <class Handler, bool ENABLE_DELETION>
+template <class Handler, bool ENABLE_DELETION, bool PRESORTED>
 template <class Filter, class CandidateHandler>
-void PallocJoin<Handler, ENABLE_DELETION>::_probe_size_group(
+void PallocJoin<Handler, ENABLE_DELETION, PRESORTED>::_probe_size_group(
   types::span<types::Set> indexed_sets,
   types::Set& probing_set,
   GroupSignatures& group_sigs,
