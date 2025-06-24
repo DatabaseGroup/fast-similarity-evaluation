@@ -2,7 +2,7 @@
   hosts: all
   vars:
     home_dir: "/home/fast-bench"
-    fast_repo: "https://frosch.cosy.sbg.ac.at/dschmitt/fast-similarity-evaluation.git"
+    fast_repo: "https://github.com/DatabaseGroup/fast-similarity-evaluation.git"
   tasks:
     - name: Install dependencies
       ansible.builtin.apt:
