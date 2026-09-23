@@ -67,6 +67,7 @@ set(LINK_LIBS
         absl::log
         absl::base
         absl::bits
+        absl::int128
         absl::flat_hash_map
         absl::random_random
         Boost::program_options

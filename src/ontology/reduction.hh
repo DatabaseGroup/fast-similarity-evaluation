@@ -66,11 +66,7 @@ public:
     auto& in_strings = std::get<types::StringBatch>(input_batch);
     auto& out_sets = std::get<types::SetBatch>(output_batch);
     assert(in_strings.data.size() == out_sets.data.size());
-    if (in_strings.meta.alphabet_size <= std::numeric_limits<char>::max()) {
-      reduce<std::numeric_limits<char>::max()>(in_strings, out_sets);
-    } else {
-      reduce<std::numeric_limits<types::String::char_t>::max()>(in_strings, out_sets);
-    }
+    reduce(in_strings, out_sets);
   }
 
   types::Dataset reduce_data(types::Dataset& dataset) override {
@@ -95,15 +91,13 @@ public:
   [[nodiscard]] std::string get_label() const override { return std::to_string(q) + "gram"; }
 
 protected:
-  template<int64_t ALPHABET>
   void reduce(types::StringBatch& in_strings, types::SetBatch& out_sets) {
     auto in_iter = in_strings.data.begin();
     auto in_iter_end = in_strings.data.end();
     auto out_iter = out_sets.data.begin();
     // out_iter_end is reached exactly when in_iter_end is reached as both spans have the same size
 
-    const util::RabinFingerprint<types::String::char_t, ALPHABET> rf{q};
-    constexpr int32_t hash_unused_lower_bits = 63 - rf.used_bits();
+    constexpr int32_t hash_unused_lower_bits = 63 - Fingerprint::used_bits();
 
     while (in_iter != in_iter_end) {
       auto& string = *in_iter;
@@ -134,10 +128,10 @@ protected:
   }
 
   void generate_qgrams(types::String& string, types::Set& set) const {
-    util::RabinFingerprint<types::String::char_t> rf{q};
+    Fingerprint rf{q};
     set.tokens.reserve(string.str.size() + q - 1);
     // highest bit has to be zero
-    constexpr int32_t hash_unused_upper_bits = 63 - rf.used_bits();
+    constexpr int32_t hash_unused_upper_bits = 63 - Fingerprint::used_bits();
 
     for (int32_t i = 1; i < q; ++i) {
       rf.roll(PADDING);
@@ -172,6 +166,7 @@ protected:
   }
 
 private:
+  using Fingerprint = util::RabinFingerprint<types::String::char_t>;
   int32_t q;
 
   static constexpr types::String::char_t PADDING = 256;
